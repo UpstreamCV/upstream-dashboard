@@ -4,6 +4,25 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-13 — Fix routing (route group → real prefix) + Tailwind base-2 token shadow
+
+**Subject:** Two visible bugs the first real user hit on hosted: every link in the sidebar (`/dashboard/cameras`, `/agents`, etc.) 404'd, and the 404-page "Back to dashboard" button rendered white text on white.
+
+**Why — routing:** The `(dashboard)` parens around the folder name make it a Next.js **route group** — invisible in the URL. So `(dashboard)/cameras/page.tsx` lived at `/cameras`, not `/dashboard/cameras`. Only `/dashboard` happened to work because there was a redundant `(dashboard)/dashboard/page.tsx`. Sidebar hrefs and `next/link` targets all assumed the `/dashboard/*` prefix; everything else 404'd.
+
+**Why — Tailwind:** Color token `--color-base-2` in the `@theme inline` block collided with Tailwind v4's built-in `text-base` font-size utility. `text-base-2` parsed as the size utility with junk suffix instead of generating a color. Where rendered (404 page button), text inherited the parent `color: var(--ink)` (cream) on a `bg-ink` cream background — invisible.
+
+**What changed:**
+- Flattened `src/app/(dashboard)/*` → `src/app/dashboard/*`. The dashboard layout, error/loading/not-found boundaries, and all four list + detail + tokens pages now live under a real `/dashboard/` URL segment. The redundant inner `(dashboard)/dashboard/` subfolder is gone; its `page.tsx` and `overview-cards.tsx` are now at the top of `src/app/dashboard/`.
+- Updated `@/app/(dashboard)/...` imports in `components/tokens/{token-create-dialog,token-row-actions}.tsx` to use the new path.
+- Renamed Tailwind color token `--color-base-2` → `--color-base-deep` in `src/app/globals.css`. Replaced all `text-base-2` / `bg-base-2` usages with the new name (login form, signup form, token dialog, not-found pages, error boundary, latest-frame card — 9 occurrences total).
+
+**Verification:** `npm run lint` + `npx tsc --noEmit` clean. After Turbopack picks up the file moves, all sidebar nav links resolve (was 404, now 200), and the not-found "Back to dashboard" button is dark text on cream (legible).
+
+**Docs updated:** `docs/commit-log.md` (this entry).
+
+---
+
 ## 2026-05-13 — Migrate to api-server Phase 4.5 endpoints
 
 **Subject:** Swap the dashboard's four direct-Supabase reads to the new api-server endpoints. Drops the bespoke `/api/cameras/[id]/latest-frame` Route Handler and the local `account_members`/`stream_validations`/`snapshots`/`api_tokens` queries.

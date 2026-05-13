@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   createTokenAction,
   type CreateTokenResult,
-} from "@/app/(dashboard)/settings/api-tokens/actions";
+} from "@/app/dashboard/settings/api-tokens/actions";
 
 function InstallSnippet({ token }: { token: string }) {
   const lines = [
@@ -114,7 +114,7 @@ export function TokenCreateDialog({
         <button
           type="button"
           disabled={disabled}
-          className="inline-flex items-center gap-2 rounded-full bg-ink text-base-2 font-medium px-4 py-2 text-sm transition hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 rounded-full bg-ink text-base-deep font-medium px-4 py-2 text-sm transition hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <KeyRound className="w-4 h-4" />
           Generate token
@@ -172,7 +172,7 @@ export function TokenCreateDialog({
                   <button
                     type="button"
                     onClick={copy}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-ink text-base-2 font-medium px-3 py-2 text-sm transition hover:bg-white"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-ink text-base-deep font-medium px-3 py-2 text-sm transition hover:bg-white"
                   >
                     {copied ? (
                       <Check className="w-4 h-4" />
@@ -258,7 +258,7 @@ export function TokenCreateDialog({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-full bg-ink text-base-2 font-medium px-4 py-2 text-sm transition hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="rounded-full bg-ink text-base-deep font-medium px-4 py-2 text-sm transition hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {pending ? "Generating…" : "Generate"}
                 </button>

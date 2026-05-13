@@ -50,7 +50,7 @@ export function LatestFrameCard({
       <img
         src={frame.signed_url}
         alt="Latest captured frame"
-        className="w-full h-auto block bg-base-2"
+        className="w-full h-auto block bg-base-deep"
       />
       <div className="px-4 py-3 text-[12px] text-ink-soft flex items-center justify-between gap-3 mono">
         <span>
