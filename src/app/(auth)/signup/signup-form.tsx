@@ -11,7 +11,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-full bg-ink text-base-deep font-medium py-3 px-5 transition hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+      className="w-full rounded-full bg-ink text-[#0f1809] font-medium py-3 px-5 transition hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {pending ? "Creating account…" : "Create account"}
     </button>
