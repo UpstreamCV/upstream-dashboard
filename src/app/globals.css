@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  --accent: #5fb869;
+  --graph: #c8d9b6;
+
+  --creek-deep: #344c2c;
+  --creek-mid: #4b816c;
+  --creek-moss: #81764b;
+  --creek-dark: #1c2a17;
+  --base: #1a2613;
+  --base-2: #0f1809;
+  --ink: #f5f1e7;
+  --ink-soft: rgba(245, 241, 231, 0.7);
+  --ink-mute: rgba(245, 241, 231, 0.5);
+
+  --glass-bg: rgba(245, 241, 231, 0.06);
+  --glass-bg-2: rgba(245, 241, 231, 0.04);
+  --glass-stroke: rgba(245, 241, 231, 0.14);
+  --glass-stroke-2: rgba(245, 241, 231, 0.08);
+  --shadow-soft:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 30px 60px -30px rgba(0, 0, 0, 0.6);
+
+  --font-mono-stack: ui-monospace, SFMono-Regular, "Menlo", "Consolas", monospace;
+  --font-display-stack: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-mute: var(--ink-mute);
+  --color-accent: var(--accent);
+  --color-graph: var(--graph);
+  --color-base: var(--base);
+  --color-base-2: var(--base-2);
+  --color-creek-deep: var(--creek-deep);
+  --color-creek-mid: var(--creek-mid);
+  --color-glass-stroke: var(--glass-stroke);
+  --color-glass-bg: var(--glass-bg);
+
+  --font-sans: var(--font-display-stack);
+  --font-mono: var(--font-mono-stack);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+html {
+  background: var(--base-2);
+  color-scheme: dark;
+}
+body {
+  font-family: var(--font-display-stack);
+  color: var(--ink);
+  background:
+    radial-gradient(900px 600px at 88% -10%, rgba(95, 184, 134, 0.07), transparent 60%),
+    radial-gradient(900px 700px at -10% 110%, rgba(75, 129, 108, 0.1), transparent 60%),
+    var(--base-2);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  line-height: 1.5;
+  min-height: 100dvh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+}
+::selection {
+  background: var(--accent);
+  color: var(--base-2);
+}
+
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-stroke);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: var(--shadow-soft);
+}
+.glass-2 {
+  background: var(--glass-bg-2);
+  border: 1px solid var(--glass-stroke-2);
+  backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+}
+
+.mono {
+  font-family: var(--font-mono-stack);
+}
+.display {
+  font-family: var(--font-display-stack);
+  letter-spacing: -0.02em;
+}
+.display em {
+  font-style: italic;
+  color: var(--accent);
+}
