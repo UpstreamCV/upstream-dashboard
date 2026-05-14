@@ -107,9 +107,29 @@ Brand-aligned with `upstream-web`:
 - Tailwind v4 with brand tokens exposed via `@theme inline` (`text-ink`, `text-accent`, `bg-glass-bg`, etc.).
 - No design library; status badges, tables, and modals are hand-rolled. Modal uses `@radix-ui/react-dialog` for the focus trap (security-critical for the token reveal).
 
+## Live playback (WebRTC)
+
+The camera detail page renders live video via `<LiveStreamPanel>` whenever the camera's most recent session is in state `streaming`. The flow:
+
+1. Server-render `CameraDetailPage` fetches the latest session via `listStreamSessions({ cameraId, limit: 1 })` and hands it to `<LiveStreamPanel>`.
+2. `<LiveStreamPanel>` (Server Component, `src/components/stream/live-stream-panel.tsx`) branches on `session.state`. Only when `streaming` does it render `<LiveStreamPlayer sessionId={session.id} approved={session.approved} />`.
+3. `<LiveStreamPlayer>` (Client Component, `src/components/stream/live-stream-player.tsx`) builds the WHEP URL as `/api/upstream/v1/stream-sessions/${sessionId}/whep` and calls `connectWhep` (`src/lib/webrtc/whep-client.ts`).
+4. The WHEP negotiator POSTs an SDP offer with `Content-Type: application/sdp` through the dashboard's existing `/api/upstream/[...path]` proxy. The proxy injects the Supabase JWT server-side; the api-server then verifies the caller is a member of the session's account and forwards the offer to MediaMTX. The api-server's response includes the SDP answer plus a `Location` header carrying a bare resource id, which the player appends to the POST URL to form the DELETE target on teardown.
+5. The actual WebRTC media (RTP over UDP) flows browser ↔ MediaMTX **directly** via the ICE candidates in the SDP answer. The api-server is only in the HTTP signaling path. The api-server never sees the SRT/RTP stream.
+6. Existing `<CameraDetailPolling>` (5 s `useUpstreamList` on `/v1/stream-sessions?camera_id=...&limit=1`) detects state transitions and calls `router.refresh()`, which mounts/unmounts the player cleanly.
+
+**Read-path auth.** The api-server enforces auth on every WHEP request via the same `CurrentCaller` dependency that gates `GET /v1/stream-sessions/{id}`. Cross-account access returns 404 `session_not_found` (does not leak existence). Sessions in non-`streaming` state return 409 `session_not_streaming`. See `../upstream-api-server/docs/api-contracts.md` for the full endpoint contract.
+
+**No new browser-facing env vars.** WHEP signaling goes through the same `/api/upstream` proxy as everything else, so `NEXT_PUBLIC_MEDIAMTX_BASE_URL` is gone — production deploys configure the streaming-server URL once, server-side, via `UPSTREAM_MEDIAMTX_BASE_URL` on the api-server.
+
+**Backoff schedule** on connection failure: 500 ms, 1 s, 2 s, 4 s, 8 s, then a manual "Retry" button. 404 from WHEP is the common race (api-server has flipped the session to `streaming` a few seconds before MediaMTX registers the path) and is treated as transient. The player tears down on tab-hide and bfcache `pagehide`, and reconnects on visibility-return — this avoids ghost readers in MediaMTX's `paths/list` and keeps bandwidth honest.
+
+**Production deploy posture.** MediaMTX itself must remain unreachable from the public internet on its read ports (`8889/tcp` signaling, `8554/tcp` RTSP, `9997/tcp` HTTP API). Only the api-server should be able to reach them; the UDP ICE port (`8189/udp`) stays public so browsers can negotiate ICE. See `../upstream-streaming-server/docs/stream-auth.md` (Read-path auth section).
+
 ## Out of scope (today)
 
-- WebRTC playback. Streaming-server hasn't defined the WHEP URL convention yet. `<PlaybackComingSoon />` is the single drop-in point.
+- "Live wall" tile view of all currently-streaming cameras across the account.
+- TURN servers for browsers behind restrictive NATs (today MediaMTX uses its own host candidates).
 - Agent detail page (`getAgent()` exists in `src/lib/api/agents.ts` but no route consumes it yet).
 - Stream-session detail page (`getStreamSession()` likewise).
 - Team management (invite / role change), billing, snapshot recording history.

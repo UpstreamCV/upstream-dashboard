@@ -5,7 +5,7 @@ import { CopyButton } from "@/components/data/copy-button";
 import { RelativeTime } from "@/components/data/relative-time";
 import { StatusBadge } from "@/components/data/status-badge";
 import { LatestFrameCard } from "@/components/stream/latest-frame-card";
-import { PlaybackComingSoon } from "@/components/stream/playback-coming-soon";
+import { LiveStreamPanel } from "@/components/stream/live-stream-panel";
 import { getActiveAccount } from "@/lib/account/active";
 import { getAgent } from "@/lib/api/agents";
 import { getCamera } from "@/lib/api/cameras";
@@ -105,23 +105,8 @@ export default async function CameraDetailPage({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <div className="space-y-4 md:space-y-6">
-          <PlaybackComingSoon />
-          {currentSession ? (
-            <SessionPanel session={currentSession} />
-          ) : (
-            <div className="glass rounded-3xl px-6 py-10 text-center">
-              <p className="display text-lg font-semibold">
-                No <em>session</em> yet
-              </p>
-              <p className="text-sm text-ink-soft mt-2 max-w-md mx-auto">
-                When the agent calls{" "}
-                <span className="mono text-ink">
-                  POST /v1/stream-sessions/start
-                </span>
-                , the session appears here.
-              </p>
-            </div>
-          )}
+          <LiveStreamPanel session={currentSession} />
+          {currentSession ? <SessionPanel session={currentSession} /> : null}
         </div>
         <div>
           <LatestFrameCard
