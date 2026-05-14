@@ -355,7 +355,7 @@ function SessionPanel({ session }: { session: StreamSession }) {
         label="Started"
         value={
           <RelativeTime
-            value={session.started_at}
+            value={session.started_at ?? session.created_at}
             className="text-ink-soft"
           />
         }

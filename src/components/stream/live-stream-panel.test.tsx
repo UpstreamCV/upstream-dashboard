@@ -23,6 +23,7 @@ function makeSession(state: StreamSessionState): StreamSession {
     srt_url: "srt://localhost:18890?streamid=publish:sess_abc",
     streamid: "publish:sess_abc",
     expires_at: "2030-01-01T00:00:00Z",
+    created_at: "2030-01-01T00:00:00Z",
     started_at: null,
     ended_at: null,
     requested: {
