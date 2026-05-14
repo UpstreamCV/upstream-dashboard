@@ -9,6 +9,7 @@ import {
   closeWhepSession,
   connectWhep,
 } from "@/lib/webrtc/whep-client";
+import { dispatchPlayerState } from "./player-state-event";
 
 type PlayerState =
   | { kind: "connecting" }
@@ -48,6 +49,13 @@ export function LiveStreamPlayer({
     if (typeof RTCPeerConnection === "undefined") return { kind: "unsupported" };
     return { kind: "connecting" };
   });
+
+  // Broadcast every state change so listeners outside this subtree (today:
+  // the camera detail header's status badge) can mirror the live viewer
+  // experience instead of just the upstream session-state DB column.
+  useEffect(() => {
+    dispatchPlayerState({ kind: state.kind });
+  }, [state.kind]);
 
   const teardown = useCallback(() => {
     if (backoffTimerRef.current) {
