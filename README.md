@@ -180,6 +180,8 @@ Netlify's Next.js Runtime auto-detects this project — middleware (`proxy.ts`) 
 4. **Add the production URL to api-server CORS.** Edit `UPSTREAM_API_CORS_ORIGINS` (or equivalent) on `upstream-api-server` to include the Netlify domain (e.g. `https://your-site.netlify.app`, plus any custom domain).
 5. **Add the production URL to Supabase Auth.** Project Settings → Authentication → URL Configuration → Site URL + Redirect URLs. Without this, sign-in redirects from `?next=…` won't work and OAuth (if added later) will reject the redirect.
 
+**Note on Netlify's secrets scanner.** Netlify scans every build output for the values of every env var and fails the deploy if it finds them. That's wrong for `NEXT_PUBLIC_*` — those are *meant* to be inlined into the client bundle (that's literally what the prefix signals), and the Supabase **anon** key is safe to expose (RLS gates every query; only the **service-role** key is sensitive, and it isn't in this repo). The `netlify.toml` in this repo allowlists the three public keys via `SECRETS_SCAN_OMIT_KEYS`. If you ever add a real secret (e.g., a Stripe key, a server-only Supabase key), do **not** prefix it `NEXT_PUBLIC_`, and do **not** add it to that allowlist — let the scanner do its job.
+
 **Verifying the deploy**
 
 - `https://<site>.netlify.app/login` should render the sign-in card (no redirect loop).

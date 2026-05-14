@@ -24,3 +24,9 @@
   NODE_VERSION = "20"
   # Quiet down Next's anonymous telemetry on CI.
   NEXT_TELEMETRY_DISABLED = "1"
+  # NEXT_PUBLIC_* values are public by design — Next.js inlines them into the
+  # browser bundle, which is the whole point of the prefix. The Supabase anon
+  # key is safe to expose; it's gated by RLS on every query. The service-role
+  # key is the one that must never appear in this repo (and it doesn't).
+  # Without this allowlist, Netlify's secrets scanner refuses to publish.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_UPSTREAM_API_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY"

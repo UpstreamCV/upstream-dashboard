@@ -94,8 +94,16 @@ export const defaultSwrConfig: SWRConfiguration = {
   revalidateOnFocus: true,
   dedupingInterval: 3000,
   keepPreviousData: true,
-  shouldRetryOnError: (err) =>
-    !(err instanceof ProxyAuthExpired) && !(err instanceof ProxyAccountMissing),
+  shouldRetryOnError: (err) => {
+    // Auth and account errors are handled by redirect; never retry.
+    if (err instanceof ProxyAuthExpired) return false;
+    if (err instanceof ProxyAccountMissing) return false;
+    // 404 = resource doesn't exist (yet). Not transient, won't fix on retry —
+    // the next `refreshInterval` tick will check again. The consuming
+    // component decides how to render the absence.
+    if (err instanceof UpstreamApiError && err.status === 404) return false;
+    return true;
+  },
   onError: (err) => {
     if (err instanceof ProxyAccountMissing) {
       window.location.href = "/select-account";
@@ -106,6 +114,10 @@ export const defaultSwrConfig: SWRConfiguration = {
       window.location.href = `/login?next=${encodeURIComponent(next)}`;
       return;
     }
+    // 404s are expected absences (e.g. <LatestFrameCard /> polling a camera
+    // that hasn't streamed yet). Don't push them through reportError — Next 16
+    // surfaces console errors in the dev overlay, and a 7s poll would spam it.
+    if (err instanceof UpstreamApiError && err.status === 404) return;
     reportError(err, { area: "swr" });
   },
 };
