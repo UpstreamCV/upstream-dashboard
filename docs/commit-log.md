@@ -4,6 +4,27 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-14 — Replace camera-detail SWR polling with Supabase Realtime
+
+**Subject:** The camera detail page used to poll `/v1/stream-sessions?camera_id=...&limit=1` every 5 seconds and call `router.refresh()` when `state` changed. That meant the "live" indicator could light up anywhere from 0 to 5 seconds after the api-server transitioned the session — a noticeable user-visible delay between starting the agent and the dashboard catching up. Swap polling for a Supabase Realtime subscription filtered to `stream_sessions where camera_id = $1`. Broadcast latency is ~50–200 ms, and the dashboard makes one subscription at mount instead of an api-server roundtrip every 5 s.
+
+**Why:** measured 5–10 s gap from agent connect to dashboard "live" indicator; ~5 s of that was polling jitter. The other contributor (WebRTC ICE + first-keyframe wait) is on the agent / streaming-server side and is tracked separately.
+
+**Why Realtime instead of staying inside the `/api/upstream` proxy:** broadcasts are a push channel, not a read. Tunneling them through the api-server would require a new SSE/WebSocket endpoint, server-side Postgres LISTEN/NOTIFY plumbing or a Supabase Realtime client running server-side, and custom retry/heartbeat in the browser. Supabase Realtime already does all of that, respects the existing `stream_sessions_member_select` RLS policy (so a member only sees their own broadcasts), and uses the user's existing Supabase session — no new auth surface. This mirrors the existing carve-out for `latest-frame`. Documented in `AGENTS.md` as a sanctioned exception under "Conventions baked into the codebase".
+
+**Companion change** (`upstream-api-server`): `20260514120000_realtime_publication.sql` adds `stream_sessions` and `cameras` to the `supabase_realtime` publication. Auto-applies on push to main via Supabase's GitHub integration. The `cameras` table is added for the (future) list-view subscription; today only the detail page uses Realtime.
+
+**Files touched:**
+- `src/app/dashboard/cameras/[cameraId]/camera-detail-realtime.tsx` (NEW) — replaces the polling component. Filtered `postgres_changes` subscription, calls `router.refresh()` only when `state` actually changes (suppresses no-op broadcasts on other column writes).
+- `src/app/dashboard/cameras/[cameraId]/camera-detail-polling.tsx` (DELETED).
+- `src/app/dashboard/cameras/[cameraId]/page.tsx` — swap the import + component name.
+- `src/components/stream/live-stream-player.tsx` — update one inline comment that referenced the old component.
+- `AGENTS.md` — document the Realtime exception under "Conventions baked into the codebase".
+
+**Verification:** with the migration applied to the hosted Supabase project and the dashboard deployed, start the agent, watch the detail page — the "live" indicator should light up within a second of `stream_sessions.state` flipping in the DB. Stop the agent — "live" should clear nearly as fast. Compare against the prior 5-second polling window.
+
+---
+
 ## 2026-05-13 — Route WHEP signaling through api-server proxy for read-path auth
 
 **Subject:** Move live WebRTC playback from a direct browser → MediaMTX flow to a proxied browser → api-server → MediaMTX flow. The api-server now enforces account-scoped read auth on WHEP, identical to the existing `GET /v1/stream-sessions/{id}` pattern. Drops the `NEXT_PUBLIC_MEDIAMTX_BASE_URL` env var and adds vitest as the dashboard's first unit-test framework.
