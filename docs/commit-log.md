@@ -4,6 +4,81 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-13 — Route WHEP signaling through api-server proxy for read-path auth
+
+**Subject:** Move live WebRTC playback from a direct browser → MediaMTX flow to a proxied browser → api-server → MediaMTX flow. The api-server now enforces account-scoped read auth on WHEP, identical to the existing `GET /v1/stream-sessions/{id}` pattern. Drops the `NEXT_PUBLIC_MEDIAMTX_BASE_URL` env var and adds vitest as the dashboard's first unit-test framework.
+
+**Why:** With the previous commit, anyone on the network could view any stream — MediaMTX's `authInternalUsers` is permissive and the dashboard hit it directly. Routing through the api-server gives us auth for free via the existing `CurrentCaller` dependency and removes the need for any new shared secret. UDP/ICE media still flows direct, so there's no perf penalty on the actual stream.
+
+**What changed (dashboard):**
+- `src/lib/webrtc/whep-client.ts` — fix the Location-header resolution that threw on relative URLs. Now: `${url}/${encodeURIComponent(locationHeader)}`. Works for the same-origin proxy URL and is robust to special chars.
+- `src/components/stream/live-stream-player.tsx` — prop change from `streamPath` to `sessionId`. WHEP URL becomes `/api/upstream/v1/stream-sessions/${sessionId}/whep`. The mixed-content guard is gone (same-origin relative URLs can't be mixed-content). No env var imported.
+- `src/components/stream/live-stream-panel.tsx` — dropped the `derivePlaybackPath` helper and "Unexpected streamid" branch. The api-server now owns the streamid → path derivation. Pass `sessionId={session.id}` to the player.
+- `src/lib/env.ts` — removed `NEXT_PUBLIC_MEDIAMTX_BASE_URL` from the schema.
+- `.env.example`, `.env.local` — removed the same line.
+- `package.json` — added vitest + `@vitest/coverage-v8` as devDeps; new `test` and `test:watch` scripts.
+- `vitest.config.ts` (NEW) — minimal config, `@` alias, node environment (no jsdom yet).
+- `src/lib/webrtc/whep-client.test.ts` (NEW) — 12 cases covering happy path, all three typed errors, AbortSignal lifecycle, Location-header handling, and `closeWhepSession` semantics.
+- `src/components/stream/live-stream-panel.test.tsx` (NEW) — 7 cases asserting the right branch (waiting / streaming / ended / failed) renders for each session state.
+
+**Cross-repo changes (separate commits in those repos):**
+- `upstream-api-server` — new `POST /v1/stream-sessions/{id}/whep` + `DELETE /v1/stream-sessions/{id}/whep/{resource_id}` endpoints (account-scoped via `CurrentCaller`). New `services/whep_proxy.py` + `services/http_client.py`. `tests/test_whep_proxy.py` with 27 cases covering happy path, cross-account, state-gating, MediaMTX failures, and path-traversal defense. `scripts/smoke_whep_proxy.py` for live testing against a running api-server.
+- `upstream-streaming-server` — docs only. The chosen design keeps MediaMTX permissive locally and relies on a production firewall around its read ports. FU-3 in `docs/follow-ups.md` is now resolved by the api-server proxy. New `scripts/smoke_whep_read.sh` exercises the WHEP read path directly via curl (used to verify the previous-commit player end-to-end against MediaMTX).
+
+**Design notes:**
+- **Stateless proxy.** The api-server reconstructs the MediaMTX URL from `session.streamid` + a `resource_id` path param on DELETE. No mapping table, no in-memory cache. Api-server restarts are safe — orphaned ICE sessions time out within ~30 s.
+- **Bare resource id in Location.** The api-server returns `Location: <uuid>` (just the resource id, not a path). The whep-client appends to the POST URL. Avoids the proxy-prefix problem cleanly.
+- **404 preservation.** MediaMTX returning 404 (path not yet registered after api-server flipped session to `streaming`) is preserved as 404 `stream_not_ready` so the existing WhepNotFoundError retry logic keeps working.
+- **No new shared secrets.** Reuses the existing Supabase JWT + account scoping. Production hardening is operational (firewall MediaMTX's read ports to the api-server's egress IP only).
+
+**Verification:**
+- `npm run test` → 19 passing (12 whep-client + 7 panel).
+- `npm run lint` clean.
+- `npm run build` clean.
+- Manual end-to-end (with `make dev` api-server + `docker compose up` streaming-server + a publishing agent):
+  - Open `/dashboard/cameras/<id>` while signed into the agent's account → live video appears.
+  - Sign out → WHEP 401, player surfaces "failed".
+  - Sign into a different account, hand-craft a WHEP POST against another account's session id → 404 `session_not_found` (does not leak existence).
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/architecture.md` (rewritten "Live playback (WebRTC)" section, updated "Out of scope" list).
+
+---
+
+## 2026-05-13 — Live WebRTC playback on the camera detail page
+
+**Subject:** Replace the `<PlaybackComingSoon />` placeholder with a working WHEP-based live video player. The dashboard now consumes the WebRTC read endpoint that `upstream-streaming-server` has been exposing since M1.
+
+**Why:** The streaming-server's MediaMTX 1.9.3 has been publishing a working WHEP endpoint at `:8889/<path>/whep` since M1, but the dashboard's only stream surface was a snapshot frame that polls every 7 s. Adding live playback closes the most visible UX gap on the camera detail page and exercises the streaming-server's read path end-to-end — which surfaced the read-path auth gap that's now tracked as a follow-up in that repo.
+
+**What changed (dashboard):**
+- `src/lib/webrtc/whep-client.ts` (NEW) — framework-free WHEP negotiator. Exports `connectWhep({ url, signal })` + typed errors (`WhepNotFoundError`, `WhepRejectedError`, `WhepNetworkError`) + `closeWhepSession(resourceUrl)`. ~120 lines, no deps. Honors `AbortSignal`.
+- `src/components/stream/live-stream-player.tsx` (NEW) — `"use client"`. Owns `RTCPeerConnection` lifecycle, backoff (500 ms → 8 s, 5 attempts), manual retry, tab-hide/pagehide teardown + reconnect on visibility-return, mixed-content guard, WebRTC-unavailable guard, iOS Safari autoplay fallback ("Tap to play" overlay).
+- `src/components/stream/live-stream-panel.tsx` (NEW) — Server Component. Branches on session state: `null` / `approved` / `streaming` / `ended|expired|failed`. Derives `streamPath = session.streamid.slice("publish:".length)` defensively.
+- `src/app/dashboard/cameras/[cameraId]/page.tsx` — swapped `<PlaybackComingSoon />` for `<LiveStreamPanel session={currentSession} />`. Dropped the duplicate "No session yet" stub since `<LiveStreamPanel>` now renders that state itself.
+- `src/components/stream/playback-coming-soon.tsx` (DELETED).
+- `src/lib/env.ts` — added `NEXT_PUBLIC_MEDIAMTX_BASE_URL` to the schema. Build-time inlined per the existing pattern; the same Netlify "Builds scope" gotcha applies.
+- `.env.example`, `.env.local` — added `NEXT_PUBLIC_MEDIAMTX_BASE_URL=http://localhost:8889` (default points at `docker compose up` in `upstream-streaming-server`).
+
+**Cross-repo doc updates (no code changes in those repos):**
+- `upstream-streaming-server/docs/stream-auth.md` — new top-level section "Read-path auth (separate from ingest auth)" documenting that M1's permissive reader config is now actively exercised, and that production playback requires its own auth design.
+- `upstream-streaming-server/docs/follow-ups.md` — new FU entry for read-path authentication, naming the touch points across all three repos.
+- `upstream-streaming-server/docs/commit-log.md` — cross-repo entry pointing at the new FU.
+- `upstream-api-server/docs/api-contracts.md` — note on the `StreamSession.streamid` coupling and the planned `playback` block follow-up.
+- `upstream-api-server/docs/commit-log.md` — cross-repo entry.
+
+**Design notes:**
+- The browser hits MediaMTX **directly**, not through the api-server proxy. UDP/ICE bypasses the proxy anyway; routing the HTTP signaling alone would add nothing.
+- Existing `<CameraDetailPolling>` (5 s session-state poll) drives mount/unmount of the player via `router.refresh()` on state transitions — no new polling.
+- 404 from WHEP is the common race condition (api-server flips state to `streaming` a few seconds before MediaMTX registers the path) and is treated as a transient, retryable error.
+- Mixed-content guard: if `location.protocol === "https:"` and the base URL is HTTP, render a clear error rather than letting the fetch fail silently.
+- Read-path auth is **out of scope** for this PR and is fully documented in the streaming-server's `follow-ups.md`. Until shipped, `NEXT_PUBLIC_MEDIAMTX_BASE_URL` must not point at a public hostname.
+
+**Verification:** Manual end-to-end requires `upstream-streaming-server` running locally + an agent publishing. Steps in the PR description: open `/dashboard/cameras/<id>`; observe "Waiting for stream" → live video on session-state transition; stop the agent and observe "Stream ended"; refresh mid-stream → reconnects; hide the tab → tears down; show the tab → reconnects. `npm run lint` and `npm run build` clean.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/architecture.md` (new "Live playback (WebRTC)" section, updated "Out of scope" list), cross-repo docs above.
+
+---
+
 ## 2026-05-13 — Fix routing (route group → real prefix) + Tailwind base-2 token shadow
 
 **Subject:** Two visible bugs the first real user hit on hosted: every link in the sidebar (`/dashboard/cameras`, `/agents`, etc.) 404'd, and the 404-page "Back to dashboard" button rendered white text on white.
