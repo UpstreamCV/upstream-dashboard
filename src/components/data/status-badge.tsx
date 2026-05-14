@@ -27,6 +27,7 @@ const STATUS_TONE: Record<string, Tone> = {
   // transitional
   validating: "warn",
   reconnecting: "warn",
+  connecting: "warn",
   pending: "warn",
   // bad
   error: "danger",

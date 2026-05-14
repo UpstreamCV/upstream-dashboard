@@ -4,6 +4,33 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-14 — Unify "live" indicator with actual WebRTC playback state
+
+**Subject:** The camera detail page's header status badge previously read straight from `cameras.status` in the DB — so it flipped to "Streaming" the moment the streaming-server's `runOnReady` hook posted `stream-started`, ~1–3 s before the dashboard's WebRTC player had actually rendered the first frame. The user saw two distinct loading phases: the badge would say "Streaming" while the video pane was still showing "Connecting…". Bridge them: the badge now stays in a `connecting` state until the WebRTC player itself broadcasts that ICE has connected and video is playing.
+
+**Why:** asked for explicitly. After the polling → Realtime swap and the agent's GOP fix, the badge-vs-video gap is the only visible "two loadings" left in the flow.
+
+**How it works:** `<LiveStreamPlayer />` dispatches a window-scoped `CustomEvent("upstream:player-state", { detail: { kind } })` on every state transition (connecting, connected, reconnecting, failed, etc.). A new `<CameraStreamStatusBadge />` client island in the page header listens for those events. When `cameras.status === "streaming"` but the last player event was anything other than `connected`, the badge renders "connecting" instead. Once the player reports `connected`, the badge flips to "streaming". For non-streaming statuses (`idle`, `error`, `disabled`, etc.) the badge passes through unchanged, since the player isn't mounted at all.
+
+**Why a custom DOM event vs Context:** the badge lives in the page header (Server Component path) and the player lives further down the tree inside `<LiveStreamPanel />`. Sharing state via Context would force the entire header into a client subtree just to access the provider value. The custom event keeps `<CameraStreamStatusBadge />` as the only client island that needs to know. Documented inline in `player-state-event.ts`. If we ever render multiple `<LiveStreamPlayer />`s on a single page, we'll add a `cameraId` field to the event detail and filter on it; the file is the single import point for that change.
+
+**Edge cases:** when the session ends, the player unmounts and the page re-renders with `cameras.status` flipping back to `idle`/`error`/etc. Without a reset, the badge would remember the prior session's final `connected` event and short-circuit the next session's "connecting" phase. Handled by resetting the cached player-kind state during render whenever `initialStatus` transitions away from "streaming" — the React 19-sanctioned pattern for prop-driven state resets (eslint's `react-hooks/set-state-in-effect` catches the older effect-based approach).
+
+**Files touched:**
+- `src/components/stream/player-state-event.ts` (NEW) — single-source-of-truth for the event name, payload type, and the dispatch helper. Comment block explains why we picked custom events over Context.
+- `src/components/stream/camera-stream-status-badge.tsx` (NEW) — client island wrapping `<StatusBadge />` with the player-state listener and the render-time reset on initialStatus transitions.
+- `src/components/stream/live-stream-player.tsx` — dispatches the event on every state-kind change via a tiny `useEffect`.
+- `src/components/data/status-badge.tsx` — added `connecting` → `warn` tone alongside the existing `reconnecting`/`validating`/`pending` transitional entries.
+- `src/app/dashboard/cameras/[cameraId]/page.tsx` — swapped `<StatusBadge status={camera.status} />` in the header for `<CameraStreamStatusBadge initialStatus={camera.status} />`. The remaining `<StatusBadge />` uses inside the page (`agent`, `validation`, `session`) are unchanged — they reflect their own subjects, not the live viewer state.
+
+**Verification:**
+- `npm run lint` clean (the render-time-reset pattern passes `react-hooks/set-state-in-effect`).
+- `npm run test` — 19 passing, unchanged.
+- `npx tsc --noEmit` clean.
+- Live verified by exercise: start agent, watch the badge — should stay "connecting" through the SRT + WHEP + ICE + first-keyframe window, flip to "streaming" the instant the video pane stops showing the overlay.
+
+---
+
 ## 2026-05-14 — Replace camera-detail SWR polling with Supabase Realtime
 
 **Subject:** The camera detail page used to poll `/v1/stream-sessions?camera_id=...&limit=1` every 5 seconds and call `router.refresh()` when `state` changed. That meant the "live" indicator could light up anywhere from 0 to 5 seconds after the api-server transitioned the session — a noticeable user-visible delay between starting the agent and the dashboard catching up. Swap polling for a Supabase Realtime subscription filtered to `stream_sessions where camera_id = $1`. Broadcast latency is ~50–200 ms, and the dashboard makes one subscription at mount instead of an api-server roundtrip every 5 s.

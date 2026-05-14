@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { CopyButton } from "@/components/data/copy-button";
 import { RelativeTime } from "@/components/data/relative-time";
 import { StatusBadge } from "@/components/data/status-badge";
+import { CameraStreamStatusBadge } from "@/components/stream/camera-stream-status-badge";
 import { LatestFrameCard } from "@/components/stream/latest-frame-card";
 import { LiveStreamPanel } from "@/components/stream/live-stream-panel";
 import { getActiveAccount } from "@/lib/account/active";
@@ -89,7 +90,7 @@ export default async function CameraDetailPage({
           </p>
           <h1 className="display text-3xl font-semibold mt-1.5 flex items-center gap-3">
             {camera.name}
-            <StatusBadge status={camera.status} />
+            <CameraStreamStatusBadge initialStatus={camera.status} />
           </h1>
           <div className="mt-2 text-xs text-ink-mute mono flex items-center gap-1.5">
             <span>id: {camera.id}</span>
