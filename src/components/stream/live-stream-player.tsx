@@ -160,7 +160,7 @@ export function LiveStreamPlayer({
         // Network errors and non-404 4xx/5xx from the api-server proxy:
         // retry on the same backoff. Auth failures (401 from the proxy when
         // the Supabase session expired) will fail-then-retry until the
-        // schedule exhausts; the next CameraDetailPolling refresh will
+        // schedule exhausts; the next CameraDetailRealtime broadcast will
         // re-render the page in the right state.
         scheduleReconnect(err instanceof Error ? err.message : String(err));
       }

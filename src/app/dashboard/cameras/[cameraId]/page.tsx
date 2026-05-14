@@ -14,7 +14,7 @@ import { getLatestFrame } from "@/lib/api/snapshots";
 import { listStreamSessions } from "@/lib/api/stream-sessions";
 import { listValidations } from "@/lib/api/validations";
 import type { StreamSession, StreamValidation } from "@/lib/api/types";
-import { CameraDetailPolling } from "./camera-detail-polling";
+import { CameraDetailRealtime } from "./camera-detail-realtime";
 
 export default async function CameraDetailPage({
   params,
@@ -98,7 +98,7 @@ export default async function CameraDetailPage({
         </div>
       </header>
 
-      <CameraDetailPolling
+      <CameraDetailRealtime
         cameraId={camera.id}
         initialSession={currentSession}
       />
