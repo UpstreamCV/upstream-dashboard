@@ -27,13 +27,3 @@ export async function listStreamSessions(opts: {
   );
   return res.sessions;
 }
-
-export async function getStreamSession(opts: {
-  accountId: string;
-  sessionId: string;
-}): Promise<StreamSession> {
-  return serverFetch<StreamSession>(
-    `/v1/stream-sessions/${opts.sessionId}`,
-    { accountId: opts.accountId },
-  );
-}

@@ -1,0 +1,26 @@
+# Netlify build config for upstream-dashboard.
+#
+# Netlify's Next.js Runtime auto-detects this project and wires up the
+# middleware (proxy.ts) as an Edge Function plus the catch-all Route Handler
+# as a serverless Function — no plugin block needed.
+#
+# Required environment variables (set in Site → Settings → Environment
+# variables, with the **Builds** scope enabled — without it the
+# `NEXT_PUBLIC_*` values won't be inlined into the client bundle):
+#
+#   NEXT_PUBLIC_UPSTREAM_API_URL
+#   NEXT_PUBLIC_SUPABASE_URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY
+#
+# After changing any of these, trigger a fresh deploy — Next.js bakes
+# NEXT_PUBLIC_* into the static bundle at build time, so a runtime change
+# alone won't take effect.
+
+[build]
+  command = "npm run build"
+
+[build.environment]
+  # Next.js 16 requires Node 20.x or newer.
+  NODE_VERSION = "20"
+  # Quiet down Next's anonymous telemetry on CI.
+  NEXT_TELEMETRY_DISABLED = "1"

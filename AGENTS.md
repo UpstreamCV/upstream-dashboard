@@ -16,7 +16,7 @@ Especially relevant Next 16 changes already baked into this repo:
 
 ## Architecture in one paragraph
 
-This is the operator dashboard. It talks to `upstream-api-server` via the catch-all proxy at `/api/upstream/[...path]/route.ts`, which mints the Supabase JWT server-side. The proxy auto-injects `?account_id=` from the `upstream_active_account` cookie (resolved by `getActiveAccount()` in `src/lib/account/active.ts`). For four reads the api-server doesn't yet expose (token list, latest frame, stream validations, dashboard summary) the dashboard queries Supabase directly **server-side only** under RLS. See `docs/architecture.md` for the full picture.
+This is the operator dashboard. It talks to `upstream-api-server` via the catch-all proxy at `src/app/api/upstream/[...path]/route.ts`, which mints the Supabase JWT server-side. The proxy auto-injects `?account_id=` from the `upstream_active_account` cookie (resolved by `getActiveAccountIdFromCookie()` + a single-membership fallback through `listMemberships()`; the redirecting `getActiveAccount()` is deliberately **not** used inside the proxy). All resource reads go through `serverFetch` (RSC, Server Actions) or `proxyFetch`/`useUpstreamList` (Client Components) — there are no direct Supabase queries from app code. The only Supabase client calls in the repo are auth-related: session refresh in `proxy.ts`, sign-in/sign-up Server Actions, and `getSession()` inside `serverFetch` to mint the bearer token. See `docs/architecture.md` for the full picture.
 
 ## Source of truth for API contracts
 
@@ -52,11 +52,11 @@ Every meaningful commit updates `docs/commit-log.md` in the same commit, plus an
 
 ## Adding a new dashboard page (cookbook)
 
-1. Drop a Server Component under `src/app/(dashboard)/<segment>/page.tsx`.
+1. Drop a Server Component under `src/app/dashboard/<segment>/page.tsx`. (No route group — the `/dashboard` prefix is a real URL segment; see the 2026-05-13 commit-log entry on the flattening.)
 2. Call `getActiveAccount()` at the top for `activeAccountId`.
-3. Call resource functions in `src/lib/api/*.ts` (or add new ones following the existing shape).
-4. If the page needs polling, hand the initial data to a Client Component using `useUpstreamList(...)`.
-5. Empty/loading/error states are part of the page, not a phase 2 cleanup. Use `<EmptyState />`.
+3. Call resource functions in `src/lib/api/*.ts` (or add new ones following the existing shape — wrap `serverFetch`, accept `{ accountId, ... }`).
+4. If the page needs polling, hand the initial data to a Client Component using `useUpstreamList(...)` from `src/lib/api/use-list.ts`.
+5. Empty/loading/error states are part of the page, not a phase 2 cleanup. Use `<EmptyState />`. Page-level `loading.tsx` / `error.tsx` exist under `src/app/dashboard/` and inherit by default.
 6. Add the route to the sidebar in `src/components/nav/sidebar.tsx`.
 
 ## Day-zero verifications to repeat when bumping deps

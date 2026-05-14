@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { formatAbsolute, formatRelative } from "@/lib/time";
+
+function subscribeToTick(callback: () => void) {
+  const interval = setInterval(callback, 30_000);
+  return () => clearInterval(interval);
+}
+
+const getTickClient = () => Date.now();
+const getTickServer = () => null;
 
 export function RelativeTime({
   value,
@@ -10,13 +18,16 @@ export function RelativeTime({
   value: string | null | undefined;
   className?: string;
 }) {
-  const [, tick] = useState(0);
-
-  useEffect(() => {
-    if (!value) return;
-    const interval = setInterval(() => tick((n) => n + 1), 30_000);
-    return () => clearInterval(interval);
-  }, [value]);
+  // useSyncExternalStore returns getTickServer's value during SSR + the first
+  // client render, then transitions to getTickClient after hydration. That
+  // lets us pick a deterministic SSR output (absolute) and swap to relative
+  // ("3 minutes ago") post-hydration — without using the setState-in-effect
+  // pattern, which the react-hooks/set-state-in-effect rule forbids.
+  const tick = useSyncExternalStore(
+    subscribeToTick,
+    getTickClient,
+    getTickServer,
+  );
 
   if (!value) {
     return <span className={className}>—</span>;
@@ -27,8 +38,9 @@ export function RelativeTime({
       dateTime={value}
       title={formatAbsolute(value)}
       className={className}
+      suppressHydrationWarning
     >
-      {formatRelative(value)}
+      {tick === null ? formatAbsolute(value) : formatRelative(value)}
     </time>
   );
 }
