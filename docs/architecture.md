@@ -27,7 +27,7 @@ The dashboard is a **control + visibility** layer. It never ingests video, never
 
 1. **Sign in.** `(auth)/login` Server Action calls `supabase.auth.signInWithPassword`. Supabase Auth sets HTTP-only cookies (`sb-*`). On success, the action redirects to `?next=` or `/dashboard`.
 2. **Session refresh.** Every request runs through `proxy.ts` (Next 16's renamed middleware). The proxy uses `@supabase/ssr`'s `createServerClient` with cookie adapters; calling `getUser()` triggers a server-side refresh when needed and writes new cookies via `NextResponse.next`. Unauthenticated requests to `/dashboard/*` (or any non-public path) redirect to `/login?next=…`.
-3. **Active account resolution.** `getActiveAccount()` (`src/lib/account/active.ts`) is called from every `(dashboard)/*` Server Component. It validates the `upstream_active_account` cookie against the user's actual memberships (queried via the Supabase server client; RLS scopes to `auth.uid()`), auto-picks for single-membership users, and redirects multi-membership users with no pin to `/select-account`. Stale cookies (pointing at an account the user no longer belongs to) are cleared automatically.
+3. **Active account resolution.** `getActiveAccount()` (`src/lib/account/active.ts`) is called from `src/app/dashboard/layout.tsx` and every page that needs `activeAccountId`. It validates the `upstream_active_account` cookie against the user's actual memberships (queried via the Supabase server client against `account_members` — the *only* non-auth Supabase read this app makes, since `/v1/users/me` isn't wired in yet; RLS scopes to `auth.uid()`). It auto-picks for single-membership users, and redirects multi-membership users with no pin to `/select-account`. Stale cookies (pointing at an account the user no longer belongs to) are cleared automatically. The catch-all proxy at `src/app/api/upstream/[...path]/route.ts` deliberately does **not** call `getActiveAccount()` — that function `redirect()`s, which is wrong for an API route. The proxy reads the cookie directly and falls back to a single-membership lookup if absent.
 4. **API calls (browser).** Client components use SWR pointed at `/api/upstream/...`. The catch-all Route Handler (`src/app/api/upstream/[...path]/route.ts`) verifies the Supabase session, fetches the access token via `getSession()`, injects `Authorization: Bearer <access_token>`, appends `?account_id=` from the cookie (with a single-membership fallback), and forwards method/body/query to `upstream-api-server`. `Cookie`, `Host`, and `Authorization` headers are stripped before forwarding.
 5. **API calls (server).** Server Components and Route Handlers use `serverFetch` (`src/lib/api/server.ts`), which mints the same `Authorization` server-side but requires the caller to pass `accountId` explicitly. No ambient state.
 
@@ -35,20 +35,27 @@ The Supabase access token therefore never appears in browser JavaScript or `loca
 
 ### Auth-recovery
 
-If the upstream-api returns `403 account_id_required` or `403 forbidden_account`, the catch-all proxy rewrites the response to `401`, deletes the `upstream_active_account` cookie, and lets the client SWR handler (`defaultSwrConfig.onError`) redirect to `/login?next=…` (which through the proxy gate will land on `/select-account` once the user is signed in). This single recovery path handles both expired Supabase sessions and drifted account pins.
+Two distinct recovery paths, both terminating in `defaultSwrConfig.onError` in `src/lib/api/client.ts`:
 
-## Direct Supabase reads (for known gaps)
+- **Account drift.** If upstream-api returns `403 account_id_required` or `403 forbidden_account`, the catch-all proxy rewrites the response to `401`, deletes the `upstream_active_account` cookie, and the client `proxyFetch` throws `ProxyAccountMissing`. SWR `onError` redirects straight to `/select-account` — no re-login needed.
+- **Session expiry.** Any other `401` from the proxy means the Supabase session is gone (no cookies, refresh failed, etc.). `proxyFetch` throws `ProxyAuthExpired`; SWR `onError` redirects to `/login?next=<current-path>`.
 
-Four pieces of data the dashboard needs aren't exposed by `upstream-api-server` yet:
+Both errors set `shouldRetryOnError = false` in the SWR config so we don't thrash before the redirect.
 
-| Data | Today | Followup api-server endpoint |
+## Resource reads — all via the api-server
+
+Earlier MVP iterations queried Supabase directly server-side for four data points the api-server didn't yet expose. As of api-server Phase 4.5 (commits up to `c771946` / `5f7bfbe` here), all four are now first-class endpoints, and the dashboard fetches them through `serverFetch`:
+
+| Data | Endpoint | Wrapper |
 |---|---|---|
-| List API tokens for an account | Supabase server-side, columns whitelisted (no `hash`) | `GET /v1/api-tokens` |
-| Latest snapshot per camera + Storage signed URL | Supabase server-side, 60 s signed URL | `GET /v1/cameras/{id}/latest-frame` |
-| Stream validations for a session | Supabase server-side (`stream_validations_member_select` RLS) | `GET /v1/stream-sessions/{id}/validation` |
-| Dashboard summary counts | Client-side derivation from list endpoints | `GET /v1/dashboard/summary` |
+| List API tokens for an account | `GET /v1/api-tokens` | `src/lib/api/api-tokens.ts` |
+| Latest snapshot + Storage signed URL | `GET /v1/cameras/{id}/latest-frame` | `src/lib/api/snapshots.ts` (returns `null` on 404 / `snapshot_not_found`) |
+| Stream validations for a session | `GET /v1/stream-sessions/{id}/validations` | `src/lib/api/validations.ts` |
+| Dashboard summary counts | `GET /v1/dashboard/summary` | `src/lib/api/dashboard.ts` |
 
-These reads are all RLS-protected (server policies in `upstream-api-server/supabase/migrations/`). They live entirely server-side (Server Components or Route Handlers) — the dashboard never executes Supabase queries from browser code. The migration target is clear: replace the direct Supabase query with `serverFetch` once the api-server endpoint lands. Each is a single-file change.
+The only Supabase access from app code today is **auth**: session refresh in `proxy.ts`, `signInWithPassword` / `signUp` in the auth Server Actions, `getSession()` inside `serverFetch` to read the bearer token, and one `account_members` read in `listMemberships()` (used to resolve the active-account cookie and to render the `/select-account` chooser). No `snapshots`, `api_tokens`, `stream_validations`, or `accounts` reads remain.
+
+When `/v1/users/me` (or equivalent membership listing) lands on the api-server, `listMemberships()` becomes a single-file migration to `serverFetch` and the dashboard's last non-auth Supabase query goes away.
 
 ## Polling model
 
@@ -103,9 +110,11 @@ Brand-aligned with `upstream-web`:
 ## Out of scope (today)
 
 - WebRTC playback. Streaming-server hasn't defined the WHEP URL convention yet. `<PlaybackComingSoon />` is the single drop-in point.
-- Account signup. Manual seeding (see `README.md`).
-- Agent detail page; dev/stream-health debug page; team/billing/recording surfaces.
-- Real-time via Supabase channels.
+- Agent detail page (`getAgent()` exists in `src/lib/api/agents.ts` but no route consumes it yet).
+- Stream-session detail page (`getStreamSession()` likewise).
+- Team management (invite / role change), billing, snapshot recording history.
+- Real-time via Supabase channels — the polling cadence above is good enough for the data shapes today.
+- Password reset / email change UI (the `createSupabaseBrowserClient` factory in `src/lib/supabase/client.ts` is kept around for this; nothing imports it yet).
 
 ## Source-of-truth pointers
 

@@ -35,17 +35,22 @@ export default async function CameraDetailPage({
   }
 
   const [agent, sessions, latestFrame] = await Promise.all([
+    // 404 means the agent was removed; other errors should surface through
+    // the page's error boundary instead of silently rendering "Agent not found".
     getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
-      () => null,
+      (err) => {
+        if (err instanceof UpstreamApiError && err.status === 404) return null;
+        throw err;
+      },
     ),
     listStreamSessions({
       accountId: activeAccountId,
       cameraId: camera.id,
       limit: 1,
     }),
-    getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }).catch(
-      () => null,
-    ),
+    // getLatestFrame already returns null on 404 / snapshot_not_found and
+    // re-throws on other errors — no .catch wrapper needed here.
+    getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
   ]);
 
   const currentSession: StreamSession | null = sessions[0] ?? null;
@@ -53,7 +58,12 @@ export default async function CameraDetailPage({
     ? await listValidations({
         accountId: activeAccountId,
         sessionId: currentSession.id,
-      }).catch(() => [])
+      }).catch((err) => {
+        // 404 = session disappeared mid-render; render an empty validation
+        // panel rather than failing the page. Other errors bubble.
+        if (err instanceof UpstreamApiError && err.status === 404) return [];
+        throw err;
+      })
     : [];
 
   const latestValidation = validations[0] ?? null;

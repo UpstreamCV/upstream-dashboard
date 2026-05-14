@@ -13,7 +13,7 @@ upstream-api-server  ──►  Supabase Postgres
         └─► upstream-streaming-server, upstream-processor
 ```
 
-The dashboard never talks to Postgres or Supabase Storage directly from the browser. Reads go through `upstream-api` so account scoping and limits stay in one place. For four endpoints the api-server doesn't yet expose (tokens list, latest frame, stream validations, dashboard summary) we query Supabase directly **server-side only** under existing RLS policies — those queries live in `src/lib/api/*.ts` and migrate to api-server endpoints when they land. See `docs/architecture.md`.
+The dashboard never talks to Postgres or Supabase Storage directly. Every resource read and write — including tokens, snapshots, stream validations, and the dashboard summary — flows through `upstream-api-server` so account scoping and limits stay in one place. The only Supabase client usage in this repo is auth: session refresh in `proxy.ts`, `signInWithPassword` / `signUp` in the auth Server Actions, and `getSession()` inside `serverFetch` to mint the bearer token. See `docs/architecture.md`.
 
 ## Stack
 
@@ -93,17 +93,15 @@ The Supabase **service role key** must never appear in this repo. The api-server
 
 `../upstream-api-server/docs/api-contracts.md` is authoritative. Endpoints the dashboard uses today (with this repo's TypeScript wrappers in parens):
 
-- `GET /v1/agents`, `GET /v1/agents/{id}` (`src/lib/api/agents.ts`)
-- `GET /v1/cameras`, `GET /v1/cameras/{id}` (`src/lib/api/cameras.ts`)
-- `GET /v1/stream-sessions`, `GET /v1/stream-sessions/{id}` (`src/lib/api/stream-sessions.ts`)
-- `POST /v1/api-tokens`, `DELETE /v1/api-tokens/{id}` (`src/lib/api/api-tokens.ts` actions)
+- `GET /v1/agents`, `GET /v1/agents/{id}` — `src/lib/api/agents.ts`
+- `GET /v1/cameras`, `GET /v1/cameras/{id}` — `src/lib/api/cameras.ts`
+- `GET /v1/cameras/{id}/latest-frame` — `src/lib/api/snapshots.ts` (api-server mints the Supabase Storage signed URL; 404 → empty state)
+- `GET /v1/stream-sessions`, `GET /v1/stream-sessions/{id}` — `src/lib/api/stream-sessions.ts`
+- `GET /v1/stream-sessions/{id}/validations` — `src/lib/api/validations.ts`
+- `GET /v1/api-tokens`, `POST /v1/api-tokens`, `DELETE /v1/api-tokens/{id}` — `src/lib/api/api-tokens.ts` + `src/app/dashboard/settings/api-tokens/actions.ts`
+- `GET /v1/dashboard/summary` — `src/lib/api/dashboard.ts`
 
-Direct Supabase reads (server-side, RLS-gated):
-- `api_tokens` list (no `hash`) — `src/lib/api/api-tokens.ts`
-- `snapshots` + Storage signed URL — `src/lib/api/snapshots.ts`
-- `stream_validations` — `src/lib/api/validations.ts`
-
-Every non-2xx response uses the envelope `{ "error": { "code", "message", "details", "request_id" } }`.
+Every non-2xx response uses the envelope `{ "error": { "code", "message", "details", "request_id" } }`. Switch on `error.code` (stable), not `error.message`. See `src/lib/api/errors.ts` for the category map + friendly-message table.
 
 ## Project layout
 
@@ -111,30 +109,47 @@ Every non-2xx response uses the envelope `{ "error": { "code", "message", "detai
 proxy.ts                              # Next 16 auth gate (Supabase session refresh)
 src/
   app/
-    (auth)/login/                     # public sign-in
-    (dashboard)/                      # auth + active-account required
-      dashboard/                      # overview
-      cameras/, cameras/[cameraId]/   # list + detail (latest frame, session, validation)
+    layout.tsx, page.tsx, not-found.tsx, globals.css
+    (auth)/                           # route group — no /auth URL prefix
+      layout.tsx                      # centered card shell
+      login/                          # public sign-in (Server Action)
+      signup/                         # public sign-up (Server Action; trigger provisions account)
+    dashboard/                        # real /dashboard URL segment (auth + active-account required)
+      layout.tsx, loading.tsx, error.tsx
+      page.tsx, overview-cards.tsx    # overview (polls /v1/dashboard/summary)
+      cameras/                        # list + cameras/[cameraId]/{page,not-found,camera-detail-polling}
       agents/                         # list
       stream-sessions/                # list
       settings/api-tokens/            # generate / revoke (owner/admin)
-    select-account/                   # multi-membership chooser (top-level, outside (dashboard))
+    select-account/                   # multi-membership chooser (top-level, outside /dashboard
+                                      # to avoid the getActiveAccount → /select-account redirect loop)
     api/
-      upstream/[...path]/             # catch-all proxy → upstream-api
-      auth/sign-out/                  # clears Supabase session
-      cameras/[cameraId]/latest-frame # signed-URL frame endpoint
-  components/                         # data, nav, brand, tokens, stream
+      upstream/[...path]/             # catch-all proxy → upstream-api-server (mints JWT, injects account_id)
+      auth/sign-out/                  # signs out + clears active-account cookie
+  components/
+    data/                             # data-table, status-badge, empty-state, page-header,
+                                      # relative-time, copy-button
+    nav/                              # sidebar, topbar
+    stream/                           # latest-frame-card, playback-coming-soon
+    tokens/                           # token-create-dialog (plaintext-scrubbing), token-row-actions
   lib/
-    env.ts                            # zod-validated process.env
-    error.ts                          # reportError() shim
-    time.ts                           # Intl helpers
-    supabase/{server,client}.ts       # @supabase/ssr factories
+    env.ts                            # zod-validated process.env (throws on missing/invalid)
+    error.ts                          # reportError() chokepoint (swap for Sentry/OTel later)
+    safe-next.ts                      # ?next= sanitizer (open-redirect defense)
+    time.ts                           # Intl helpers (no date-fns / luxon)
+    supabase/server.ts                # @supabase/ssr server factory (async cookies adapter)
+    supabase/client.ts                # @supabase/ssr browser factory (currently unused — kept
+                                      # for future browser-side auth flows like password reset)
     account/{active,memberships,actions}.ts
-    api/                              # types, errors, server/client fetchers,
-                                      # per-resource wrappers, snapshots, validations
+                                      # getActiveAccount(), listMemberships() (React cache),
+                                      # setActiveAccountAction()
+    api/                              # types.ts, errors.ts, server.ts (serverFetch),
+                                      # client.ts (proxyFetch + SWR config), use-list.ts,
+                                      # per-resource wrappers: agents, cameras, snapshots,
+                                      # stream-sessions, validations, api-tokens, dashboard
 docs/
-  architecture.md                     # this app's place + auth flow + gaps
-  commit-log.md                       # required per-commit history
+  architecture.md                     # this app's place + auth flow + polling cadence
+  commit-log.md                       # required per-commit history (see policy below)
 ```
 
 ## Scripts
@@ -147,6 +162,31 @@ docs/
 | `npm run lint` | ESLint (Next 16 does not auto-run lint on build) |
 | `npm run lint:fix` | ESLint with `--fix` |
 | `npx tsc --noEmit` | Type check |
+
+## Deploy to Netlify
+
+Netlify's Next.js Runtime auto-detects this project — middleware (`proxy.ts`) deploys as an Edge Function, the catch-all proxy (`/api/upstream/[...path]`) deploys as a serverless Function, and Server Components run on serverless. No plugin block is needed in `netlify.toml`; just the Node pin + build command (already committed).
+
+**One-time setup**
+
+1. **Connect the repo.** New site → import from Git → pick this repo. Netlify reads `netlify.toml` and uses `npm run build` on Node 20.
+2. **Add the three environment variables** under Site → Settings → Environment variables:
+   - `NEXT_PUBLIC_UPSTREAM_API_URL` — production api-server URL (e.g. `https://api.upstreamcv.com`)
+   - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon key
+
+   For each var, **enable the "Builds" scope** (not only "Functions" / "Runtime"). Next.js inlines `NEXT_PUBLIC_*` into the client bundle at `next build` time — if the vars are runtime-only, the build either crashes with a zod validation error from `src/lib/env.ts` or ships a bundle with `undefined` values. If you're using Netlify's **shared / team environment variables** ("external variables"), make sure they're explicitly linked to this site and scoped to **Builds** — being in the team library is not enough.
+3. **Trigger a fresh deploy.** After any env-var change, hit "Deploys → Trigger deploy → Clear cache and deploy site". A runtime-only change won't update the client bundle.
+4. **Add the production URL to api-server CORS.** Edit `UPSTREAM_API_CORS_ORIGINS` (or equivalent) on `upstream-api-server` to include the Netlify domain (e.g. `https://your-site.netlify.app`, plus any custom domain).
+5. **Add the production URL to Supabase Auth.** Project Settings → Authentication → URL Configuration → Site URL + Redirect URLs. Without this, sign-in redirects from `?next=…` won't work and OAuth (if added later) will reject the redirect.
+
+**Verifying the deploy**
+
+- `https://<site>.netlify.app/login` should render the sign-in card (no redirect loop).
+- The Netlify Functions log should show the catch-all `/api/upstream/*` invocation when you hit `/dashboard` post-login.
+- If you see "Missing or invalid environment variables" in the build log, re-check the env-var scope and run "Clear cache and deploy site".
+
+**Other hosts**: Vercel works out of the box (it's Next.js's home host). For self-hosting, `npm run build && npm run start` behind any Node 20+ runtime is sufficient; mind the same `NEXT_PUBLIC_*` build-time inlining.
 
 ## Commit / doc policy
 

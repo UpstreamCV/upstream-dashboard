@@ -1,8 +1,25 @@
 import "server-only";
 
+import { cache } from "react";
 import { env } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { UpstreamApiError, type ApiErrorEnvelope } from "./errors";
+
+// React.cache memoizes within a single RSC render / Server Action invocation,
+// so multiple serverFetch calls in one request validate the user once.
+// getUser() contacts the Supabase Auth server to verify the JWT (cheap but
+// not free) — we want that check, but not on every parallel resource fetch.
+const validatedSession = cache(async () => {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+});
 
 /**
  * Server-side fetcher for RSC and Route Handlers. Calls upstream-api directly
@@ -20,11 +37,8 @@ export async function serverFetch<T>(
     body?: unknown;
   },
 ): Promise<T> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.access_token) {
+  const accessToken = await validatedSession();
+  if (!accessToken) {
     throw new UpstreamApiError(401, {
       error: { code: "invalid_user_token", message: "No active session." },
     });
@@ -45,7 +59,7 @@ export async function serverFetch<T>(
   const res = await fetch(url.toString(), {
     method: opts.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
       ...(opts.body ? { "Content-Type": "application/json" } : {}),
     },

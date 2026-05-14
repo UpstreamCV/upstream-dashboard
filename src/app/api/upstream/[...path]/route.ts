@@ -38,6 +38,18 @@ async function resolveAccountId(): Promise<string | null> {
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
 
+  // Reject path-traversal segments before URL parsing normalizes them away.
+  // The upstream API only exposes /v1/*; an authenticated user escaping the
+  // prefix can't reach anything sensitive today, but belt-and-braces.
+  for (const segment of path) {
+    if (segment === "" || segment === "." || segment === "..") {
+      return NextResponse.json(
+        { error: { code: "invalid_path", message: "Invalid request path." } },
+        { status: 400 },
+      );
+    }
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
