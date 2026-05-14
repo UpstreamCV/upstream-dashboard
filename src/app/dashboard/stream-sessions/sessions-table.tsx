@@ -82,7 +82,10 @@ export function SessionsTable({
       key: "started",
       header: "Started",
       cell: (s) => (
-        <RelativeTime value={s.started_at} className="text-ink-soft" />
+        <RelativeTime
+          value={s.started_at ?? s.created_at}
+          className="text-ink-soft"
+        />
       ),
     },
     {

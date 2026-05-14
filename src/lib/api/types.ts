@@ -69,6 +69,7 @@ export interface StreamSession {
   srt_url: string;
   streamid: string;
   expires_at: IsoDateTime;
+  created_at: IsoDateTime;
   started_at: IsoDateTime | null;
   ended_at: IsoDateTime | null;
   requested: StreamParams;
