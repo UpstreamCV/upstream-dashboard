@@ -35,8 +35,13 @@ import {
  * `initialStatus === 'streaming'`.
  */
 export function CameraStreamStatusBadge({
+  cameraId,
   initialStatus,
 }: {
+  // Required: the badge filters player-state events by this id so a
+  // second tab open on a different camera can't flip this badge with
+  // its player's `connected` event. See player-state-event.ts.
+  cameraId: string;
   initialStatus: string;
 }) {
   const [playerKind, setPlayerKind] = useState<PlayerStateKind | null>(null);
@@ -59,11 +64,15 @@ export function CameraStreamStatusBadge({
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<PlayerStateEventDetail>).detail;
+      // Drop events from players rendering OTHER cameras. The event is
+      // window-scoped; without this filter, opening a second camera tab
+      // would let that tab's player flip this tab's badge.
+      if (detail.cameraId !== cameraId) return;
       setPlayerKind(detail.kind);
     };
     window.addEventListener(PLAYER_STATE_EVENT, handler);
     return () => window.removeEventListener(PLAYER_STATE_EVENT, handler);
-  }, []);
+  }, [cameraId]);
 
   const displayStatus =
     initialStatus === "streaming" && playerKind !== "connected"

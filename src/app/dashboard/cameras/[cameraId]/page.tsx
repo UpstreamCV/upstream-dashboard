@@ -90,7 +90,10 @@ export default async function CameraDetailPage({
           </p>
           <h1 className="display text-3xl font-semibold mt-1.5 flex items-center gap-3">
             {camera.name}
-            <CameraStreamStatusBadge initialStatus={camera.status} />
+            <CameraStreamStatusBadge
+              cameraId={camera.id}
+              initialStatus={camera.status}
+            />
           </h1>
           <div className="mt-2 text-xs text-ink-mute mono flex items-center gap-1.5">
             <span>id: {camera.id}</span>
