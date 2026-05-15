@@ -42,8 +42,14 @@ export function LiveStreamPanel({
     // The api-server (not the dashboard) derives the MediaMTX path from the
     // session's streamid — see /v1/stream-sessions/{id}/whep. We pass the
     // session id through and let the proxy do the lookup + auth check.
+    // `camera_id` flows through so the player's state events are
+    // tab/camera-scoped (see player-state-event.ts).
     return (
-      <LiveStreamPlayer sessionId={session.id} approved={session.approved} />
+      <LiveStreamPlayer
+        sessionId={session.id}
+        cameraId={session.camera_id}
+        approved={session.approved}
+      />
     );
   }
 

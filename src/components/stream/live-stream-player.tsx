@@ -23,9 +23,15 @@ const BACKOFF_SCHEDULE_MS = [500, 1_000, 2_000, 4_000, 8_000];
 
 export function LiveStreamPlayer({
   sessionId,
+  cameraId,
   approved,
 }: {
   sessionId: string;
+  // The camera this player is rendering. Carried through so the
+  // window-scoped `upstream:player-state` event can be filtered by
+  // listeners — without it a multi-tab user would see one tab's
+  // "connected" event flip another tab's status badge.
+  cameraId: string;
   approved: StreamParams;
 }) {
   // WHEP signaling goes through the dashboard's `/api/upstream/*` proxy so
@@ -53,9 +59,11 @@ export function LiveStreamPlayer({
   // Broadcast every state change so listeners outside this subtree (today:
   // the camera detail header's status badge) can mirror the live viewer
   // experience instead of just the upstream session-state DB column.
+  // Listeners filter on `cameraId` — the event is window-scoped and other
+  // open camera tabs share the same window.
   useEffect(() => {
-    dispatchPlayerState({ kind: state.kind });
-  }, [state.kind]);
+    dispatchPlayerState({ cameraId, kind: state.kind });
+  }, [cameraId, state.kind]);
 
   const teardown = useCallback(() => {
     if (backoffTimerRef.current) {

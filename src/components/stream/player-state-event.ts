@@ -15,11 +15,15 @@
  *   - Custom events are fully decoupled: the player doesn't need a
  *     reference to anything outside itself, and consumers don't need to
  *     be ancestors. New listeners can opt in without touching the player.
- *   - There is at most one LiveStreamPlayer on a page today, so there's
- *     no cross-talk to worry about. If we ever render multiple at once
- *     (e.g. a wall-of-cameras view), add a `cameraId` field to the
- *     detail and filter on it; this file is the single import point for
- *     that change.
+ *
+ * Why `cameraId` is required on the event payload:
+ *   - The event is window-scoped, so every listener in every tab sees
+ *     every dispatch. With two browser tabs open on different cameras,
+ *     tab A's player flipping to `connected` would otherwise flip tab
+ *     B's badge. Listeners MUST filter on `cameraId` before reacting.
+ *   - When we eventually render multiple players on a single page (a
+ *     wall-of-cameras view), the same filter handles intra-tab routing
+ *     for free.
  */
 
 export const PLAYER_STATE_EVENT = "upstream:player-state" as const;
@@ -33,6 +37,12 @@ export type PlayerStateKind =
   | "unsupported";
 
 export type PlayerStateEventDetail = {
+  /**
+   * The camera the dispatching player is rendering. Listeners MUST
+   * filter on this field — the event is window-scoped and other
+   * cameras' badges live on the same `window`.
+   */
+  cameraId: string;
   kind: PlayerStateKind;
 };
 

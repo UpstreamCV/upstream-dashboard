@@ -4,6 +4,27 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-15 — Filter player-state event by `cameraId` (multi-tab fix)
+
+**Subject:** The window-scoped `upstream:player-state` event introduced yesterday for the unified status badge had no `cameraId` filter — every listener in every tab saw every dispatch. With two browser tabs open on different cameras, tab A's player flipping to `connected` would flip tab B's badge. Fixed by adding a required `cameraId` field to the event payload and making `<CameraStreamStatusBadge />` filter on it.
+
+**Why:** caught in today's audit pass (`/Users/elkanbruha/.claude/plans/luminous-coalescing-goblet.md`). Inline comment in `player-state-event.ts` had already flagged this as a known limitation ("at most one LiveStreamPlayer on a page today"). Single-tab usage was unaffected; multi-tab was visibly buggy.
+
+**Files touched:**
+- `src/components/stream/player-state-event.ts` — added `cameraId: string` to `PlayerStateEventDetail`. Comment block rewritten to mark the filter as REQUIRED, not optional, since dropping it silently breaks multi-tab.
+- `src/components/stream/live-stream-player.tsx` — added `cameraId` prop; dispatches it in the state-change effect.
+- `src/components/stream/live-stream-panel.tsx` — forwards `session.camera_id` into the player.
+- `src/components/stream/camera-stream-status-badge.tsx` — added `cameraId` prop; the listener short-circuits on `detail.cameraId !== cameraId`.
+- `src/app/dashboard/cameras/[cameraId]/page.tsx` — passes `camera.id` to the badge.
+
+**Verification:**
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean (the prop addition is required, so any forgotten call site would fail typecheck).
+- `npm run test` — 19 passing, unchanged.
+- Functional check (post-deploy): open camera A in one tab, camera B in another. Stop the agent on A. A's badge transitions to `idle` (Realtime-driven) without B's badge changing.
+
+---
+
 ## 2026-05-14 — Unify "live" indicator with actual WebRTC playback state
 
 **Subject:** The camera detail page's header status badge previously read straight from `cameras.status` in the DB — so it flipped to "Streaming" the moment the streaming-server's `runOnReady` hook posted `stream-started`, ~1–3 s before the dashboard's WebRTC player had actually rendered the first frame. The user saw two distinct loading phases: the badge would say "Streaming" while the video pane was still showing "Connecting…". Bridge them: the badge now stays in a `connecting` state until the WebRTC player itself broadcasts that ICE has connected and video is playing.
