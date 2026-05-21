@@ -11,11 +11,18 @@ import { getActiveAccount } from "@/lib/account/active";
 import { getAgent } from "@/lib/api/agents";
 import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
+import { listRecentObservations } from "@/lib/api/observations";
 import { getLatestFrame } from "@/lib/api/snapshots";
 import { listStreamSessions } from "@/lib/api/stream-sessions";
 import { listValidations } from "@/lib/api/validations";
-import type { StreamSession, StreamValidation } from "@/lib/api/types";
+import type {
+  ObservationRecord,
+  StreamSession,
+  StreamValidation,
+} from "@/lib/api/types";
 import { CameraDetailRealtime } from "./camera-detail-realtime";
+import { RecentObservationsPanel } from "./recent-observations-panel";
+import { DEFAULT_OBSERVATION_LIMIT } from "./summarize-observation";
 
 export default async function CameraDetailPage({
   params,
@@ -35,7 +42,7 @@ export default async function CameraDetailPage({
     throw err;
   }
 
-  const [agent, sessions, latestFrame] = await Promise.all([
+  const [agent, sessions, latestFrame, recentObservations] = await Promise.all([
     // 404 means the agent was removed; other errors should surface through
     // the page's error boundary instead of silently rendering "Agent not found".
     getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
@@ -52,6 +59,16 @@ export default async function CameraDetailPage({
     // getLatestFrame already returns null on 404 / snapshot_not_found and
     // re-throws on other errors — no .catch wrapper needed here.
     getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
+    // 404 = camera vanished mid-render; degrade to an empty panel rather than
+    // failing the whole page (same posture as the agent / validations fetches).
+    listRecentObservations({
+      accountId: activeAccountId,
+      cameraId: camera.id,
+      limit: DEFAULT_OBSERVATION_LIMIT,
+    }).catch((err): ObservationRecord[] => {
+      if (err instanceof UpstreamApiError && err.status === 404) return [];
+      throw err;
+    }),
   ]);
 
   const currentSession: StreamSession | null = sessions[0] ?? null;
@@ -125,6 +142,11 @@ export default async function CameraDetailPage({
         <AgentPanel agent={agent} />
         <ValidationPanel validation={latestValidation} />
       </div>
+
+      <RecentObservationsPanel
+        cameraId={camera.id}
+        initialObservations={recentObservations}
+      />
     </section>
   );
 }

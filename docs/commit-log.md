@@ -4,6 +4,31 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-21 — P5-B: Recent Observations panel on camera detail
+
+**Subject:** Added a "Recent Observations" panel to the bottom of the camera detail page. It reads the P5-A endpoint `GET /v1/cameras/{cameraId}/observations/recent` through the existing `/api/upstream` proxy and shows recent processor observations (line crossings, ROI occupancy, zone transitions, dwell) in a table — timestamp, type, a one-line summary, short stream-session id, short processor id, and a per-row raw-JSON expand/collapse. Toolbar has a type filter (all + the 7 P4 types), a 25/50/100 limit selector, a manual Refresh, and an opt-in 5 s "Live" polling toggle.
+
+**Why:** P5-A made observations readable via the API, but operators still had to use a browser-console `fetch` or curl to see them — the blind-testing pain point P5 set out to fix. This is the UI for it. No video overlays / bounding boxes / geometry editor — that is deferred to P5-C.
+
+**Files touched:**
+- `src/lib/api/types.ts` — added `ObservationType`, `ObservationRecord`, `RecentObservationsResponse`. `ObservationRecord.type` stays a plain `string` (the column is open-vocabulary server-side) so an unknown type never breaks a read.
+- `src/lib/api/observations.ts` (new) — `listRecentObservations({ accountId, cameraId, type?, limit? })`, server-only `serverFetch` wrapper matching `validations.ts` / `snapshots.ts`.
+- `src/app/dashboard/cameras/[cameraId]/summarize-observation.ts` (new) — pure helpers: `summarizeObservation` (defensive per-type one-line summary, never throws on a malformed payload), `buildRecentObservationsPath`, and the `OBSERVATION_TYPES` / `OBSERVATION_LIMITS` / `DEFAULT_OBSERVATION_LIMIT` constants.
+- `src/app/dashboard/cameras/[cameraId]/recent-observations-panel.tsx` (new) — `"use client"` panel; server-rendered initial rows + `useUpstreamList` for refresh/poll. `fallbackData` is key-scoped to the default (unfiltered) SWR key so a filtered view never flashes unfiltered rows. No `accountId` prop — the proxy injects account scoping, same as `LatestFrameCard`.
+- `src/app/dashboard/cameras/[cameraId]/page.tsx` — fetches initial observations inside the existing `Promise.all` (404-tolerant `.catch`, same posture as the agent/validations fetches) and renders the panel as a full-width section at the bottom.
+- `summarize-observation.test.ts` + `recent-observations-panel.test.tsx` (new) — 27 tests.
+
+**Verification:**
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm run test` — 46 passing (27 new): `summarizeObservation` across all 7 types + missing/malformed payloads + unknown types; `buildRecentObservationsPath`; panel rendering (rows / empty / error / toolbar) via `renderToStaticMarkup`.
+- Interactive tests (clicking Refresh, toggling JSON, changing the selects) are deferred — they would need `jsdom` + `@testing-library/react`, out of scope for this change. Covered instead by the manual checklist below.
+- Manual (post-deploy): open a camera detail page, confirm the panel loads observations, the type filter narrows rows (`processor.zone_exited` shows the empty state — live count is 0), the limit selector changes row count, Refresh re-fetches, the Live toggle polls, and raw-JSON expand/collapse works.
+
+**Docs updated:** this commit-log entry.
+
+---
+
 ## 2026-05-15 — Filter player-state event by `cameraId` (multi-tab fix)
 
 **Subject:** The window-scoped `upstream:player-state` event introduced yesterday for the unified status badge had no `cameraId` filter — every listener in every tab saw every dispatch. With two browser tabs open on different cameras, tab A's player flipping to `connected` would flip tab B's badge. Fixed by adding a required `cameraId` field to the event payload and making `<CameraStreamStatusBadge />` filter on it.
