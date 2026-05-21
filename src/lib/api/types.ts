@@ -182,3 +182,32 @@ export interface AccountLimits {
   created_at: IsoDateTime;
   updated_at: IsoDateTime;
 }
+
+// The seven processor observation types P4 emits. `ObservationRecord.type`
+// stays a plain `string` (not this union) because `observations.type` is an
+// open-vocabulary column server-side — an older or future type must never
+// break a read. This union is for the filter dropdown's known options.
+export type ObservationType =
+  | "processor.line_crossing"
+  | "processor.roi_occupancy"
+  | "processor.zone_entered"
+  | "processor.zone_exited"
+  | "processor.dwell_started"
+  | "processor.dwell_updated"
+  | "processor.dwell_exceeded";
+
+export interface ObservationRecord {
+  id: Uuid;
+  camera_id: Uuid;
+  stream_session_id: Uuid;
+  processor_id: string | null;
+  package_id: string | null;
+  type: string;
+  payload: Record<string, unknown>;
+  observed_at: IsoDateTime;
+  created_at: IsoDateTime;
+}
+
+export interface RecentObservationsResponse {
+  observations: ObservationRecord[];
+}
