@@ -29,6 +29,95 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-21 — Fix infinite render loop in RelativeTime (Maximum update depth)
+
+**Subject:** `src/components/data/relative-time.tsx` drove React into "Maximum update depth exceeded" on dashboard-next pages that render time labels. The component's `useSyncExternalStore` used `getSnapshot = () => Date.now()` — an **uncached snapshot**. React re-invokes `getSnapshot` after every commit to detect external store changes; because `Date.now()` returns a fresh value on every call, React never saw a stable snapshot and re-rendered forever. Fixed by making the snapshot a cached counter that only changes when the 30s interval fires.
+
+**Why it surfaced now:** `RelativeTime` is shared with the live `/dashboard`, where it had been getting away with it — the bug only triggers when a render+commit cycle straddles a 1 ms boundary (so the two `Date.now()` calls differ). The old dashboard's lighter render usually completes inside a single millisecond. dashboard-next's heavier shell (five `backdrop-filter: blur()` orbs, the cursor-glow pointer tracker, the custom scroll area) makes renders slower, so the straddle became reliable and the latent bug turned into a hard loop. It is rendered across dashboard-next via `AgentCard`, `SessionsTable`, `TokensTable`, and `LatestFrameCard` — i.e. the Agents, Stream Sessions, API Tokens, and Camera Detail pages.
+
+**Fix:** the 30s ticker is now a proper external store. A module-level `tickCount` is incremented only by the shared `setInterval`; `getSnapshot` returns `tickCount` (stable between ticks, so React stops re-rendering); `getServerSnapshot` returns a `-1` sentinel so SSR + hydration render the deterministic absolute time and the client swaps to relative once after hydration. One shared interval is lazily created on first subscribe and torn down when the last `<RelativeTime />` unmounts.
+
+**Files touched:**
+- `src/components/data/relative-time.tsx` — replaced `getSnapshot = () => Date.now()` with a cached-counter external store. Behavior is unchanged (absolute on SSR, relative after hydration, refresh every 30s); only the snapshot is now stable. The fix also hardens the live `/dashboard`, which renders the same component.
+
+**Verification:**
+- `npm run lint` — clean.
+- `npm run build` — clean.
+- Functional check (deploy preview): the Agents / Stream Sessions / API Tokens / Camera Detail pages of dashboard-next render without "Maximum update depth"; relative timestamps still tick every 30s.
+
+---
+
+## 2026-05-20 — dashboard-next audit + documentation pass
+
+**Subject:** Follow-up to yesterday's wire-up. Audited the new segment for genuine bugs, code-quality lapses, and documentation gaps now that it's fully wired and is the target for promotion. Real issues fixed: the sidebar Sign Out button was presentational; the AgentCard "View" pill went to `href="#"` (no agent detail page in either dashboard); a stale WIRE-UP comment in `camera-card.tsx` still claimed the View link was unwired; the home page's Minutes UsageMeter hard-coded `value={0}` which read as "measured zero usage" when really there is no usage endpoint; the WHEP player's eslint-disable lacked a rationale; `proxy.ts` PUBLIC_PATHS deserved a comment about prefix semantics. Documentation: created `docs/dashboard-next.md` as the canonical reference (architecture, theme, Realtime channel naming, shared modules, token security, promotion checklist), and trimmed `src/app/dashboard-next/README.md` to a status table that points there. AGENTS.md and `docs/architecture.md` now acknowledge the parallel deployment and the dashboard-next sibling components.
+
+**Why:** asked for explicitly — audit the entire dashboard for errors, problems, and unprofessional code, and add docs explaining it. Audit was via two parallel Explore subagents; findings filtered against re-reads of the actual source (one of the agents flagged a non-issue — `<form action={onSubmit}>` with `onSubmit(form: FormData)` is the React 19 / Next 16 idiom, not a bug — and that was filed as a false positive).
+
+**Files touched:**
+- `src/components/nav/sidebar-next.tsx` — wired Sign Out: `POST /api/auth/sign-out` then hard-redirect via `window.location.href = "/dashboard-next/login"`, mirroring `src/components/nav/topbar.tsx`. Disabled-while-pending. Updated header comment to reflect what's wired vs. inert (the "Coming soon" placeholders are still inert, which is honest).
+- `src/components/dashboard-next/agent-card.tsx` — removed the dead `<Link href="#">View</Link>`. There's no agent detail page in either dashboard; an inert pill is worse than no pill. The card already conveys every field at a glance.
+- `src/components/dashboard-next/camera-card.tsx` — updated the file header (View link is now wired to the detail route) and the thumbnail comment (the placeholder is intentional; the real frame lives on the detail page via `LatestFrameCardNext` to avoid one signed-URL call per card per list render).
+- `src/components/dashboard-next/usage-meter.tsx` — `value: number | null`. When null, render `—` for the numerator and keep the bar flat with a muted track. Documented in the file header.
+- `src/components/dashboard-next/home-overview-client.tsx` — passes `value={null}` to the Minutes meter with an inline comment explaining the missing consumption endpoint (the cap `monthly_minutes_quota` exists; usage doesn't).
+- `proxy.ts` — added a comment above `PUBLIC_PATHS` explaining the exact-or-prefix-with-slash semantics: any path added auto-opens every subpath under it. Important for future nested public flows (e.g. `/dashboard-next/login/confirm-email`).
+- `src/components/dashboard-next/live-stream-player-next.tsx` — expanded the `// eslint-disable-next-line react-hooks/exhaustive-deps` comment with the *why* (mutable refs and the stable `teardown` callback are intentionally excluded; including them would re-negotiate WHEP on every state change).
+- `src/lib/api/accounts.ts` — JSDoc on both functions explaining what they return and that account scoping is enforced via `serverFetch`.
+- `src/components/stream/player-state-event.ts` — added a "Shared module" header note: both `/dashboard` (dark) and `/dashboard-next` (light) import this. Same for `src/lib/webrtc/whep-client.ts`. Each header points to `docs/dashboard-next.md` "Shared modules" for the relocation plan.
+- `src/components/dashboard-next/token-create-dialog-next.tsx` — JSDoc on the exported component spelling out the plaintext-wipe contract (the five paths) and cross-linking `docs/architecture.md` "Token plaintext hygiene" + `docs/dashboard-next.md` "Token security".
+- `src/app/dashboard/cameras/[cameraId]/camera-detail-realtime.tsx` and `src/components/dashboard-next/camera-detail-realtime-next.tsx` — comments on the channel-name string explaining the `camera:` vs `dn-camera:` divergence and pointing at the canonical doc.
+- `AGENTS.md` — added a "dashboard-next (parallel redesign)" section above "Source of truth for API contracts" and a "Scoped light theme for dashboard-next" bullet under "Stack notes". Updated the Realtime convention bullet to mention both `camera-detail-realtime.tsx` files.
+- `docs/architecture.md` — added a "Parallel deployment" subsection under "Place in the platform"; expanded the "Live playback" section with a two-implementations note (same `whep-client.ts`, same `player-state-event.ts`); fixed the stale "Real-time via Supabase channels" out-of-scope bullet that predated the camera detail page.
+- `src/app/dashboard-next/README.md` — trimmed. Kept the intro, the route status table, and the sanctioned-surface list. Theme, Realtime, shared modules, and promotion checklist are now one-line pointers to `docs/dashboard-next.md` — single source of truth, no duplication to go stale.
+- `docs/dashboard-next.md` (NEW, ~280 lines) — the canonical reference. Sections: Purpose & status, Architecture (segment scope, route structure, layout flow), Data flow (three patterns with a per-route table), Camera detail, Token security (with the full wipe matrix), Theme system (token glossary + how-to-add), Realtime channel naming convention, Shared modules, Auth routing, Placeholder tiles, and the **authoritative** Promotion checklist (replaces the README's duplicate).
+
+**Verification:**
+- `npm run lint` — clean.
+- `npm run build` — clean. TypeScript clean; all 7 dashboard-next routes register identically to yesterday's build (no route shape change).
+- Manual click-through deferred to deploy preview: Sign Out from the sidebar lands on `/dashboard-next/login`; AgentCard layout renders without a trailing pill (rows fill the card cleanly); Minutes meter reads "— / N min"; the docs read coherently end-to-end (every `docs/dashboard-next.md` cross-link resolves; `AGENTS.md` and `docs/architecture.md` point at the new doc; the README points at it too).
+
+---
+
+## 2026-05-19 — Wire dashboard-next to the real upstream API
+
+**Subject:** `dashboard-next` was a complete frontend redesign (light theme, Satoshi, creek-gradient backdrop, animated orbs, custom scrollbar) rendering mock data from `buildAgents()` / `buildSessions()` / `buildTokens()` builders inline in each page. Every page already had `WIRE-UP:` comments naming the exact API functions to call. This commit replaces the mock data layer with real `serverFetch` + `useUpstreamList` calls (mirroring the live `/dashboard` patterns), builds the missing camera detail page, ports the token create/revoke flows + login form to their respective Server Actions, and exposes `/dashboard-next/login` publicly. Outcome: dashboard-next is a functionally-equivalent live operator dashboard ready for eventual promotion to replace `/dashboard`.
+
+**Why:** asked for explicitly — implement the existing dashboard's API/functionality into the dashboard-next dashboard. The plan was approved at `/Users/elkanbruha/.claude/plans/effervescent-stirring-summit.md`.
+
+**Approach:** for each list page the established pattern from old `/dashboard/` is `Server Component does parallel fetches → hands fallbackData to a new client wrapper that polls with useUpstreamList(default 10s)`. The wrapper renders the existing presentational components (they were already prop-shaped to `@/lib/api/types`, so wiring was mechanical — no component types had to change). For the camera detail page, the WHEP player + latest-frame card + Realtime listener were ported verbatim from `src/components/stream/*` and `src/app/dashboard/cameras/[cameraId]/camera-detail-realtime.tsx`, with only the JSX restyled — logic (backoff schedule, visibility/bfcache teardown, gesture-play fallback, `player-state` event broadcast) is unchanged. The two pieces of `dashboard-next` infra missing in `lib/api/` — `getAccount` and `getAccountLimits` for the Plan & Usage tile — became a new `src/lib/api/accounts.ts` module. Two home tiles (Network, Billing) remain illustrative because the backing endpoints don't exist (no aggregate-latency endpoint; no billing service).
+
+**Files touched:**
+- `proxy.ts` — added `/dashboard-next/login` to `PUBLIC_PATHS`; added post-login redirect (`/dashboard-next/login` → `/dashboard-next`) mirroring the existing `/login` → `/dashboard` branch.
+- `src/lib/api/accounts.ts` (NEW) — `getAccount` + `getAccountLimits` wrappers over `serverFetch`. Used by the home page Plan & Usage tile.
+- `src/app/dashboard-next/(app)/page.tsx` — replaced static tile values with parallel fetch of summary/agents/tokens/account/limits → hands to new client wrapper.
+- `src/components/dashboard-next/home-overview-client.tsx` (NEW) — runs 4 `useUpstreamList` polls and renders the `<Tile />` grid with derived values + status dots. Uses `agentState()` from `agent-card.tsx` and `tokenStatus()` from `tokens-table.tsx` for single-source-of-truth thresholds.
+- `src/app/dashboard-next/(app)/cameras/page.tsx` — parallel fetch listCameras + listAgents → CamerasGridClient.
+- `src/components/dashboard-next/cameras-grid-client.tsx` (NEW) — `useUpstreamList` for cameras + agents; renders existing `<CameraCard />` per row + empty state.
+- `src/components/dashboard-next/camera-card.tsx` — "View" pill now links to `/dashboard-next/cameras/{id}`.
+- `src/app/dashboard-next/(app)/agents/page.tsx` + `agents-grid-client.tsx` (NEW) — same pattern, polls `/v1/agents`.
+- `src/app/dashboard-next/(app)/stream-sessions/page.tsx` + `sessions-table-client.tsx` (NEW) — parallel fetch sessions + cameras + agents; client polls just `/v1/stream-sessions?limit=100` (name lookups change on a different cadence than session state).
+- `src/app/dashboard-next/(app)/api-tokens/page.tsx` — server-fetches tokens + role; renders `<TokensTable />` with `renderRowActions` injecting `<TokenRowActionsNext />` for revoke (active rows only). No polling — Server Action `revalidatePath` refreshes after each mutation, mirroring the live dashboard.
+- `src/app/dashboard-next/(app)/api-tokens/actions.ts` (NEW) — `createTokenAction` + `revokeTokenAction` mirror of `src/app/dashboard/settings/api-tokens/actions.ts`; targets `/dashboard-next/api-tokens` for revalidation.
+- `src/components/dashboard-next/token-create-dialog-next.tsx` (NEW) — light-theme port of the dark `TokenCreateDialog`. **Same security posture:** plaintext lives ONLY in this component's `secret` state and is wiped on dialog close, route change, tab blur, visibility-hidden, beforeunload. Dialog content is wrapped in `<div className="dashboard-next">` inside `Dialog.Portal` so `.dn-*` styles work inside the portal (the portal mounts outside the segment's `.dashboard-next` scope).
+- `src/components/dashboard-next/token-row-actions-next.tsx` (NEW) — light-theme port of `TokenRowActions`. Two-step confirm; calls `revokeTokenAction` via `useTransition`.
+- `src/components/dashboard-next/tokens-table.tsx` — added optional `renderRowActions?: (token) => ReactNode` prop. Hidden when omitted, so the table stays read-only-friendly for non-admins. The actions column renders to the right of the existing columns.
+- `src/app/dashboard-next/(app)/cameras/[cameraId]/page.tsx` (NEW) — Server Component camera detail page. Mirrors the live `/dashboard/cameras/[cameraId]/page.tsx` data flow exactly: parallel fetch camera, agent (gracefully handles 404), current session (limit 1), latest frame, validations. Renders header (back link + name + status badge), live stream + session panels (left column), latest-frame card (right column), camera-meta + agent + validation panels (3-column grid). 404 on missing camera → `notFound()`.
+- `src/app/dashboard-next/(app)/cameras/[cameraId]/not-found.tsx` (NEW) — light-themed "Camera not found" page with link back to the cameras list.
+- `src/components/dashboard-next/live-stream-player-next.tsx` (NEW) — WHEP player port. Backoff schedule, visibility/bfcache teardown, `player-state` event broadcast all preserved verbatim from `src/components/stream/live-stream-player.tsx`; only the shell + overlay JSX is restyled (light `dn-tile` frame; video itself stays on black). Uses the same `dispatchPlayerState` helper as the dark player, so the existing badge-listener pattern works across both.
+- `src/components/dashboard-next/live-stream-panel-next.tsx` (NEW) — server-rendered wrapper that picks state: no-session / waiting / live / ended.
+- `src/components/dashboard-next/latest-frame-card-next.tsx` (NEW) — 7s `useUpstreamList` poll on `/v1/cameras/{id}/latest-frame` with graceful 404 (snapshot_not_found) handling.
+- `src/components/dashboard-next/camera-stream-status-badge-next.tsx` (NEW) — light-theme port of `CameraStreamStatusBadge`. Same render-time reset pattern when initialStatus leaves "streaming". Reuses the existing `player-state-event.ts` constants from `src/components/stream/` — no need to duplicate the event-name string.
+- `src/components/dashboard-next/camera-detail-realtime-next.tsx` (NEW) — logic-only port of the dark `camera-detail-realtime.tsx`. Subscribes to `stream_sessions` postgres_changes filtered by `camera_id`; calls `router.refresh()` on state transitions only (no-op writes ignored).
+- `src/components/dashboard-next/login-form-next.tsx` — wired to `signInAction` via `useActionState`. Reads `next` from `useSearchParams()` (defaults to `/dashboard-next`); passes through a hidden form field; renders `state.error` inline. Proximity-glow microinteraction preserved. Submit button disables during pending action.
+- `src/app/dashboard-next/login/page.tsx` — wraps `<LoginFormNext />` in `<Suspense fallback={null}>` to satisfy Next 16's CSR-bailout boundary requirement for `useSearchParams`.
+- `src/app/dashboard-next/README.md` — flipped status from "frontend-only" to "fully wired"; added a per-route table of data sources + polling cadences; documented why Network and Billing tiles remain illustrative; updated promotion checklist to reflect what's already done vs. what remains (rename + cleanup pass).
+
+**Verification:**
+- `npm run lint` — clean.
+- `npm run build` — clean. All routes register correctly (`/dashboard-next`, `/dashboard-next/{agents,api-tokens,cameras,cameras/[cameraId],login,stream-sessions}`), TypeScript clean, login is statically pre-rendered (form's `useSearchParams` is now inside Suspense), every dashboard-next list page is dynamic (ƒ) as expected.
+- Manual end-to-end checks (per the plan's verification section, deferred to a deploy preview): home tiles update on 10 s tick; cameras grid → detail navigation works; WHEP player connects + badge mirrors state; Realtime push fires `router.refresh()` on session state change; token create + revoke flows; viewer-role gating on "New Key"; `/dashboard-next/login` accessible while signed out; signed-in visit redirects to `/dashboard-next`.
+
+---
+
 ## 2026-05-15 — Filter player-state event by `cameraId` (multi-tab fix)
 
 **Subject:** The window-scoped `upstream:player-state` event introduced yesterday for the unified status badge had no `cameraId` filter — every listener in every tab saw every dispatch. With two browser tabs open on different cameras, tab A's player flipping to `connected` would flip tab B's badge. Fixed by adding a required `cameraId` field to the event payload and making `<CameraStreamStatusBadge />` filter on it.

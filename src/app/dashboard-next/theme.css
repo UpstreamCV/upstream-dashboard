@@ -1,0 +1,406 @@
+/* dashboard-next scoped theme — the Figma redesign is a LIGHT theme (white
+ * tiles, black text, creek-gradient backdrop, Satoshi) that deliberately
+ * departs from the app's dark-glass system.
+ *
+ * PROD SAFETY: this file is imported only by src/app/dashboard-next/layout.tsx.
+ * It does NOT @import "tailwindcss" (already global via globals.css) and never
+ * redefines a prod token or prod class. Every name is namespaced --dn-* / .dn-*
+ * and every rule is scoped under .dashboard-next, so it cannot collide with or
+ * override anything on /dashboard or /(auth). Promotion = delete this file.
+ *
+ * Figma frame is 2560×1440 (~2×). Raw px are halved into real px and expressed
+ * with clamp() so the fixed desktop comp scales fluidly. Exact gradients/effects
+ * are transcribed from Figma get_design_context.
+ */
+
+.dashboard-next {
+  /* Creek palette (matches prod --creek-* values; re-declared, NOT referenced,
+     to stay decoupled from globals.css). */
+  --dn-creek-deep: #344c2c;
+  --dn-creek-mid: #4b816c;
+  --dn-creek-moss: #81764b;
+  --dn-creek-dark: #1c2a17;
+
+  --dn-tile: #ffffff;
+  --dn-text: #000000;
+  --dn-text-70: rgba(0, 0, 0, 0.7);
+  --dn-text-50: rgba(0, 0, 0, 0.5);
+  --dn-text-15: rgba(0, 0, 0, 0.15);
+
+  --dn-radius-tile: clamp(18px, 1.6vw, 26px); /* Figma rounded-[50px] @2× */
+  --dn-radius-panel: clamp(28px, 3vw, 52px); /* .dn-panel corner radius */
+  --dn-shadow-tile: 0 18px 50px -20px rgba(0, 0, 0, 0.45);
+
+  /* Sidebar active label — Figma 269.97deg deep→mid→moss. */
+  --dn-grad-text: linear-gradient(
+    270deg,
+    var(--dn-creek-deep) 1%,
+    var(--dn-creek-mid) 74%,
+    var(--dn-creek-moss) 148%
+  );
+  /* Login button — Figma 109.62deg moss→mid→deep. */
+  --dn-grad-btn: linear-gradient(
+    110deg,
+    var(--dn-creek-moss) 4%,
+    var(--dn-creek-mid) 52%,
+    var(--dn-creek-deep) 112%
+  );
+  /* Shell backdrop — solid creek-mid; depth comes from the drifting orbs. */
+  --dn-shell: var(--dn-creek-mid);
+
+  /* Own the cascade for this subtree only — does not touch <html>/<body>
+     or the global --font-display-stack. */
+  font-family:
+    var(--font-satoshi), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  color: var(--dn-text);
+  /* Global <html> sets color-scheme:dark; this subtree is a light design, so
+     native controls (the login checkbox) should render light. */
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Full-bleed creek wash behind the authed Home shell. */
+.dashboard-next .dn-shell-bg {
+  background: var(--dn-shell);
+}
+
+/* The large frosted panel that holds the tile grid. */
+.dashboard-next .dn-panel {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  border-radius: var(--dn-radius-panel);
+}
+
+/* Left navigation rail. */
+.dashboard-next .dn-rail {
+  background: rgba(20, 32, 18, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border-radius: clamp(22px, 2.4vw, 40px);
+}
+
+/* Solid white metric card. */
+.dashboard-next .dn-tile {
+  background: var(--dn-tile);
+  border-radius: var(--dn-radius-tile);
+  box-shadow: var(--dn-shadow-tile);
+}
+
+/* "View X" pill inside a tile — Figma bg rgba(0,0,0,0.15). */
+.dashboard-next .dn-btn {
+  background: var(--dn-text-15);
+  color: var(--dn-text);
+  border-radius: clamp(10px, 0.9vw, 14px);
+  transition: background 0.15s ease;
+}
+.dashboard-next .dn-btn:hover {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+/* Gradient-filled text (active nav label, accents). */
+.dashboard-next .dn-grad-text {
+  background: var(--dn-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient login button. */
+.dashboard-next .dn-grad-btn {
+  background: var(--dn-grad-btn);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 9999px;
+}
+
+/* Cursor-tracking glow: a small creek-mid orb that follows the pointer over
+   the existing gradient, revealed on hover. JS feeds the pointer position into
+   --mx/--my (see login-form-next.tsx). The label is lifted above via z-10. */
+.dashboard-next .dn-glow-btn {
+  position: relative;
+  overflow: hidden;
+}
+.dashboard-next .dn-glow-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle 200px at var(--mx, 50%) var(--my, 50%),
+    rgba(75, 129, 108, 0.8),
+    rgba(75, 129, 108, 0) 70%
+  );
+  /* Driven by JS proximity (see login-form-next.tsx): 0 far away → 1 over. */
+  opacity: var(--glow, 0);
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+/* White cursor-proximity glow for the translucent dashboard buttons — a soft
+   light "glass" sheen that fades in as the pointer nears, driven by the shared
+   CursorGlow controller via --mx/--my/--glow. Sits over the existing
+   translucent background; the label is lifted above with z-10. */
+.dashboard-next .dn-glow-soft {
+  position: relative;
+  overflow: hidden;
+}
+.dashboard-next .dn-glow-soft::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle 90px at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.5),
+    rgba(255, 255, 255, 0) 70%
+  );
+  opacity: var(--glow, 0);
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+/* Heavy frosted login card over the creek photo — Figma backdrop-blur-30,
+   white .5 border, radial sheen brighter toward the edges. */
+.dashboard-next .dn-glass-card {
+  position: relative;
+  /* Heavy frosted border — Figma's card uses a very thick (~12px @real)
+     white stroke; matches the "a lot thicker" ask and scales with viewport. */
+  border: clamp(6px, 0.7vw, 12px) solid rgba(255, 255, 255, 0.5);
+  border-radius: clamp(36px, 4vw, 60px);
+  background: radial-gradient(
+    120% 110% at 50% 45%,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.16) 55%,
+    rgba(255, 255, 255, 0.42) 100%
+  );
+  backdrop-filter: blur(30px) saturate(135%);
+  -webkit-backdrop-filter: blur(30px) saturate(135%);
+}
+
+/* Translucent pill inputs on the login card. */
+.dashboard-next .dn-field {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+  color: #fff;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.dashboard-next .dn-field::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+.dashboard-next .dn-field:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Animated background orbs — Figma DashboardHome "Group 2": three heavily
+   blurred creek-color ellipses (mid top-left, moss right, deep bottom-center).
+   A fixed layer behind the shell content, slowly drifting. Honors
+   prefers-reduced-motion (static positions, no animation). */
+.dashboard-next .dn-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dashboard-next .dn-orb {
+  position: absolute;
+  width: clamp(420px, 46vw, 1000px);
+  height: clamp(380px, 40vw, 920px);
+  border-radius: 50%;
+  filter: blur(clamp(60px, 8vw, 130px));
+  opacity: 0.6;
+  will-change: transform;
+}
+/* 5 orbs: 2 deep clustered bottom-left, 2 moss clustered top-right,
+   1 mid top-left. Each drifts on its own slow loop so the cluster
+   gently breathes without moving in lockstep. */
+.dashboard-next .dn-orb-1 {
+  /* deep · bottom-left (pushed further left) */
+  background: var(--dn-creek-deep);
+  bottom: -20%;
+  left: -14%;
+  animation: dn-drift-1 17s ease-in-out -3s infinite;
+}
+.dashboard-next .dn-orb-2 {
+  /* deep · bottom-left (next to orb-1, pushed further left) */
+  background: var(--dn-creek-deep);
+  bottom: -24%;
+  left: 2%;
+  animation: dn-drift-2 31s ease-in-out -19s infinite;
+}
+.dashboard-next .dn-orb-3 {
+  /* mid · top-left */
+  background: var(--dn-creek-mid);
+  top: -16%;
+  left: -6%;
+  animation: dn-drift-3 23s ease-in-out -7s infinite;
+}
+.dashboard-next .dn-orb-4 {
+  /* moss · top-right (pushed further into the corner) */
+  background: var(--dn-creek-moss);
+  top: -24%;
+  right: -12%;
+  animation: dn-drift-4 29s ease-in-out -11s infinite;
+}
+.dashboard-next .dn-orb-5 {
+  /* moss · top-right (next to orb-4, pushed toward the corner) */
+  background: var(--dn-creek-moss);
+  top: -26%;
+  right: 3%;
+  animation: dn-drift-5 19s ease-in-out -25s infinite;
+}
+/* Wandering loops in viewport units (vw/vh) so the travel is large + visible
+   regardless of orb size/blur. Each path roams ~half the screen and returns
+   to 0,0 (the spawn corner) at 100% for a seamless `infinite` loop — corners
+   are loosely kept, not strict. */
+@keyframes dn-drift-1 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  25% {
+    transform: translate3d(16vw, -11vh, 0) scale(1.07);
+  }
+  50% {
+    transform: translate3d(24vw, 6vh, 0) scale(1.12);
+  }
+  75% {
+    transform: translate3d(9vw, 13vh, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+/* orb-2 deliberately orbits the opposite sense to orb-1 (down→right→up vs
+   orb-1's up→right→down) so the deep pair never tracks together. */
+@keyframes dn-drift-2 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  25% {
+    transform: translate3d(10vw, 14vh, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(23vw, -3vh, 0) scale(1.1);
+  }
+  75% {
+    transform: translate3d(7vw, -15vh, 0) scale(1.03);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+}
+@keyframes dn-drift-3 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  25% {
+    transform: translate3d(18vw, 15vh, 0) scale(1.08);
+  }
+  50% {
+    transform: translate3d(28vw, 5vh, 0) scale(1.13);
+  }
+  75% {
+    transform: translate3d(11vw, 20vh, 0) scale(1.05);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+@keyframes dn-drift-4 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.04);
+  }
+  25% {
+    transform: translate3d(-16vw, 11vh, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-26vw, 2vh, 0) scale(1.11);
+  }
+  75% {
+    transform: translate3d(-10vw, 15vh, 0) scale(1.03);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.04);
+  }
+}
+/* orb-5 lingers low-left then curves up — opposite sense to orb-4's hard
+   left-and-back — so the moss pair stays visibly independent. */
+@keyframes dn-drift-5 {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  25% {
+    transform: translate3d(-7vw, 16vh, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-21vw, 8vh, 0) scale(1.12);
+  }
+  75% {
+    transform: translate3d(-13vw, -9vh, 0) scale(1.03);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-next .dn-orb {
+    animation: none !important;
+  }
+}
+
+/* Custom overlay scrollbar (scoped to dashboard-next). `.dn-scroll` fully
+   hides the native bar cross-browser; the visible bar is a JS-driven overlay
+   (ScrollArea): a faint full-length pill track with a FIXED-SIZE white dot
+   that maps scroll progress. */
+.dashboard-next .dn-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+.dashboard-next .dn-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* the transparent pill running the length */
+.dashboard-next .dn-bar-track {
+  --dn-thumb: 56px; /* fixed pill length; slides by scroll progress */
+  position: absolute;
+  /* start/end past the panel's rounded corners (matches .dn-panel radius) */
+  top: var(--dn-radius-panel);
+  bottom: var(--dn-radius-panel);
+  right: 6px;
+  width: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+  z-index: 5;
+  transition: background 0.15s ease;
+}
+.dashboard-next .dn-bar-track:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+/* the fixed-length white position pill */
+.dashboard-next .dn-bar-thumb {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: var(--dn-thumb);
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}

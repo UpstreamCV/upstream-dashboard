@@ -40,6 +40,12 @@ export function CameraDetailRealtime({
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
+    // Channel name: `camera:${cameraId}:sessions` is the LIVE-dashboard name.
+    // The /dashboard-next sibling uses `dn-camera:…` so a user with both tabs
+    // open on the same camera gets two independent subscriptions instead of
+    // accidentally sharing one. On promotion of /dashboard-next, this name is
+    // the survivor (the `dn-` prefix is dropped from the new file). See
+    // `docs/dashboard-next.md` "Realtime channel naming convention".
     const channel = supabase
       .channel(`camera:${cameraId}:sessions`)
       .on(
