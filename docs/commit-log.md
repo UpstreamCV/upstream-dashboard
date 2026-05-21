@@ -4,6 +4,35 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-21 — P5-D: Latest-frame perception overlay on camera detail
+
+**Subject:** Added a "Perception Overlay" card to the camera detail page. It draws the latest perception snapshot (P5-C endpoint `GET /v1/cameras/{cameraId}/perception/latest`) on top of the latest captured frame: object bounding boxes with `label #track · roi · confidence` chips, ROI polygons and the entry line. The card has show/hide toggles for boxes, labels and geometry, a minimum-confidence filter, a manual Refresh and an opt-in 5 s "Live" poll. It is a separate card — the existing `<LatestFrameCard />` is untouched.
+
+**Why:** P5-C made the processor's visual state (detections + geometry) readable via the API, but operators could only inspect it as raw JSON. P5-D is the visual layer: an operator can now *see* what the processor sees on a still frame. This is deliberately a latest-frame overlay only — live WebRTC overlay (P5-E) and dashboard-driven geometry editing (P6) are out of scope.
+
+**Frontend/backend split:** the backend snapshot stays *data only* — frame dimensions, bbox coordinates, labels, track ids, confidence, geometry points. All presentation (box colors, stroke weight, label styling, opacity, show/hide state) lives in the dashboard. `OVERLAY_COLORS` in `perception-overlay.ts` is the single source of overlay styling; the api-server and processor are not touched.
+
+**Rendering approach:** a `relative` container whose CSS `aspect-ratio` is set from the snapshot's frame dimensions, holding the frame `<img>` (`object-cover`) and an absolutely-positioned `<svg>` whose `viewBox` is `0 0 frame.width frame.height`. Shapes are drawn in raw snapshot pixels and the browser scales them; strokes use `vector-effect="non-scaling-stroke"` for constant on-screen weight. Limitation: if the latest frame's resolution differs from the snapshot's `frame` dimensions the overlay can drift — acceptable for a v1 still-frame overlay.
+
+**Files touched:**
+- `src/lib/api/types.ts` — added `PerceptionPoint`, `PerceptionBBox`, `PerceptionObject`, `PerceptionGeometryRoi`, `PerceptionGeometryLine`, `LatestPerceptionPayload`, `LatestPerceptionRecord`, `LatestPerceptionResponse`. The `snapshot` payload is opaque JSONB server-side, so the nested types are treated as best-effort and normalized defensively before use.
+- `src/lib/api/perception.ts` (new) — `getLatestPerception({ accountId, cameraId })`, a server-only `serverFetch` wrapper that returns `null` on 404 / `perception_snapshot_not_found` (same posture as `getLatestFrame`).
+- `src/app/dashboard/cameras/[cameraId]/perception-overlay.ts` (new) — pure helpers (no React, no I/O): `normalizeSnapshot` (coerces the JSONB payload, never throws), `resolveBBox` (pixel bbox, else `bbox_normalized` × frame dims, else `null`), `selectOverlayObjects`, `formatObjectLabel`, `confidencePercent`, `pointsToAttr`, `centroid`, `OVERLAY_COLORS`, `CONFIDENCE_THRESHOLDS`.
+- `src/app/dashboard/cameras/[cameraId]/perception-overlay-svg.tsx` (new) — `PerceptionOverlaySvg`, a pure presentational `<svg>` (no hooks, no fetching) so it is directly unit-testable.
+- `src/app/dashboard/cameras/[cameraId]/latest-frame-perception-overlay.tsx` (new) — `"use client"` card; server-rendered initial frame + snapshot, `useUpstreamList` for refresh/poll, local toggle state. No `accountId` prop — the proxy injects account scoping.
+- `src/app/dashboard/cameras/[cameraId]/page.tsx` — fetches the initial snapshot inside the existing `Promise.all` and renders the overlay card below the latest-frame grid.
+- `perception-overlay.test.ts` + `perception-overlay-svg.test.tsx` + `latest-frame-perception-overlay.test.tsx` (new) — 39 tests.
+
+**Verification:**
+- `npm run lint` clean. `npx tsc --noEmit` clean. `git diff --check` clean.
+- `npm run test` — 85 passing (39 new): helper coercion / bbox fallback / label formatting / geometry helpers; SVG rendering across toggle and confidence-filter combinations; card state branching (frame + snapshot / no frame / no snapshot / no objects / frame error / missing dimensions / toolbar) via `renderToStaticMarkup`.
+- `next build` compiles and typechecks cleanly; the build's page-data step needs runtime env vars not present locally, so it stops on an unrelated pre-existing page — not a P5-D defect.
+- Interactive tests (clicking toggles / Refresh, changing selects) are deferred — they would need `jsdom` + `@testing-library/react`, out of scope. Toggle *behavior* is instead covered by rendering the pure `PerceptionOverlaySvg` with each toggle off. Browser verification to be done post-deploy on the dashboard.
+
+**Docs updated:** this commit-log entry, `docs/architecture.md` (polling-intervals table).
+
+---
+
 ## 2026-05-21 — P5-B: Recent Observations panel on camera detail
 
 **Subject:** Added a "Recent Observations" panel to the bottom of the camera detail page. It reads the P5-A endpoint `GET /v1/cameras/{cameraId}/observations/recent` through the existing `/api/upstream` proxy and shows recent processor observations (line crossings, ROI occupancy, zone transitions, dwell) in a table — timestamp, type, a one-line summary, short stream-session id, short processor id, and a per-row raw-JSON expand/collapse. Toolbar has a type filter (all + the 7 P4 types), a 25/50/100 limit selector, a manual Refresh, and an opt-in 5 s "Live" polling toggle.

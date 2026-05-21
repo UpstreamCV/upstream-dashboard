@@ -12,6 +12,7 @@ import { getAgent } from "@/lib/api/agents";
 import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { listRecentObservations } from "@/lib/api/observations";
+import { getLatestPerception } from "@/lib/api/perception";
 import { getLatestFrame } from "@/lib/api/snapshots";
 import { listStreamSessions } from "@/lib/api/stream-sessions";
 import { listValidations } from "@/lib/api/validations";
@@ -21,6 +22,7 @@ import type {
   StreamValidation,
 } from "@/lib/api/types";
 import { CameraDetailRealtime } from "./camera-detail-realtime";
+import { LatestFramePerceptionOverlay } from "./latest-frame-perception-overlay";
 import { RecentObservationsPanel } from "./recent-observations-panel";
 import { DEFAULT_OBSERVATION_LIMIT } from "./summarize-observation";
 
@@ -42,34 +44,40 @@ export default async function CameraDetailPage({
     throw err;
   }
 
-  const [agent, sessions, latestFrame, recentObservations] = await Promise.all([
-    // 404 means the agent was removed; other errors should surface through
-    // the page's error boundary instead of silently rendering "Agent not found".
-    getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
-      (err) => {
-        if (err instanceof UpstreamApiError && err.status === 404) return null;
+  const [agent, sessions, latestFrame, latestPerception, recentObservations] =
+    await Promise.all([
+      // 404 means the agent was removed; other errors should surface through
+      // the page's error boundary instead of silently rendering "Agent not found".
+      getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
+        (err) => {
+          if (err instanceof UpstreamApiError && err.status === 404) {
+            return null;
+          }
+          throw err;
+        },
+      ),
+      listStreamSessions({
+        accountId: activeAccountId,
+        cameraId: camera.id,
+        limit: 1,
+      }),
+      // getLatestFrame already returns null on 404 / snapshot_not_found and
+      // re-throws on other errors — no .catch wrapper needed here.
+      getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
+      // getLatestPerception likewise returns null on 404 /
+      // perception_snapshot_not_found and re-throws on other errors.
+      getLatestPerception({ accountId: activeAccountId, cameraId: camera.id }),
+      // 404 = camera vanished mid-render; degrade to an empty panel rather than
+      // failing the whole page (same posture as the agent / validations fetches).
+      listRecentObservations({
+        accountId: activeAccountId,
+        cameraId: camera.id,
+        limit: DEFAULT_OBSERVATION_LIMIT,
+      }).catch((err): ObservationRecord[] => {
+        if (err instanceof UpstreamApiError && err.status === 404) return [];
         throw err;
-      },
-    ),
-    listStreamSessions({
-      accountId: activeAccountId,
-      cameraId: camera.id,
-      limit: 1,
-    }),
-    // getLatestFrame already returns null on 404 / snapshot_not_found and
-    // re-throws on other errors — no .catch wrapper needed here.
-    getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
-    // 404 = camera vanished mid-render; degrade to an empty panel rather than
-    // failing the whole page (same posture as the agent / validations fetches).
-    listRecentObservations({
-      accountId: activeAccountId,
-      cameraId: camera.id,
-      limit: DEFAULT_OBSERVATION_LIMIT,
-    }).catch((err): ObservationRecord[] => {
-      if (err instanceof UpstreamApiError && err.status === 404) return [];
-      throw err;
-    }),
-  ]);
+      }),
+    ]);
 
   const currentSession: StreamSession | null = sessions[0] ?? null;
   const validations: StreamValidation[] = currentSession
@@ -136,6 +144,12 @@ export default async function CameraDetailPage({
           />
         </div>
       </div>
+
+      <LatestFramePerceptionOverlay
+        cameraId={camera.id}
+        initialFrame={latestFrame}
+        initialPerception={latestPerception}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         <CameraMetaPanel camera={camera} />

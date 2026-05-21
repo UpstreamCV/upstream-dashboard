@@ -211,3 +211,75 @@ export interface ObservationRecord {
 export interface RecentObservationsResponse {
   observations: ObservationRecord[];
 }
+
+// --- Perception snapshot (P5-C latest-perception API; consumed by the P5-D
+// latest-frame overlay) -------------------------------------------------------
+// The `snapshot` payload is stored server-side as opaque JSONB — the api-server
+// validates only the envelope, never the nested objects/geometry. These types
+// describe the *expected* shape; treat every nested field as possibly-absent
+// and normalize defensively before rendering (see `perception-overlay.ts`).
+
+export interface PerceptionPoint {
+  x: number;
+  y: number;
+}
+
+export interface PerceptionBBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface PerceptionObject {
+  track_id?: string | null;
+  class_id?: number | null;
+  label?: string | null;
+  confidence?: number | null;
+  bbox?: PerceptionBBox | null;
+  bbox_normalized?: PerceptionBBox | null;
+  roi_labels?: string[];
+}
+
+export interface PerceptionGeometryRoi {
+  id: string;
+  label?: string | null;
+  points: PerceptionPoint[];
+}
+
+export interface PerceptionGeometryLine {
+  id: string;
+  label?: string | null;
+  points: PerceptionPoint[];
+}
+
+export interface LatestPerceptionPayload {
+  frame: {
+    width?: number | null;
+    height?: number | null;
+    frame_num?: number | null;
+    fps?: number | null;
+  };
+  objects: PerceptionObject[];
+  geometry: {
+    rois?: PerceptionGeometryRoi[];
+    lines?: PerceptionGeometryLine[];
+  };
+  source?: Record<string, unknown>;
+  debug?: Record<string, unknown>;
+}
+
+export interface LatestPerceptionRecord {
+  id: Uuid;
+  camera_id: Uuid;
+  stream_session_id: Uuid;
+  processor_id: string | null;
+  package_id: string | null;
+  observed_at: IsoDateTime;
+  updated_at: IsoDateTime;
+  snapshot: LatestPerceptionPayload;
+}
+
+export interface LatestPerceptionResponse {
+  snapshot: LatestPerceptionRecord;
+}
