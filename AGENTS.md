@@ -18,6 +18,12 @@ Especially relevant Next 16 changes already baked into this repo:
 
 This is the operator dashboard. It talks to `upstream-api-server` via the catch-all proxy at `src/app/api/upstream/[...path]/route.ts`, which mints the Supabase JWT server-side. The proxy auto-injects `?account_id=` from the `upstream_active_account` cookie (resolved by `getActiveAccountIdFromCookie()` + a single-membership fallback through `listMemberships()`; the redirecting `getActiveAccount()` is deliberately **not** used inside the proxy). All resource reads go through `serverFetch` (RSC, Server Actions) or `proxyFetch`/`useUpstreamList` (Client Components) — there are no direct Supabase queries from app code. The only Supabase client calls in the repo are auth-related: session refresh in `proxy.ts`, sign-in/sign-up Server Actions, and `getSession()` inside `serverFetch` to mint the bearer token. See `docs/architecture.md` for the full picture.
 
+## dashboard-next (parallel redesign)
+
+A parallel light-theme redesign lives at `src/app/dashboard-next/` and is the target replacement for `/dashboard`. It is fully wired (every page reads real data; the camera detail page has WHEP + latest frame + Realtime; tokens have create/revoke; login is publicly reachable). It reuses the same `/api/upstream` proxy, `serverFetch` / `useUpstreamList`, account scoping, and auth — no duplication of the data layer. Two home tiles (Network, Billing) remain illustrative because the backing services don't exist yet.
+
+Read `docs/dashboard-next.md` for the canonical reference: architecture, theme tokens, the Realtime channel-naming convention (`dn-camera:` prefix during parallel run), shared modules with `/dashboard` (`player-state-event.ts`, `whep-client.ts`), token security model, and the authoritative promotion checklist. `src/app/dashboard-next/README.md` has the at-a-glance route status table.
+
 ## Source of truth for API contracts
 
 `../upstream-api-server/docs/` is authoritative:
@@ -34,7 +40,7 @@ Error envelope: `{ "error": { "code", "message", "details", "request_id" } }`. C
 - **Auth header**: never include the Supabase access token in browser JS. Use `/api/upstream/...` from the client; `serverFetch` from the server.
 - **Account scoping**: `serverFetch` requires explicit `accountId`. The proxy auto-injects from the cookie. Never assume ambient state.
 - **Polling**: client components use `useUpstreamList` from `src/lib/api/use-list.ts`. Don't reach for raw `useSWR` unless polling something outside the upstream proxy (latest-frame is one such case).
-- **Live updates (Supabase Realtime)**: when a component needs near-real-time push instead of polling, subscribe to Supabase Realtime via `createSupabaseBrowserClient()` filtered to a single row/column. This is a sanctioned exception to the "all reads through `/api/upstream`" rule because broadcasts are a push channel, not a read — and Realtime respects the same RLS policies the proxy honors. Today only `camera-detail-realtime.tsx` does this, watching `stream_sessions` for state transitions. Don't use Realtime for resource fetching — only for change notifications that trigger `router.refresh()` or local state updates derived from the broadcast row.
+- **Live updates (Supabase Realtime)**: when a component needs near-real-time push instead of polling, subscribe to Supabase Realtime via `createSupabaseBrowserClient()` filtered to a single row/column. This is a sanctioned exception to the "all reads through `/api/upstream`" rule because broadcasts are a push channel, not a read — and Realtime respects the same RLS policies the proxy honors. Today both `camera-detail-realtime.tsx` (dark, `/dashboard`) and `camera-detail-realtime-next.tsx` (light, `/dashboard-next`) do this, watching `stream_sessions` for state transitions on distinct channel names — see `docs/dashboard-next.md` "Realtime channel naming convention". Don't use Realtime for resource fetching — only for change notifications that trigger `router.refresh()` or local state updates derived from the broadcast row.
 - **Errors**: route all unexpected errors through `reportError(err, { area })` from `src/lib/error.ts`. Don't sprinkle `console.error` — one chokepoint = easy Sentry swap later.
 - **Token plaintext**: only the `<TokenCreateDialog />` ever holds the plaintext. Don't lift, persist, log, cache, or place in URLs. Wipes on dialog close, tab hide, blur, beforeunload, route change.
 - **Secrets**: nothing prefixed `NEXT_PUBLIC_*` may carry a secret. The Supabase **service role key** must never live in this repo.
@@ -46,6 +52,7 @@ Every meaningful commit updates `docs/commit-log.md` in the same commit, plus an
 ## Stack notes
 
 - **Tailwind v4**: no `tailwind.config.js`. Brand tokens are in `src/app/globals.css` under `:root` + `@theme inline`. Use semantic classes (`text-ink`, `text-accent`, `bg-glass-bg`, etc.) rather than raw hex.
+- **Scoped light theme for dashboard-next**: `--dn-*` CSS vars + `.dn-*` utility classes scoped under `.dashboard-next` in `src/app/dashboard-next/theme.css`. Never reference them from outside the segment, and never reference prod tokens (`--accent`, `--ink-soft`, `.glass`) from inside it. See `docs/dashboard-next.md` "Theme system".
 - **ESLint 9 flat config** in `eslint.config.mjs`.
 - **No date library** — `Intl.DateTimeFormat` + `Intl.RelativeTimeFormat` via `src/lib/time.ts`.
 - **No UI primitives kit** (no shadcn). Components live under `src/components/`. The only Radix primitive is `@radix-ui/react-dialog` for the secret-reveal modal.

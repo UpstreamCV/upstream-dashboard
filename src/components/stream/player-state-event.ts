@@ -1,6 +1,17 @@
 /**
  * Cross-component channel for "what is the WebRTC player doing right now".
  *
+ * **Shared module** — imported by both dashboards:
+ *   - `/dashboard` (dark): `LiveStreamPlayer` / `CameraStreamStatusBadge`
+ *     under `src/components/stream/`.
+ *   - `/dashboard-next` (light): `LiveStreamPlayerNext` /
+ *     `CameraStreamStatusBadgeNext` under `src/components/dashboard-next/`.
+ *
+ * Both dispatch the same `upstream:player-state` event and both filter on
+ * `cameraId`. Keep the contract stable; promotion of dashboard-next will
+ * delete the dark consumers but the event itself stays. See
+ * `docs/dashboard-next.md` "Shared modules" for the relocation plan.
+ *
  * Used by `<LiveStreamPlayer />` (emitter) and any UI piece outside its
  * subtree that wants to mirror the WebRTC connection state — the camera
  * detail page's header status badge today; potentially the cameras list

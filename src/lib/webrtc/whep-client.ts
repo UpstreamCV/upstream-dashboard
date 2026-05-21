@@ -1,6 +1,16 @@
 /**
  * Framework-free WHEP (WebRTC-HTTP Egress Protocol) negotiator.
  *
+ * **Shared module** — imported by both dashboards:
+ *   - `/dashboard` (dark): `LiveStreamPlayer` at
+ *     `src/components/stream/live-stream-player.tsx`.
+ *   - `/dashboard-next` (light): `LiveStreamPlayerNext` at
+ *     `src/components/dashboard-next/live-stream-player-next.tsx`.
+ *
+ * Both players hit the same `connectWhep` / `closeWhepSession` pair. On
+ * promotion of dashboard-next this file is a candidate to move into
+ * `src/lib/stream/`; see `docs/dashboard-next.md` "Shared modules".
+ *
  * Flow:
  *   1. Create RTCPeerConnection with recvonly transceivers
  *   2. createOffer → setLocalDescription

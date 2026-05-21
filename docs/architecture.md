@@ -23,6 +23,10 @@ upstream-agent ── SRT ─► upstream-streaming-server (MediaMTX)
 
 The dashboard is a **control + visibility** layer. It never ingests video, never validates streams, never holds raw secrets. Browser-initiated authentication is the only direct Supabase surface; everything else routes through the api-server.
 
+### Parallel deployment: `/dashboard` and `/dashboard-next`
+
+The same Next app serves two dashboards in parallel: the dark-themed live `/dashboard` (described throughout this doc) and a light-themed redesign at `/dashboard-next` that is the target replacement. Both share the same data layer (the catch-all proxy, `serverFetch` / `useUpstreamList`, account scoping, auth) — only the UI shell and theme differ. The new segment is fully wired and is scoped under `.dashboard-next` with its own `--dn-*` tokens so it cannot interfere with the live one. See `docs/dashboard-next.md` for the new segment's architecture, theme system, Realtime channel-naming convention (the two dashboards use distinct channel names while running in parallel), and the authoritative promotion checklist.
+
 ## Identity & request flow
 
 1. **Sign in.** `(auth)/login` Server Action calls `supabase.auth.signInWithPassword`. Supabase Auth sets HTTP-only cookies (`sb-*`). On success, the action redirects to `?next=` or `/dashboard`.
@@ -124,6 +128,8 @@ The camera detail page renders live video via `<LiveStreamPanel>` whenever the c
 
 **Backoff schedule** on connection failure: 500 ms, 1 s, 2 s, 4 s, 8 s, then a manual "Retry" button. 404 from WHEP is the common race (api-server has flipped the session to `streaming` a few seconds before MediaMTX registers the path) and is treated as transient. The player tears down on tab-hide and bfcache `pagehide`, and reconnects on visibility-return — this avoids ghost readers in MediaMTX's `paths/list` and keeps bandwidth honest.
 
+**Two implementations, shared internals.** `/dashboard-next` ships a light-themed sibling at `src/components/dashboard-next/live-stream-player-next.tsx` with identical WHEP logic — only the shell + overlay JSX differ. Both players import the same `connectWhep` from `src/lib/webrtc/whep-client.ts` and dispatch via the same `upstream:player-state` custom event (`src/components/stream/player-state-event.ts`). On promotion the dark player is retired in favor of the light one — see `docs/dashboard-next.md` "Shared modules" and "Promotion checklist".
+
 **Production deploy posture.** MediaMTX itself must remain unreachable from the public internet on its read ports (`8889/tcp` signaling, `8554/tcp` RTSP, `9997/tcp` HTTP API). Only the api-server should be able to reach them; the UDP ICE port (`8189/udp`) stays public so browsers can negotiate ICE. See `../upstream-streaming-server/docs/stream-auth.md` (Read-path auth section).
 
 ## Out of scope (today)
@@ -133,7 +139,7 @@ The camera detail page renders live video via `<LiveStreamPanel>` whenever the c
 - Agent detail page (`getAgent()` exists in `src/lib/api/agents.ts` but no route consumes it yet).
 - Stream-session detail page (`getStreamSession()` likewise).
 - Team management (invite / role change), billing, snapshot recording history.
-- Real-time via Supabase channels — the polling cadence above is good enough for the data shapes today.
+- Real-time via Supabase channels for general resource lists (cameras, agents, sessions, tokens) — polling is good enough today. The one exception is the camera detail page, which uses a Realtime subscription on `stream_sessions` to drive sub-second state transitions; both `/dashboard` and `/dashboard-next` versions exist (see `docs/dashboard-next.md` "Realtime channel naming convention" for how they coexist).
 - Password reset / email change UI (the `createSupabaseBrowserClient` factory in `src/lib/supabase/client.ts` is kept around for this; nothing imports it yet).
 
 ## Source-of-truth pointers
