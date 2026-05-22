@@ -21,11 +21,11 @@ import {
 } from "./perception-overlay";
 import { PerceptionOverlaySvg } from "./perception-overlay-svg";
 
-// Polled snapshot cadence while the overlay is live. This is a practical
-// first-version overlay: the snapshot is whatever the processor last upserted
-// (~1 FPS in P5-C), so the overlay can lag the video by up to this interval
-// plus network latency. It is NOT frame-synchronized metadata.
-const LIVE_OVERLAY_POLL_MS = 2_000;
+// Polled snapshot cadence while the overlay is live. Matched to the processor's
+// ~1 FPS perception publish rate — polling faster wouldn't surface newer data.
+// The overlay still lags the live video by up to this interval plus network
+// latency: it shows the latest snapshot, NOT frame-synchronized metadata.
+const LIVE_OVERLAY_POLL_MS = 1_000;
 
 /**
  * P5-E — live stream overlay. Draws the latest P5-C perception snapshot over
