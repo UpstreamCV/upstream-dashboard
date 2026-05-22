@@ -4,6 +4,37 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-21 — P5-E: Live stream perception overlay on camera detail
+
+**Subject:** Added a live perception overlay — the P5-C latest perception snapshot drawn over the **live WebRTC video** on the camera detail page. It reuses the P5-D `PerceptionOverlaySvg` renderer and `perception-overlay.ts` helpers unchanged, feeding the SVG into the live player through a new generic `overlay` slot. Same show/hide toggles (boxes, labels, geometry), confidence filter, manual Refresh and a "Live" poll (default on, 2 s). The P5-D latest-frame overlay is untouched and still present.
+
+**Why:** P5-D let an operator see perception on a still frame; P5-E puts it on the live feed so they can watch detections and geometry against motion in near-real-time. This is a *practical* first live overlay — it polls the latest snapshot (the processor upserts at ~1 FPS), so the overlay can lag the video by up to the poll interval + latency. It is explicitly **not** frame-synchronized metadata; no WebRTC metadata channel / WebSocket / SSE was added.
+
+**Single WebRTC connection:** the overlay does not open a second stream. `<LiveStreamPlayer />` gained a generic, perception-agnostic `overlay?: ReactNode` slot rendered absolutely over the `<video>` (beneath the connection-state scrim, `pointer-events-none`). `<LiveStreamPanel />` gained an optional `renderStreaming` render-prop so a caller can wrap the live player for the `streaming` state without the panel knowing anything about perception. The new `LivePerceptionOverlay` owns the snapshot fetch + toggle state, passes the SVG into that slot, and renders the controls/freshness card below.
+
+**Frontend/backend split:** unchanged from P5-D — the backend snapshot stays *data only* (frame dims, bboxes, labels, track ids, confidence, geometry points). All overlay styling lives in the dashboard (`OVERLAY_COLORS`). No persisted style settings, no backend-driven colors, no style editor.
+
+**Alignment:** the live `<video>` box is fixed 16:9 (`aspect-video`); the SVG `viewBox` is the snapshot frame (1280×720 = 16:9 in the verified P5-C data) with `preserveAspectRatio="xMidYMid meet"`, so it fills the same box exactly. Limitation: a snapshot whose aspect ratio is not 16:9 will letterbox within the video box and drift from a stretched video — acceptable for a v1 polled overlay; documented.
+
+**Files touched:**
+- `src/components/stream/live-stream-player.tsx` — added the generic `overlay?: ReactNode` slot over the video. No change to WebRTC behavior.
+- `src/components/stream/live-stream-panel.tsx` — added the optional `renderStreaming` render-prop for the `streaming` state; every other state is unchanged.
+- `src/app/dashboard/cameras/[cameraId]/live-perception-overlay.tsx` (new) — `"use client"`; SWR-polls the P5-C endpoint, owns toggle state, wraps `<LiveStreamPlayer />` and renders the controls/freshness card.
+- `src/app/dashboard/cameras/[cameraId]/page.tsx` — passes `renderStreaming` into `<LiveStreamPanel />`, handing the already-fetched `latestPerception` in as the overlay's initial data.
+- `live-perception-overlay.test.tsx` (new) — 7 tests.
+
+**Reuse:** `PerceptionOverlaySvg`, `perception-overlay.ts` (`normalizeSnapshot`, `selectOverlayObjects`, `hasFrameDimensions`, `buildLatestPerceptionPath`, `CONFIDENCE_THRESHOLDS`) and `LatestPerception*` types are reused as-is — no duplication of bbox/geometry drawing logic.
+
+**Verification:**
+- `npm run lint` clean. `npx tsc --noEmit` clean. `git diff --check` clean.
+- `npm run test` — 92 passing (7 new): live player + SVG render when a snapshot is present; no-snapshot / no-objects / missing-dimensions / API-error branches; controls always render; correct proxy path requested. `LiveStreamPlayer` is stubbed in the test (its real RTCPeerConnection path renders an "unsupported" branch in a node env).
+- `next build` compiles + typechecks cleanly; the page-data step needs runtime env vars absent locally, so it stops on a pre-existing unrelated page — not a P5-E defect.
+- Browser verification to be done post-deploy on the `/dashboard` camera detail page.
+
+**Docs updated:** this commit-log entry, `docs/architecture.md` (polling-intervals table).
+
+---
+
 ## 2026-05-21 — P5-D: Latest-frame perception overlay on camera detail
 
 **Subject:** Added a "Perception Overlay" card to the camera detail page. It draws the latest perception snapshot (P5-C endpoint `GET /v1/cameras/{cameraId}/perception/latest`) on top of the latest captured frame: object bounding boxes with `label #track · roi · confidence` chips, ROI polygons and the entry line. The card has show/hide toggles for boxes, labels and geometry, a minimum-confidence filter, a manual Refresh and an opt-in 5 s "Live" poll. It is a separate card — the existing `<LatestFrameCard />` is untouched.
