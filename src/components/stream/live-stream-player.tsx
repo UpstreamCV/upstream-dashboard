@@ -57,10 +57,12 @@ export function LiveStreamPlayer({
   const mountedRef = useRef(true);
   const [manualRetryKey, setManualRetryKey] = useState(0);
 
-  const [state, setState] = useState<PlayerState>(() => {
-    if (typeof RTCPeerConnection === "undefined") return { kind: "unsupported" };
-    return { kind: "connecting" };
-  });
+  // Always start "connecting" so the server render and the first client render
+  // produce the same tree. Branching on `typeof RTCPeerConnection` here would
+  // render the "unsupported" message on the server (no WebRTC global) and the
+  // video on the client — a structural hydration mismatch (React #418). WebRTC
+  // support is probed client-side in the connection effect below instead.
+  const [state, setState] = useState<PlayerState>({ kind: "connecting" });
 
   // Broadcast every state change so listeners outside this subtree (today:
   // the camera detail header's status badge) can mirror the live viewer
@@ -93,12 +95,6 @@ export function LiveStreamPlayer({
   useEffect(() => {
     mountedRef.current = true;
 
-    if (state.kind === "unsupported") {
-      return () => {
-        mountedRef.current = false;
-      };
-    }
-
     let cancelled = false;
 
     const scheduleReconnect = (reason: string) => {
@@ -119,6 +115,14 @@ export function LiveStreamPlayer({
 
     const attempt$ = async () => {
       if (cancelled || !mountedRef.current) return;
+      // Probe WebRTC support here — client-side, so it never diverges from the
+      // server render. Doing this in the initial `useState` would render the
+      // "unsupported" message on the server and the video on the client, a
+      // structural hydration mismatch (React #418).
+      if (typeof RTCPeerConnection === "undefined") {
+        setState({ kind: "unsupported" });
+        return;
+      }
       // Reset any prior connection before negotiating a new one.
       if (pcRef.current) {
         pcRef.current.close();

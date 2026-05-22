@@ -4,6 +4,26 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-21 — P5-E cleanup: fix LiveStreamPlayer hydration mismatch, tighten live overlay poll
+
+**Subject:** Two fixes from the P5-E deployed verification round. (1) `<LiveStreamPlayer />` no longer throws a React #418 hydration mismatch when the camera detail page is hard-refreshed while the camera is streaming. (2) The live perception overlay now polls every 1 s instead of 2 s.
+
+**Why — #418:** the player initialized its state with `useState(() => typeof RTCPeerConnection === "undefined" ? "unsupported" : "connecting")`. `RTCPeerConnection` doesn't exist during SSR, so the server rendered the "WebRTC unavailable" tree while the client rendered the `<video>` tree — a structural hydration mismatch. React recovered by re-rendering the subtree client-side, so the UI worked, but it logged an error every load. This was a pre-existing latent bug in the player (it predates P5-E); P5-E's test procedure — hard-refresh while streaming — is what exposed it. Fix: initialize deterministically to `"connecting"`, and probe WebRTC support client-side inside the async connection attempt (`attempt$`), where it can never diverge from the server render.
+
+**Why — poll cadence:** P5-E shipped at a 2 s poll; the processor publishes perception at ~1 FPS, so 1 s matches the source's freshness without out-pacing it. This is still a polled "latest snapshot" overlay — it is **not** frame-synchronized with the video and cannot be without a per-frame metadata channel (a future milestone; needs processor work). 1 s simply reduces the visible lag.
+
+**Files touched:**
+- `src/components/stream/live-stream-player.tsx` — deterministic initial state; WebRTC-support probe moved into `attempt$`.
+- `src/components/stream/live-stream-player.test.tsx` (new) — 2 tests: SSR renders the video tree (not the "unsupported" branch), and the `overlay` slot renders.
+- `src/app/dashboard/cameras/[cameraId]/live-perception-overlay.tsx` — `LIVE_OVERLAY_POLL_MS` 2 s → 1 s.
+- `docs/architecture.md` — polling-intervals row updated to 1 s.
+
+**Verification:** `npm run lint` clean · `npx tsc --noEmit` clean · `npm run test` 94 passing (2 new) · `git diff --check` clean · `next build` compiles + typechecks clean. Browser re-verification (no #418 on hard-refresh while streaming) to be done post-deploy.
+
+**Docs updated:** this commit-log entry, `docs/architecture.md`.
+
+---
+
 ## 2026-05-21 — P5-E: Live stream perception overlay on camera detail
 
 **Subject:** Added a live perception overlay — the P5-C latest perception snapshot drawn over the **live WebRTC video** on the camera detail page. It reuses the P5-D `PerceptionOverlaySvg` renderer and `perception-overlay.ts` helpers unchanged, feeding the SVG into the live player through a new generic `overlay` slot. Same show/hide toggles (boxes, labels, geometry), confidence filter, manual Refresh and a "Live" poll (default on, 2 s). The P5-D latest-frame overlay is untouched and still present.

@@ -81,7 +81,7 @@ Intervals:
 | Camera detail — latest frame | 7 s |
 | Camera detail — recent observations | off by default (opt-in 5 s "Live" toggle) |
 | Camera detail — latest-frame perception overlay | off by default (opt-in 5 s "Live" toggle) |
-| Camera detail — live perception overlay | 2 s while "Live" on (default on) |
+| Camera detail — live perception overlay | 1 s while "Live" on (default on) — matches the processor's ~1 FPS publish rate |
 
 Higher-frequency polling is appropriate for the detail page only because at most one camera is on screen at a time.
 
