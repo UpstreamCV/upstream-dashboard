@@ -25,6 +25,7 @@ export function LiveStreamPlayer({
   sessionId,
   cameraId,
   approved,
+  overlay,
 }: {
   sessionId: string;
   // The camera this player is rendering. Carried through so the
@@ -33,6 +34,11 @@ export function LiveStreamPlayer({
   // "connected" event flip another tab's status badge.
   cameraId: string;
   approved: StreamParams;
+  // Optional visual layer drawn over the video (P5-E perception overlay).
+  // Generic on purpose — the player knows nothing about perception; it just
+  // stacks this absolutely over the video, beneath the connection-state
+  // scrim, and never lets it intercept pointer events.
+  overlay?: React.ReactNode;
 }) {
   // WHEP signaling goes through the dashboard's `/api/upstream/*` proxy so
   // the api-server can enforce account-scoped read auth. Same-origin
@@ -267,6 +273,9 @@ export function LiveStreamPlayer({
           playsInline
           className="w-full h-auto block aspect-video"
         />
+        {overlay ? (
+          <div className="pointer-events-none absolute inset-0">{overlay}</div>
+        ) : null}
         {showOverlay ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <Overlay

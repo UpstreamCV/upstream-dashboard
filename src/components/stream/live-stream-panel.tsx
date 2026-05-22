@@ -1,11 +1,18 @@
+import type { ReactNode } from "react";
 import { Radio } from "lucide-react";
 import type { StreamSession } from "@/lib/api/types";
 import { LiveStreamPlayer } from "./live-stream-player";
 
 export function LiveStreamPanel({
   session,
+  renderStreaming,
 }: {
   session: StreamSession | null;
+  // Optional override for the `streaming` state. Lets a caller wrap the live
+  // player (e.g. the P5-E perception overlay) without this panel needing to
+  // know anything about perception — it still owns the session-state → UI
+  // mapping for every other state.
+  renderStreaming?: (session: StreamSession) => ReactNode;
 }) {
   if (!session) {
     return (
@@ -44,6 +51,7 @@ export function LiveStreamPanel({
     // session id through and let the proxy do the lookup + auth check.
     // `camera_id` flows through so the player's state events are
     // tab/camera-scoped (see player-state-event.ts).
+    if (renderStreaming) return <>{renderStreaming(session)}</>;
     return (
       <LiveStreamPlayer
         sessionId={session.id}

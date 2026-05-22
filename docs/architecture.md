@@ -80,7 +80,8 @@ Intervals:
 | Camera detail — session state | 5 s (triggers `router.refresh()` on transitions) |
 | Camera detail — latest frame | 7 s |
 | Camera detail — recent observations | off by default (opt-in 5 s "Live" toggle) |
-| Camera detail — perception overlay | off by default (opt-in 5 s "Live" toggle) |
+| Camera detail — latest-frame perception overlay | off by default (opt-in 5 s "Live" toggle) |
+| Camera detail — live perception overlay | 2 s while "Live" on (default on) |
 
 Higher-frequency polling is appropriate for the detail page only because at most one camera is on screen at a time.
 

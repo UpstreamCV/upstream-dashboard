@@ -23,6 +23,7 @@ import type {
 } from "@/lib/api/types";
 import { CameraDetailRealtime } from "./camera-detail-realtime";
 import { LatestFramePerceptionOverlay } from "./latest-frame-perception-overlay";
+import { LivePerceptionOverlay } from "./live-perception-overlay";
 import { RecentObservationsPanel } from "./recent-observations-panel";
 import { DEFAULT_OBSERVATION_LIMIT } from "./summarize-observation";
 
@@ -134,7 +135,17 @@ export default async function CameraDetailPage({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <div className="space-y-4 md:space-y-6">
-          <LiveStreamPanel session={currentSession} />
+          <LiveStreamPanel
+            session={currentSession}
+            renderStreaming={(session) => (
+              <LivePerceptionOverlay
+                sessionId={session.id}
+                cameraId={session.camera_id}
+                approved={session.approved}
+                initialPerception={latestPerception}
+              />
+            )}
+          />
           {currentSession ? <SessionPanel session={currentSession} /> : null}
         </div>
         <div>
