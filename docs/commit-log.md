@@ -4,6 +4,75 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B3: Visual polish + usability (ROI fill tiers, whole-ROI drag, label editing, cross-tool click fix)
+
+**Subject:** Make the geometry editor feel visually correct and trustworthy before P6-C wires the processor to consume saved geometry. Three concrete improvements + one bug fix:
+
+1. **Three-tier sage ROI fill** (normal 0.10 / hovered 0.22 / selected 0.34) plus a 0.18 fill on draft polygons at ≥ 3 vertices. Single hue across all ROIs; varying alpha. Hover state is editor-local, persists nothing.
+2. **Whole-ROI drag** by clicking the polygon interior in Select mode. New pure helpers `clampRoiTranslation` and `translateRoi` keep the polygon inside `[0, 1]` at all times. Vertex drag still works as before.
+3. **Selected-shape label editing** via a new inline `<SelectedShapeCard>` between the canvas and the hint line. Pure helpers `updateLineLabel` / `updateRoiLabel` preserve every other field (id, points, direction/type, enabled). Validation runs through the existing save path.
+4. **Cross-tool click fix** — in P6-B2, clicking an existing ROI while in Draw line or Draw ROI mode silently selected the ROI and ate the click, making it impossible to place a vertex on top of an existing shape. New `interactive: boolean` prop on the SVG gates `pointer-events` on existing shape hit targets; when `false` (any non-Select tool), clicks pass through to the canvas. Draft hit targets stay interactive.
+
+**Why:** the user reported that the ROI editing experience felt visually buggy — polygons didn't communicate "this shape has an interior," there was no hover affordance, and the draft polygon stayed as a thin polyline even after 3+ vertices. Labels were part of the schema with no UI. And the cross-tool click bug was a real (previously undiagnosed) blocker for any operator trying to refine geometry around existing shapes. This pass closes those gaps so the editor reads as trustworthy infrastructure rather than a sketchy prototype — which matters because geometry is reliability infrastructure: observation lineage, future findings, replay/shadow tests all depend on operators believing what they author is what gets persisted.
+
+**ROI fill tiers — single hue, varying alpha.** Each tier ramps the fill alpha while keeping the same sage hue (`OVERLAY_COLORS.box`). Selected ROIs additionally get a brighter stroke (`#a7e3a8`) and a thicker border (3px vs 2px). Draft polygons fill at 3+ vertices with a 0.18 alpha (a touch dimmer than hover so it reads as "preview, not committed") — gives the operator a clear preview of the shape they'd commit if they hit Finish ROI right now.
+
+**Whole-ROI drag mechanics.** `startWholeRoiDrag` snapshots the **original ROI at drag-start** (the `originalRoi` closure variable) and applies `translateRoi(originalRoi, dx, dy)` against the snapshot on every `pointermove`. Applying against the in-flight state would compound clamp-induced rounding errors across many moves and silently shrink the polygon — anti-pattern noted in the helper's JSDoc. Vertex pointerdown stops propagation so it never escalates to whole-shape drag.
+
+**Label editing.** `<SelectedShapeCard>` renders nothing when nothing is selected; otherwise shows a kind badge (LINE/ROI), monospace id, vertex-count summary, and a `<input maxLength={GEOMETRY_LIMITS.maxLabelLen}>`. Typing fires `updateLineLabel(shapes, id, label)` or `updateRoiLabel(shapes, id, label)` from the model, marks dirty. The input is keyed by `selected.id` so React remounts it when the operator switches selection (otherwise focus + cursor would linger from the previous shape).
+
+**Cross-tool gating.** Polygon, line stroke hit targets, line endpoint handles, ROI vertex handles all read `pointerEvents: interactive ? "auto" : "none"`. Cursor adapts (`move`/`grab` interactive, `default` otherwise). Hover events stay wired regardless of `interactive` — visible-only feedback during draw modes is harmless and the operator may want to know which polygon they're hovering. Draft elements (close-target on the first vertex) stay interactive because they belong to the active draft, not an existing shape.
+
+**Files touched:**
+
+- **Modified — model + tests** (`src/components/dashboard-next/geometry/`)
+  - `geometry-editor-model.ts` — added `clampRoiTranslation`, `translateRoi` (both pure, both clamp to `[0, 1]`), `updateLineLabel`, `updateRoiLabel`. JSDoc on `translateRoi` flags the snapshot-not-in-flight invariant.
+  - `geometry-editor-model.test.ts` — **+17 tests** (165 → 182). Bounding-box clamp tests on both axes, overshoot snapping, line-preservation under ROI translation, label updates preserve id+geometry, unknown id no-ops.
+- **Modified — SVG**
+  - `geometry-editor-svg.tsx` — added `hoveredRoiId` + `interactive` props; renamed `onRoiSelect` → `onRoiPointerDown` (now passes the event); added `onRoiHoverChange`; three-tier ROI fill; draft polygon fill at ≥ 3 vertices; pointer-events gating on every existing-shape hit target.
+- **Modified — panel**
+  - `geometry-editor-panel.tsx` — added `hoveredRoiId` state; new `startWholeRoiDrag` (snapshot-based) + `handleRoiPointerDown` router (gates by tool); new `handleLabelChange` routing to the right model helper; updated SVG wiring with all new props/callbacks; new `<SelectedShapeCard>` slotted between canvas and Hint.
+- **Modified — docs**
+  - `docs/dashboard-next.md` — new "P6-B3 — Visual Polish + Usability" subsection after P6-B2. Cover three new affordances + the bug fix + updated out-of-scope list.
+  - `src/app/dashboard-next/README.md` — geometry row note updated.
+  - `docs/commit-log.md` — this entry.
+
+**Files NOT touched:**
+
+- `src/lib/api/types.ts`, `src/lib/api/geometry.ts`, `src/lib/perception/geometry-schema.ts`, `actions.ts`, `frame-canvas.tsx`, server-side contract — schema, wire shape, validator, save action all unchanged.
+- Existing line drawing/selection/endpoint-drag/delete flow — preserved verbatim.
+
+**Verification:**
+
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — **182 passing across 11 files** (+17 new in `geometry-editor-model.test.ts`).
+- `npm run build` — known limitation: page-data step fails locally without `NEXT_PUBLIC_*` env vars; compile + typecheck pass.
+- Guard greps return nothing: no legacy dark classes in any geometry file, no drawing-library imports, no raw `rtsp:` / `srt:` / `mediamtx` / `service_role` strings.
+
+**Manual verification (post-deploy):**
+
+- `/dashboard-next/cameras/<id>/configure/geometry` renders; existing ROIs show with subtle fill + visible border + vertex dots.
+- Hover an unselected ROI: fill brightens to 0.22; cursor reads `move`.
+- Click an ROI: fill darkens to 0.34, border thickens + brightens, vertex handles appear, `<SelectedShapeCard>` slots in below the canvas.
+- Click-drag the interior of a selected (or unselected) ROI: whole polygon follows the cursor; releasing commits; ROI never escapes `[0, 1]` even when dragged hard against the edge.
+- Drag a vertex (selected ROI): only that vertex moves.
+- Edit the selected shape's label: typing reflects in the input and marks dirty; saving persists; refresh shows the new label.
+- Switch to Draw line / Draw ROI: clicking on an existing ROI now places a line endpoint / draft vertex instead of selecting the ROI.
+- Save → revision bump in sidebar → refresh → all shapes + labels reload.
+- Line authoring (drawing, selecting, endpoint drag, delete) still works.
+
+**Follow-up:**
+
+1. **P6-B live verification** — operator authors a real config (line + ROI + label edits + whole-shape drag), saves, confirms round-trip and revision bump on the deployed api-server.
+2. **P6-C** — processor consumes saved geometry on its next session; Monitor surfaces "applied revision."
+3. **P6-D** — end-to-end verification; reliability tab gets its first real signal (revision-of-observation lineage).
+4. **P6-B4** (only if live verification surfaces blockers) — perception overlay context toggle, line direction toggle, undo/redo, refresh-frame button.
+
+**Docs updated:** this commit-log entry, `docs/dashboard-next.md` (new P6-B3 section), `src/app/dashboard-next/README.md`.
+
+---
+
 ## 2026-05-27 — P6-B2 hotfix: guard duplicate-vertex check on the empty draft
 
 **Subject:** P6-B2 (commit `7f38d8b`) crashed on the very first click in Draw ROI mode with `TypeError: Cannot read properties of undefined (reading 'x')`. The duplicate-adjacent-vertex guard in `handleCanvasPointerDown` dereferenced `draft.points[draft.points.length - 1]` unconditionally, but `handleToolDrawRoi` initializes the draft with `points: []`, so the first click hit `points[-1]` → `undefined.x` → boom.

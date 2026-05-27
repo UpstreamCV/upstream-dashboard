@@ -3,6 +3,7 @@ import type { GeometryConfig, GeometryLine, GeometryRoi } from "@/lib/api/types"
 import { GEOMETRY_LIMITS } from "@/lib/perception/geometry-schema";
 import {
   clampNormalized,
+  clampRoiTranslation,
   createDefaultLineLabel,
   createDefaultRoiLabel,
   createLine,
@@ -11,6 +12,9 @@ import {
   createRoiId,
   editorStateToGeometryConfig,
   geometryConfigToEditorState,
+  translateRoi,
+  updateLineLabel,
+  updateRoiLabel,
   updateRoiPoint,
 } from "@/components/dashboard-next/geometry/geometry-editor-model";
 
@@ -349,6 +353,215 @@ describe("updateRoiPoint", () => {
     const s = geometryConfigToEditorState(config({ rois: [roi()] }));
     const next = updateRoiPoint(s, "entry-roi", 99, { x: 0, y: 0 });
     expect(next.rois[0].points).toEqual(s.rois[0].points);
+  });
+});
+
+// --- ROI translation + label updates (P6-B3) -------------------------------
+
+describe("clampRoiTranslation", () => {
+  // Fixture polygon: bbox 0.1..0.9 on both axes. So allowed delta range
+  // is [-0.1, 0.1] on each axis.
+  const square = roi({
+    id: "r",
+    points: [
+      { x: 0.1, y: 0.1 },
+      { x: 0.9, y: 0.1 },
+      { x: 0.9, y: 0.9 },
+      { x: 0.1, y: 0.9 },
+    ],
+  });
+
+  test("in-range deltas pass through unchanged", () => {
+    expect(clampRoiTranslation(square, 0.05, -0.05)).toEqual({
+      dx: 0.05,
+      dy: -0.05,
+    });
+  });
+
+  test("over-positive dx clamps to (1 - maxX)", () => {
+    const { dx, dy } = clampRoiTranslation(square, 0.5, 0);
+    expect(dx).toBeCloseTo(0.1, 10);
+    expect(dy).toBe(0);
+  });
+
+  test("over-negative dx clamps to -minX", () => {
+    const { dx, dy } = clampRoiTranslation(square, -0.5, 0);
+    expect(dx).toBeCloseTo(-0.1, 10);
+    expect(dy).toBe(0);
+  });
+
+  test("axes clamp independently", () => {
+    // dx wants to overshoot right; dy small. Only dx clamps.
+    const { dx, dy } = clampRoiTranslation(square, 5, 0.03);
+    expect(dx).toBeCloseTo(0.1, 10);
+    expect(dy).toBe(0.03);
+  });
+
+  test("zero-vertex ROI returns the delta unchanged (defensive guard)", () => {
+    const empty = roi({ points: [] });
+    expect(clampRoiTranslation(empty, 0.5, 0.5)).toEqual({ dx: 0.5, dy: 0.5 });
+  });
+});
+
+describe("translateRoi", () => {
+  const r = roi({
+    id: "entry-roi",
+    label: "Entry",
+    type: "polygon",
+    enabled: true,
+    points: [
+      { x: 0.2, y: 0.2 },
+      { x: 0.8, y: 0.2 },
+      { x: 0.5, y: 0.7 },
+    ],
+  });
+
+  test("shifts every vertex by the clamped delta", () => {
+    const moved = translateRoi(r, 0.1, -0.05);
+    expect(moved.points).toHaveLength(3);
+    expect(moved.points[0].x).toBeCloseTo(0.3, 10);
+    expect(moved.points[0].y).toBeCloseTo(0.15, 10);
+    expect(moved.points[1].x).toBeCloseTo(0.9, 10);
+    expect(moved.points[1].y).toBeCloseTo(0.15, 10);
+    expect(moved.points[2].x).toBeCloseTo(0.6, 10);
+    expect(moved.points[2].y).toBeCloseTo(0.65, 10);
+  });
+
+  test("preserves id / label / type / enabled across translation", () => {
+    const moved = translateRoi(r, 0.05, 0.05);
+    expect(moved.id).toBe(r.id);
+    expect(moved.label).toBe(r.label);
+    expect(moved.type).toBe(r.type);
+    expect(moved.enabled).toBe(r.enabled);
+  });
+
+  test("overshoot delta produces a polygon snapped to the frame edge", () => {
+    // bbox 0.2..0.8 — request 0.5 right, max allowed is 0.2.
+    const moved = translateRoi(r, 0.5, 0);
+    const xs = moved.points.map((p) => p.x);
+    expect(Math.max(...xs)).toBeCloseTo(1.0);
+    expect(Math.min(...xs)).toBeCloseTo(0.4);
+  });
+
+  test("does not mutate the source ROI", () => {
+    const before = JSON.stringify(r);
+    translateRoi(r, 0.5, 0.5);
+    expect(JSON.stringify(r)).toBe(before);
+  });
+});
+
+describe("translateRoi at the editor-state level — line preservation", () => {
+  test("applying translateRoi to one ROI leaves every line bit-identical", () => {
+    const c = config({
+      rois: [roi({ id: "roi-a" }), roi({ id: "roi-b" })],
+      lines: [
+        line({ id: "line-1" }),
+        line({
+          id: "line-2",
+          label: "diagonal",
+          points: [{ x: 0.1, y: 0.2 }, { x: 0.7, y: 0.8 }],
+        }),
+      ],
+    });
+    const s = geometryConfigToEditorState(c);
+    s.rois = s.rois.map((r) =>
+      r.id === "roi-a" ? translateRoi(r, 0.05, 0.05) : r,
+    );
+    const out = editorStateToGeometryConfig(s);
+    expect(out.lines).toEqual(c.lines);
+    expect(out.lines).toHaveLength(2);
+    // roi-b also untouched
+    expect(out.rois[1]).toEqual(c.rois[1]);
+  });
+});
+
+describe("updateLineLabel", () => {
+  test("replaces the label and preserves id, points, direction, enabled", () => {
+    const s = geometryConfigToEditorState(
+      config({
+        lines: [
+          line({
+            id: "line-1",
+            label: "old",
+            points: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.9 }],
+            direction: "in",
+            enabled: true,
+          }),
+        ],
+      }),
+    );
+    const next = updateLineLabel(s, "line-1", "new label");
+    expect(next.lines[0].label).toBe("new label");
+    expect(next.lines[0].id).toBe("line-1");
+    expect(next.lines[0].points).toEqual([
+      { x: 0.1, y: 0.1 },
+      { x: 0.9, y: 0.9 },
+    ]);
+    expect(next.lines[0].direction).toBe("in");
+    expect(next.lines[0].enabled).toBe(true);
+  });
+
+  test("empty string is allowed (operator wiping the label)", () => {
+    const s = geometryConfigToEditorState(config());
+    const next = updateLineLabel(s, "line-1", "");
+    expect(next.lines[0].label).toBe("");
+  });
+
+  test("leaves other lines and ROIs untouched", () => {
+    const c = config({
+      lines: [line({ id: "line-1" }), line({ id: "line-2", label: "keep" })],
+      rois: [roi({ id: "roi-a" })],
+    });
+    const s = geometryConfigToEditorState(c);
+    const next = updateLineLabel(s, "line-1", "edited");
+    expect(next.lines[1]).toEqual(s.lines[1]);
+    expect(next.rois).toEqual(s.rois);
+  });
+
+  test("unknown line id is a silent no-op", () => {
+    const s = geometryConfigToEditorState(config());
+    const next = updateLineLabel(s, "nope", "x");
+    expect(next.lines).toEqual(s.lines);
+  });
+});
+
+describe("updateRoiLabel", () => {
+  test("replaces the label and preserves id, points, type, enabled", () => {
+    const s = geometryConfigToEditorState(
+      config({
+        rois: [
+          roi({
+            id: "entry-roi",
+            label: "old",
+            type: "polygon",
+            enabled: true,
+          }),
+        ],
+      }),
+    );
+    const next = updateRoiLabel(s, "entry-roi", "Entry Lobby");
+    expect(next.rois[0].label).toBe("Entry Lobby");
+    expect(next.rois[0].id).toBe("entry-roi");
+    expect(next.rois[0].type).toBe("polygon");
+    expect(next.rois[0].enabled).toBe(true);
+    expect(next.rois[0].points).toEqual(s.rois[0].points);
+  });
+
+  test("leaves other ROIs and all lines untouched", () => {
+    const c = config({
+      rois: [roi({ id: "roi-a" }), roi({ id: "roi-b" })],
+      lines: [line()],
+    });
+    const s = geometryConfigToEditorState(c);
+    const next = updateRoiLabel(s, "roi-a", "renamed");
+    expect(next.rois[1]).toEqual(s.rois[1]);
+    expect(next.lines).toEqual(s.lines);
+  });
+
+  test("unknown ROI id is a silent no-op", () => {
+    const s = geometryConfigToEditorState(config());
+    const next = updateRoiLabel(s, "nope", "x");
+    expect(next.rois).toEqual(s.rois);
   });
 });
 

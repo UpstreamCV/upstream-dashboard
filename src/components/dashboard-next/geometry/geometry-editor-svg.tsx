@@ -7,36 +7,40 @@ import type {
 } from "@/components/dashboard-next/geometry/geometry-editor-model";
 import { OVERLAY_COLORS } from "@/lib/perception/overlay-helpers";
 
-// P6-B1/B2 — pure SVG overlay for the geometry editor. Renders existing
-// lines (with endpoint handles), editable ROI polygons (with per-vertex
-// handles), and draft previews while drawing either shape.
+// P6-B1 / B2 / B3 — pure SVG overlay for the geometry editor.
 //
-// COORDINATE SYSTEM: no viewBox. Positions are percentages so they map to
-// the SVG's actual render box at any aspect ratio; sizes (stroke widths,
-// handle radii) are in device pixels so they read consistently regardless
-// of canvas size and never stretch into ovals when the frame's aspect
-// ratio differs from the canvas slot. An earlier viewBox="0 0 1 1" +
-// non-scaling-stroke attempt produced invisible-thin lines plus stretched
-// oval handles — see commit-log 2026-05-27 SVG rendering fix.
+// COORDINATE SYSTEM: no viewBox. Positions are percentages; sizes are
+// device pixels. See the commit-log "P6-B1 SVG rendering fix" entry for
+// the rationale (viewBox + non-scaling-stroke produced invisible lines
+// and stretched-oval handles).
 //
-// Selection is a SelectedGeometry union, so a single panel selection
-// drives styling for whichever shape is active. ROIs and lines have
-// separate id namespaces server-side (Pydantic _reject_duplicate_ids), so
-// "roi-1" and "line-1" coexisting is fine.
+// P6-B3 additions: three-tier ROI fill (normal / hovered / selected);
+// draft polygon gets a translucent fill once ≥ 3 vertices exist; an
+// `interactive` flag gates pointer-events on every existing-shape hit
+// target. When false (any non-Select tool), clicks pass through to the
+// canvas so the operator can place a draw-mode vertex on top of an
+// existing ROI without accidentally selecting it. Draft hit targets
+// (close-target on the first vertex) stay interactive regardless.
 
 interface GeometryEditorSvgProps {
   lines: GeometryLine[];
   rois: GeometryRoi[];
   selected: SelectedGeometry;
+  hoveredRoiId: string | null;
+  /** False during draw modes — existing shapes pass through clicks. */
+  interactive: boolean;
   lineDraft: { start: NormalizedPoint; current: NormalizedPoint } | null;
-  // ROI draft: placed vertices (≥ 1 once drawing starts) plus an optional
-  // cursor preview point. The first vertex is rendered as a close-target
-  // marker once ≥ 3 vertices exist, so clicking it finalizes the polygon.
   roiDraft:
     | { points: NormalizedPoint[]; current: NormalizedPoint | null }
     | null;
   onLineSelect: (id: string) => void;
-  onRoiSelect: (id: string) => void;
+  /**
+   * Polygon interior pointerdown. The panel decides whether this just
+   * selects or also starts a whole-ROI drag based on the active tool.
+   * Renamed from onRoiSelect in P6-B3 because the polygon now drives
+   * drag, not just selection.
+   */
+  onRoiPointerDown: (id: string, e: React.PointerEvent) => void;
   onLineEndpointPointerDown: (
     lineId: string,
     endpoint: "a" | "b",
@@ -47,7 +51,7 @@ interface GeometryEditorSvgProps {
     vertexIndex: number,
     e: React.PointerEvent,
   ) => void;
-  /** Click on the draft's first vertex when polygon has ≥ 3 points. */
+  onRoiHoverChange: (id: string | null) => void;
   onRoiDraftClose?: () => void;
 }
 
@@ -56,6 +60,7 @@ const LINE_WIDTH = 3;
 const LINE_WIDTH_SELECTED = 4;
 const HIT_TARGET_WIDTH = 18;          // transparent, just for easier click-on-line
 const ROI_STROKE = 2;
+const ROI_STROKE_HOVERED = 2.5;
 const ROI_STROKE_SELECTED = 3;
 const HANDLE_RADIUS = 9;
 const HANDLE_RADIUS_SELECTED = 11;
@@ -68,15 +73,17 @@ const ROI_VERTEX_STROKE = 2;
 const ROI_VERTEX_STROKE_SELECTED = 3;
 const ROI_CLOSE_TARGET_RADIUS = 10;
 
-// Color palette. Lines = amber (OVERLAY_COLORS.line). ROIs = sage
-// (OVERLAY_COLORS.box) so editable ROIs read distinctly from lines.
-// Selected = a brighter variant per shape kind.
+// Color palette. Lines = amber (OVERLAY_COLORS.line); ROIs = sage
+// (OVERLAY_COLORS.box). Three ROI fill tiers — single hue, varying
+// alpha — communicate "this polygon has an interior" at every state.
 const LINE_COLOR = OVERLAY_COLORS.line;            // "#e8c06b"
 const LINE_COLOR_SELECTED = "#fde68a";             // brighter amber
 const ROI_COLOR = OVERLAY_COLORS.box;              // "#5fb869"
 const ROI_COLOR_SELECTED = "#a7e3a8";              // brighter sage
-const ROI_FILL = "rgba(95, 184, 105, 0.16)";
-const ROI_FILL_SELECTED = "rgba(95, 184, 105, 0.28)";
+const ROI_FILL_NORMAL = "rgba(95, 184, 105, 0.10)";
+const ROI_FILL_HOVERED = "rgba(95, 184, 105, 0.22)";
+const ROI_FILL_SELECTED = "rgba(95, 184, 105, 0.34)";
+const ROI_FILL_DRAFT = "rgba(95, 184, 105, 0.18)";
 const HANDLE_FILL = "#ffffff";
 const HANDLE_INNER_FILL_SELECTED = LINE_COLOR_SELECTED;
 
@@ -92,29 +99,36 @@ export function GeometryEditorSvg({
   lines,
   rois,
   selected,
+  hoveredRoiId,
+  interactive,
   lineDraft,
   roiDraft,
   onLineSelect,
-  onRoiSelect,
+  onRoiPointerDown,
   onLineEndpointPointerDown,
   onRoiVertexPointerDown,
+  onRoiHoverChange,
   onRoiDraftClose,
 }: GeometryEditorSvgProps) {
   const selectedLineId = selected?.kind === "line" ? selected.id : null;
   const selectedRoiId = selected?.kind === "roi" ? selected.id : null;
   const draftCanClose = (roiDraft?.points.length ?? 0) >= 3;
 
+  // Hit-target enablement. Existing shapes opt back into pointer events
+  // only when the operator is in Select mode (otherwise clicks pass
+  // through to the canvas for placing draw-mode vertices).
+  const shapePointerEvents: React.CSSProperties["pointerEvents"] = interactive
+    ? "auto"
+    : "none";
+
   return (
     <svg
       className="absolute inset-0 h-full w-full"
-      // Background pointer events go to FrameCanvas (draft start /
-      // deselect). Individual hit targets opt back in via inline
-      // pointerEvents below.
+      // SVG root never eats events — individual hit targets opt in.
       style={{ pointerEvents: "none" }}
       aria-label="Geometry overlay"
     >
-      {/* Soft drop shadow for selected handles — gives them depth without
-          a layout shift. */}
+      {/* Soft drop shadow for selected handles. */}
       <defs>
         <filter id="handle-shadow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" />
@@ -129,27 +143,46 @@ export function GeometryEditorSvg({
         </filter>
       </defs>
 
-      {/* Editable ROI polygons. Click the polygon to select; click a
-          vertex handle to start dragging that specific vertex. */}
+      {/* Editable ROI polygons. Three fill states by selected/hover/normal.
+          Per-vertex handles render only when the ROI is selected. */}
       {rois.map((roi) => {
         const isSel = roi.id === selectedRoiId;
+        const isHov = roi.id === hoveredRoiId;
         const stroke = isSel ? ROI_COLOR_SELECTED : ROI_COLOR;
+        const fill = isSel
+          ? ROI_FILL_SELECTED
+          : isHov
+            ? ROI_FILL_HOVERED
+            : ROI_FILL_NORMAL;
+        const strokeWidth = isSel
+          ? ROI_STROKE_SELECTED
+          : isHov
+            ? ROI_STROKE_HOVERED
+            : ROI_STROKE;
         return (
           <g key={`roi-${roi.id}`}>
             <polygon
               points={roiPointsAttr(roi.points)}
-              fill={isSel ? ROI_FILL_SELECTED : ROI_FILL}
+              fill={fill}
               stroke={stroke}
-              strokeWidth={isSel ? ROI_STROKE_SELECTED : ROI_STROKE}
+              strokeWidth={strokeWidth}
               strokeLinejoin="round"
-              style={{ pointerEvents: "auto", cursor: "pointer" }}
+              style={{
+                pointerEvents: shapePointerEvents,
+                // `move` cursor signals draggability when interactive;
+                // otherwise the cursor reflects whatever tool is active
+                // (the FrameCanvas / panel set it via className).
+                cursor: interactive ? "move" : "default",
+              }}
               onPointerDown={(e) => {
                 e.stopPropagation();
-                onRoiSelect(roi.id);
+                onRoiPointerDown(roi.id, e);
               }}
+              onPointerEnter={() => onRoiHoverChange(roi.id)}
+              onPointerLeave={() => onRoiHoverChange(null)}
             />
-            {/* Per-vertex handles. Only rendered when the ROI is selected
-                to keep unselected ROIs visually quieter. */}
+            {/* Per-vertex handles on selected ROIs. Pointer events also
+                gated by `interactive` so they don't capture during draw. */}
             {isSel
               ? roi.points.map((p, idx) => (
                   <circle
@@ -161,16 +194,18 @@ export function GeometryEditorSvg({
                     stroke={ROI_COLOR_SELECTED}
                     strokeWidth={ROI_VERTEX_STROKE_SELECTED}
                     filter="url(#handle-shadow)"
-                    style={{ pointerEvents: "auto", cursor: "grab" }}
+                    style={{
+                      pointerEvents: shapePointerEvents,
+                      cursor: interactive ? "grab" : "default",
+                    }}
                     onPointerDown={(e) => {
                       e.stopPropagation();
                       onRoiVertexPointerDown(roi.id, idx, e);
                     }}
                   />
                 ))
-              : // Render small vertex dots on unselected ROIs so the
-                // shape's geometry is visible (otherwise it's just a
-                // filled blob). No pointer events on these.
+              : // Quiet vertex dots on unselected ROIs — purely visual,
+                // no pointer events.
                 roi.points.map((p, idx) => (
                   <circle
                     key={`v-${idx}`}
@@ -187,8 +222,8 @@ export function GeometryEditorSvg({
         );
       })}
 
-      {/* Lines — visible stroke + invisible wide hit-target so clicks near
-          the stroke still register. Endpoint handles render alongside. */}
+      {/* Lines — visible stroke + invisible wide hit-target + endpoint
+          handles. All hit-targets gated by `interactive`. */}
       {lines.map((line) => {
         const [a, b] = line.points;
         if (!a || !b) return null;
@@ -204,7 +239,10 @@ export function GeometryEditorSvg({
               stroke="transparent"
               strokeWidth={HIT_TARGET_WIDTH}
               strokeLinecap="round"
-              style={{ pointerEvents: "stroke", cursor: "pointer" }}
+              style={{
+                pointerEvents: interactive ? "stroke" : "none",
+                cursor: interactive ? "pointer" : "default",
+              }}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 onLineSelect(line.id);
@@ -234,7 +272,10 @@ export function GeometryEditorSvg({
                     stroke={color}
                     strokeWidth={sw}
                     filter={isSel ? "url(#handle-shadow)" : undefined}
-                    style={{ pointerEvents: "auto", cursor: "grab" }}
+                    style={{
+                      pointerEvents: shapePointerEvents,
+                      cursor: interactive ? "grab" : "default",
+                    }}
                     onPointerDown={(e) => {
                       e.stopPropagation();
                       onLineEndpointPointerDown(line.id, endpoint, e);
@@ -280,12 +321,22 @@ export function GeometryEditorSvg({
         </g>
       ) : null}
 
-      {/* ROI draft preview. Render the polyline through placed vertices,
-          add a preview segment from the last vertex to the cursor, and —
-          when 3+ vertices exist — render the first vertex as a clickable
-          close-target so the user can finish by closing the polygon. */}
+      {/* ROI draft preview. At 3+ vertices, fill the polygon's interior
+          with a draft-tier fill so the operator sees the shape they'd
+          commit if they hit Finish ROI right now. The fill sits UNDER
+          the polyline + cursor preview. */}
       {roiDraft && roiDraft.points.length > 0 ? (
         <g>
+          {/* Translucent fill for the in-progress polygon, ≥ 3 vertices. */}
+          {roiDraft.points.length >= 3 ? (
+            <polygon
+              points={roiPointsAttr(roiDraft.points)}
+              fill={ROI_FILL_DRAFT}
+              stroke="none"
+              style={{ pointerEvents: "none" }}
+            />
+          ) : null}
+
           {/* Solid polyline through committed draft vertices. */}
           {roiDraft.points.length >= 2 ? (
             <polyline
@@ -314,9 +365,8 @@ export function GeometryEditorSvg({
             />
           ) : null}
 
-          {/* Dashed close-back preview from cursor to first vertex once
-              we have at least 3 placed vertices — visualizes "click here
-              to close." */}
+          {/* Faint close-back preview from cursor to first vertex once
+              ≥ 3 vertices exist — visualizes "click here to close." */}
           {draftCanClose && roiDraft.current ? (
             <line
               x1={pct(roiDraft.current.x)}
@@ -332,7 +382,10 @@ export function GeometryEditorSvg({
             />
           ) : null}
 
-          {/* Vertex markers for each placed draft point. */}
+          {/* Vertex markers. First vertex grows into a close-target at
+              ≥ 3 vertices — that hit-target is ALWAYS interactive
+              regardless of `interactive`, because it belongs to the
+              active draft, not an existing shape. */}
           {roiDraft.points.map((p, idx) => {
             const isFirst = idx === 0;
             const isCloseTarget = isFirst && draftCanClose;
