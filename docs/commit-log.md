@@ -4,6 +4,27 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B2 hotfix: guard duplicate-vertex check on the empty draft
+
+**Subject:** P6-B2 (commit `7f38d8b`) crashed on the very first click in Draw ROI mode with `TypeError: Cannot read properties of undefined (reading 'x')`. The duplicate-adjacent-vertex guard in `handleCanvasPointerDown` dereferenced `draft.points[draft.points.length - 1]` unconditionally, but `handleToolDrawRoi` initializes the draft with `points: []`, so the first click hit `points[-1]` → `undefined.x` → boom.
+
+**Fix:** wrap the duplicate-adjacent check in `if (draft.points.length > 0) { … }`. Adding the first vertex now short-circuits past the check entirely (there's nothing to compare against on click #1) and falls through to the append branch.
+
+**Why this wasn't caught by tests:** the editor model is pure and unit-tested; the panel's click handler is component code that node-env vitest can't exercise (no jsdom). The bug lived in the panel, not the model. The fix adds an inline comment so the next contributor doesn't reintroduce it.
+
+**Files touched:**
+- `src/components/dashboard-next/geometry/geometry-editor-panel.tsx` — single-block guard around the duplicate-check inside `handleCanvasPointerDown`. No behavior change for any click after the first.
+
+**Verification:**
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — 165/165 (no test changes).
+- Manual: open Draw ROI → click the frame → vertex appears, no console error.
+
+**Docs updated:** this commit-log entry.
+
+---
+
 ## 2026-05-27 — P6-B2: Polygon ROI authoring (draw / select / drag vertices / delete)
 
 **Subject:** Extend the P6-B1 geometry editor with first-class polygon ROI authoring. Operators can now Draw ROI, click vertices on the latest frame, finish via button or by clicking the first vertex, drag individual ROI vertices, and delete ROIs — alongside the existing line authoring. ROI ids stay stable across edits (observation-lineage guarantee). The persistence boundary is unchanged: `editorStateToGeometryConfig` is still the only path to the wire shape, and the round-trip tests prove that editing lines preserves ROIs AND editing ROIs preserves lines.
