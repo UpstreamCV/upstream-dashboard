@@ -21,7 +21,7 @@ Every page reads real data from the upstream API via `serverFetch` + `useUpstrea
 | `/dashboard-next/cameras/[cameraId]/monitor` | `getCamera` + `getAgent` + `listStreamSessions` + `getLatestFrame` + `getLatestPerception` + `listValidations`; WHEP player + latest-frame poll + live perception overlay + latest-frame perception overlay | 7 s frame + 1 s live perception + Realtime push (layout) |
 | `/dashboard-next/cameras/[cameraId]/observations` | `listRecentObservations` | optional 5 s "live" toggle |
 | `/dashboard-next/cameras/[cameraId]/configure` | none — P6-B seam (links to geometry preflight) | n/a |
-| `/dashboard-next/cameras/[cameraId]/configure/geometry` | `getCameraGeometryConfig` + `getLatestFrame`; interactive editor (lines + polygon ROIs) via `saveGeometryAction` | n/a |
+| `/dashboard-next/cameras/[cameraId]/configure/geometry` | `getCameraGeometryConfig` + `getLatestFrame`; interactive editor — line + ROI authoring, whole-ROI drag, label editing, hover/selected fill states — via `saveGeometryAction` | n/a |
 | `/dashboard-next/cameras/[cameraId]/settings` | `getCamera` | n/a |
 | `/dashboard-next/cameras/[cameraId]/reliability` | none — stub, waiting on backend signals | n/a |
 | `/dashboard-next/agents` | `listAgents` | 10 s |

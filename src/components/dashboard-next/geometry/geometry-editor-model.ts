@@ -230,6 +230,109 @@ export function updateRoiPoint(
   };
 }
 
+// --- ROI whole-shape translation (P6-B3) -----------------------------------
+
+/**
+ * Given an ROI and a candidate (dx, dy) translation, return the largest
+ * delta that keeps every vertex inside the normalized [0, 1] frame. Both
+ * axes clamp independently — a request to move 0.5 right on an ROI whose
+ * rightmost vertex sits at 0.9 returns dx=0.1 (so the rightmost vertex
+ * snaps to 1.0); the y component is unaffected.
+ *
+ * Pure / total: an ROI with no points (shouldn't happen, but guard
+ * anyway) returns the unmodified delta — the caller can't move what
+ * doesn't exist.
+ */
+export function clampRoiTranslation(
+  roi: GeometryRoi,
+  dx: number,
+  dy: number,
+): { dx: number; dy: number } {
+  if (roi.points.length === 0) return { dx, dy };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of roi.points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return {
+    dx: Math.max(-minX, Math.min(1 - maxX, dx)),
+    dy: Math.max(-minY, Math.min(1 - maxY, dy)),
+  };
+}
+
+/**
+ * Translate every vertex of an ROI by a clamped delta. The clamp guarantees
+ * the resulting polygon stays inside [0, 1] x [0, 1]; the id / label /
+ * type / enabled are preserved across the move.
+ *
+ * Callers driving a live drag MUST capture the original ROI at drag-start
+ * and pass that snapshot — applying deltas against the in-flight ROI
+ * would compound rounding error across many moves and silently shrink
+ * the polygon. See startWholeRoiDrag in geometry-editor-panel.tsx.
+ */
+export function translateRoi(
+  roi: GeometryRoi,
+  dx: number,
+  dy: number,
+): GeometryRoi {
+  const clamped = clampRoiTranslation(roi, dx, dy);
+  return {
+    ...roi,
+    points: roi.points.map((p) => ({
+      x: p.x + clamped.dx,
+      y: p.y + clamped.dy,
+    })),
+  };
+}
+
+// --- label updates (P6-B3) -------------------------------------------------
+
+/**
+ * Replace a line's label. Preserves id, points, direction, enabled — the
+ * id stability matters because observation lineage will pin observations
+ * to the line's id once P6-D lands.
+ *
+ * The schema accepts `string | null`; we pass empty string through as-is
+ * so the operator can wipe a label by clearing the input. The server
+ * accepts empty strings (validator returns no issues for them).
+ *
+ * Unknown line id is a silent no-op.
+ */
+export function updateLineLabel(
+  state: EditorShapesState,
+  lineId: string,
+  label: string,
+): EditorShapesState {
+  return {
+    ...state,
+    lines: state.lines.map((line) =>
+      line.id === lineId ? { ...line, label } : line,
+    ),
+  };
+}
+
+/**
+ * Replace an ROI's label. Preserves id, points, type, enabled — same id
+ * stability guarantee as updateLineLabel.
+ */
+export function updateRoiLabel(
+  state: EditorShapesState,
+  roiId: string,
+  label: string,
+): EditorShapesState {
+  return {
+    ...state,
+    rois: state.rois.map((roi) =>
+      roi.id === roiId ? { ...roi, label } : roi,
+    ),
+  };
+}
+
 // --- coordinate helpers -----------------------------------------------------
 
 /**

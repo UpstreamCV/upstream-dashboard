@@ -38,8 +38,12 @@ import {
   createRoi,
   editorStateToGeometryConfig,
   geometryConfigToEditorState,
+  translateRoi,
+  updateLineLabel,
+  updateRoiLabel,
   updateRoiPoint,
 } from "@/components/dashboard-next/geometry/geometry-editor-model";
+import { GEOMETRY_LIMITS } from "@/lib/perception/geometry-schema";
 
 // P6-B1 / P6-B2 — the geometry editor's brains. Owns ALL editor-local
 // state and drives the Server Action. Composes FrameCanvas (image + coord
@@ -92,6 +96,7 @@ export function GeometryEditorPanel({
   const [shapes, setShapes] = useState<EditorShapesState>(initialShapes);
   const [tool, setTool] = useState<EditorTool>("select");
   const [selected, setSelected] = useState<SelectedGeometry>(null);
+  const [hoveredRoiId, setHoveredRoiId] = useState<string | null>(null);
   const [lineDraft, setLineDraft] = useState<LineDraft | null>(null);
   const [roiDraft, setRoiDraft] = useState<RoiDraft | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -285,6 +290,80 @@ export function GeometryEditorPanel({
     [],
   );
 
+  // Whole-shape drag: pointerdown on a ROI's polygon interior moves the
+  // entire polygon by the pointer delta. CRITICAL: snapshot the ROI at
+  // drag-start and apply deltas against the snapshot — applying against
+  // the in-flight ROI compounds tiny clamp-induced errors across many
+  // moves and silently shrinks the polygon.
+  const startWholeRoiDrag = useCallback(
+    (roiId: string, e: React.PointerEvent) => {
+      e.preventDefault();
+      const canvas = (e.target as Element).closest(
+        "[data-frame-canvas]",
+      ) as HTMLElement | null;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+
+      // Snapshot the original ROI BEFORE selection state mutates (it
+      // doesn't, but be safe — the drag math depends on this snapshot).
+      const originalRoi = shapes.rois.find((r) => r.id === roiId);
+      if (!originalRoi) return;
+      const originX = e.clientX;
+      const originY = e.clientY;
+
+      setSelected({ kind: "roi", id: roiId });
+
+      const move = (ev: PointerEvent) => {
+        const dx =
+          rect.width === 0 ? 0 : (ev.clientX - originX) / rect.width;
+        const dy =
+          rect.height === 0 ? 0 : (ev.clientY - originY) / rect.height;
+        const moved = translateRoi(originalRoi, dx, dy);
+        setShapes((prev) => ({
+          ...prev,
+          rois: prev.rois.map((r) => (r.id === roiId ? moved : r)),
+        }));
+        setDirty(true);
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    },
+    [shapes.rois],
+  );
+
+  // Polygon onPointerDown router: in Select mode, start whole-shape
+  // drag. In draw modes the SVG sets pointer-events: none on existing
+  // polygons (interactive=false), so we shouldn't reach this — but
+  // defense-in-depth gate by tool anyway.
+  const handleRoiPointerDown = useCallback(
+    (id: string, e: React.PointerEvent) => {
+      if (tool !== "select") return;
+      startWholeRoiDrag(id, e);
+    },
+    [tool, startWholeRoiDrag],
+  );
+
+  // --- label updates -------------------------------------------------------
+
+  const handleLabelChange = useCallback(
+    (label: string) => {
+      if (!selected) return;
+      if (selected.kind === "line") {
+        setShapes((prev) => updateLineLabel(prev, selected.id, label));
+      } else {
+        setShapes((prev) => updateRoiLabel(prev, selected.id, label));
+      }
+      setDirty(true);
+    },
+    [selected],
+  );
+
   // --- toolbar actions -----------------------------------------------------
 
   const handleDelete = useCallback(() => {
@@ -413,16 +492,25 @@ export function GeometryEditorPanel({
             lines={shapes.lines}
             rois={shapes.rois}
             selected={selected}
+            hoveredRoiId={hoveredRoiId}
+            interactive={tool === "select"}
             lineDraft={lineDraft}
             roiDraft={roiDraft}
             onLineSelect={(id) => setSelected({ kind: "line", id })}
-            onRoiSelect={(id) => setSelected({ kind: "roi", id })}
+            onRoiPointerDown={handleRoiPointerDown}
             onLineEndpointPointerDown={startEndpointDrag}
             onRoiVertexPointerDown={startRoiVertexDrag}
+            onRoiHoverChange={setHoveredRoiId}
             onRoiDraftClose={finalizeRoiDraft}
           />
         </FrameCanvas>
       </div>
+
+      <SelectedShapeCard
+        selected={selected}
+        shapes={shapes}
+        onLabelChange={handleLabelChange}
+      />
 
       <Hint
         tool={tool}
@@ -641,6 +729,71 @@ function Hint({
       "Click a shape to select it. Use Draw line or Draw ROI to add new geometry.";
   }
   return <p className="text-xs text-[var(--dn-text-50)]">{message}</p>;
+}
+
+// Selected-shape details card — slots between canvas and hint. Renders
+// nothing when nothing is selected. Owns the label input for the active
+// shape; typing marks dirty and the existing save flow validates labels
+// before round-tripping (validateGeometryLabel: ≤ 80 chars, allows
+// null/empty).
+//
+// The input is keyed by the selected shape's id so React remounts it
+// when the operator switches selection (otherwise focus + cursor would
+// linger from the previous shape's input). maxLength clamps client-side
+// so the operator can't overflow the schema cap.
+function SelectedShapeCard({
+  selected,
+  shapes,
+  onLabelChange,
+}: {
+  selected: SelectedGeometry;
+  shapes: EditorShapesState;
+  onLabelChange: (label: string) => void;
+}) {
+  if (!selected) return null;
+
+  const line =
+    selected.kind === "line"
+      ? shapes.lines.find((l) => l.id === selected.id) ?? null
+      : null;
+  const roi =
+    selected.kind === "roi"
+      ? shapes.rois.find((r) => r.id === selected.id) ?? null
+      : null;
+  if (!line && !roi) return null;
+
+  const kindLabel = selected.kind === "line" ? "LINE" : "ROI";
+  const id = selected.id;
+  const currentLabel = line?.label ?? roi?.label ?? "";
+  const geometrySummary = line
+    ? "2 endpoints"
+    : `${roi?.points.length ?? 0} vertices`;
+
+  return (
+    <div className="dn-tile flex flex-wrap items-center gap-3 p-3">
+      <span className="rounded-full bg-[var(--dn-creek-mid)]/15 px-2 py-0.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[var(--dn-creek-deep)]">
+        {kindLabel}
+      </span>
+      <span className="font-mono text-xs text-[var(--dn-text-50)]">{id}</span>
+      <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+        · {geometrySummary}
+      </span>
+      <label className="ml-auto flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+          Label
+        </span>
+        <input
+          key={id}
+          type="text"
+          value={currentLabel ?? ""}
+          maxLength={GEOMETRY_LIMITS.maxLabelLen}
+          onChange={(e) => onLabelChange(e.target.value)}
+          placeholder={selected.kind === "line" ? "Line label" : "ROI label"}
+          className="min-w-[12rem] rounded-md border border-black/10 bg-white px-2 py-1 text-sm text-black focus:border-[var(--dn-creek-mid)] focus:outline-none"
+        />
+      </label>
+    </div>
+  );
 }
 
 function ValidationList({ issues }: { issues: GeometryValidationIssue[] }) {

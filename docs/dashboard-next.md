@@ -315,6 +315,53 @@ No new rules — the existing `validateGeometryConfig` in `@/lib/perception/geom
 
 ROI geometry is the substrate for the next wave of processor observations: `processor.roi_occupancy`, `processor.zone_entered`, `processor.zone_exited`, `processor.dwell_started/_updated/_exceeded` (already typed in `src/lib/api/types.ts:ObservationType`). Once P6-C lands, the revision of the saved geometry pins which polygons produced which observations — that lineage is what reliability findings, review queues, and replay/shadow tests will rely on. The dashboard's job here is to make that authoring honest, stable, and inspectable, without leaking any drawing-library state into the persisted record.
 
+## P6-B3 — Visual Polish + Usability
+
+Three concrete improvements to the editor on top of P6-B2, plus one undiagnosed bug fix. Same route, same schema, same save flow — purely UX surface work.
+
+### Three-tier ROI fill + hover state
+
+`<GeometryEditorSvg>` now drives a `hoveredRoiId` prop. Polygons render with one of three sage-tier fills (single hue, varying alpha):
+
+| State | Fill alpha | Stroke | Stroke width |
+|---|---|---|---|
+| Normal | 0.10 | `OVERLAY_COLORS.box` | 2 |
+| Hovered | 0.22 | `OVERLAY_COLORS.box` | 2.5 |
+| Selected | 0.34 | `#a7e3a8` (brighter sage) | 3 |
+| Draft (≥ 3 pts) | 0.18 | none (polyline supplies outline) | n/a |
+
+Hover state is editor-local only (`hoveredRoiId: string | null` in the panel); it persists nothing. Polygons fire `onPointerEnter` / `onPointerLeave` → `onRoiHoverChange(id | null)`. Draft polygons now also fill at 3+ vertices so the operator sees the would-be shape before they hit Finish ROI.
+
+### Whole-ROI drag
+
+In Select mode, clicking and dragging an ROI polygon's interior translates the entire polygon by the pointer delta. Mechanic mirrors `startRoiVertexDrag` but uses a different model helper:
+
+- `clampRoiTranslation(roi, dx, dy)` (`geometry-editor-model.ts`) computes the bounding box and clamps `(dx, dy)` to `[-minX, 1 − maxX] × [-minY, 1 − maxY]` so the polygon can never escape `[0, 1]`.
+- `translateRoi(roi, dx, dy)` applies the clamped delta to every vertex while preserving `id` / `label` / `type` / `enabled`.
+
+The panel's `startWholeRoiDrag` snapshots the **original ROI at drag-start** and applies deltas against the snapshot. Applying against the in-flight ROI would compound clamp rounding across many moves and silently shrink the polygon — explicit anti-pattern noted in the helper's JSDoc.
+
+Vertex drag still works as before; vertex pointerdown stops propagation so it never escalates to a whole-shape drag.
+
+### Selected-shape label editing
+
+A new `<SelectedShapeCard>` slots between the canvas and the Hint line, rendering only when something is selected. It shows the shape kind (`LINE` / `ROI`), id (monospace), a vertex-count summary, and a `<input maxLength={GEOMETRY_LIMITS.maxLabelLen}>` for the label. Typing fires `updateLineLabel` or `updateRoiLabel` (model helpers); ID, geometry, direction, type, enabled — all preserved. Saving rounds the new label through the same `validateGeometryConfig` flow; invalid labels never reach the api-server.
+
+The input is keyed by the selected shape's id so React remounts it when the operator switches selection.
+
+### Cross-tool click fix (undiagnosed P6-B2 bug)
+
+In P6-B2, clicking an existing ROI polygon while in Draw line or Draw ROI mode silently selected the ROI and ate the click — making it impossible to place a vertex on top of an existing shape. Fixed by passing `interactive: boolean` to the SVG; when `false` (any non-Select tool), existing shape hit targets (polygon, line stroke, line endpoint handles, ROI vertex handles) set `pointer-events: none` so clicks pass through to the canvas underneath. Draft hit targets (the first-vertex close-target during ROI draw) stay `pointer-events: auto` because they belong to the active draft, not an existing shape.
+
+### Out of scope (still)
+
+- Perception overlay context toggle inside the editor (P6-B4+).
+- Line direction editor — direction stays `"any"` from `createLine`. The `GeometryLineDirection` enum is already in `LINE_DIRECTIONS`; toolbar add is a future commit.
+- Undo / redo (P6-B4+).
+- "Refresh frame" button (P6-B4+).
+- Autosave — explicit Save button stays the only commit path.
+- Per-vertex insert / delete — shape-level delete only.
+
 ## Token security
 
 The plaintext API token is shown exactly once at creation, then never again — neither stored nor logged. `src/components/dashboard-next/token-create-dialog-next.tsx` is the *only* component in the entire app that ever holds the plaintext (in its `secret` React state).
