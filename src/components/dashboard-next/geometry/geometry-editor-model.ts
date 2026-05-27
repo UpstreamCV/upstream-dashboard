@@ -19,8 +19,25 @@ import type {
 } from "@/lib/api/types";
 import { GEOMETRY_LIMITS } from "@/lib/perception/geometry-schema";
 
-/** Active editor tool. P6-B1 only supports line authoring. */
-export type EditorTool = "select" | "draw";
+/**
+ * Active editor tool. P6-B1 added "draw" (line authoring); P6-B2 adds
+ * "draw-roi" (polygon ROI authoring). Future tools (exclusion zones,
+ * direction-aware lines) extend this union.
+ */
+export type EditorTool = "select" | "draw" | "draw-roi";
+
+/**
+ * What's currently selected. Selection is shape-typed because line and
+ * ROI use different edit affordances (line endpoints "a"/"b", ROI vertex
+ * indices) and the toolbar copy needs to differ ("Delete line" vs
+ * "Delete ROI"). Drag state is tracked separately via window-level
+ * pointer listeners; the selection just means "this shape is highlighted
+ * and is the target for the Delete button."
+ */
+export type SelectedGeometry =
+  | { kind: "line"; id: string }
+  | { kind: "roi"; id: string }
+  | null;
 
 /** Normalized canvas-space point; both axes clamped to [0, 1]. */
 export interface NormalizedPoint {
@@ -135,6 +152,81 @@ export function createLine(
     points: [start, end],
     direction: "any",
     enabled: true,
+  };
+}
+
+// --- ROI id / label generators ---------------------------------------------
+
+/**
+ * Yield a unique `roi-N` slug for a new ROI. Same gap-filling rule as
+ * `createLineId` — `["roi-1", "roi-3"]` returns `"roi-2"`. ROIs and lines
+ * are separate id namespaces server-side (per the Pydantic
+ * `_reject_duplicate_ids` validator), so a `line-1` doesn't reserve a
+ * `roi-1`.
+ */
+export function createRoiId(existing: GeometryRoi[]): string {
+  const used = new Set<number>();
+  for (const roi of existing) {
+    const match = /^roi-(\d+)$/.exec(roi.id);
+    if (match) used.add(Number.parseInt(match[1], 10));
+  }
+  let n = 1;
+  while (used.has(n)) n += 1;
+  return `roi-${n}`;
+}
+
+/** Mirror of `createRoiId` for the friendly label — `roi-2` → `ROI 2`. */
+export function createDefaultRoiLabel(existing: GeometryRoi[]): string {
+  const id = createRoiId(existing);
+  const n = id.slice("roi-".length);
+  return `ROI ${n}`;
+}
+
+/**
+ * Build a fresh `GeometryRoi` from at least three vertices. Assigns a
+ * unique id + default label, `type: "polygon"`, `enabled: true`. Vertices
+ * are stored verbatim — callers must ensure they're normalized.
+ */
+export function createRoi(
+  points: NormalizedPoint[],
+  existing: GeometryRoi[],
+): GeometryRoi {
+  return {
+    id: createRoiId(existing),
+    label: createDefaultRoiLabel(existing),
+    type: "polygon",
+    points,
+    enabled: true,
+  };
+}
+
+/**
+ * Replace a single vertex on the named ROI. Returns a new shapes state;
+ * other ROIs, all lines, and the frame pass through unchanged. The ROI's
+ * id / label / type / enabled are preserved — vertex edits never change
+ * the ROI's identity (so observation lineage tied to roi-N survives an
+ * edit, which matters once reliability features land in P6-D+).
+ *
+ * Out-of-range vertexIndex is a silent no-op — the caller (the SVG drag
+ * handler) is the only producer of these indices and always sources them
+ * from the ROI's current vertex count.
+ */
+export function updateRoiPoint(
+  state: EditorShapesState,
+  roiId: string,
+  vertexIndex: number,
+  p: NormalizedPoint,
+): EditorShapesState {
+  return {
+    ...state,
+    rois: state.rois.map((roi) => {
+      if (roi.id !== roiId) return roi;
+      if (vertexIndex < 0 || vertexIndex >= roi.points.length) return roi;
+      const points = roi.points.map((existing, idx) =>
+        idx === vertexIndex ? p : existing,
+      );
+      return { ...roi, points };
+    }),
   };
 }
 

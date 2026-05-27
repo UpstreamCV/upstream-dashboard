@@ -28,8 +28,7 @@ export default async function CameraConfigurePage({
             Geometry editor
           </h3>
           <p className="mt-1 text-sm text-[var(--dn-text-50)]">
-            Draw and save counting lines on the latest frame. ROIs come next
-            in P6-B2.
+            Draw and save counting lines and polygon ROIs on the latest frame.
           </p>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dn-creek-mid)]/15 px-3 py-1.5 text-sm font-bold text-[var(--dn-creek-deep)] transition group-hover:bg-[var(--dn-creek-mid)]/25">
