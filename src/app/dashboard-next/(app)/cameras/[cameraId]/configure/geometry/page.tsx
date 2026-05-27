@@ -104,13 +104,13 @@ function HeaderTile({
   let body: string;
   if (!hasFrame) {
     body =
-      "This camera hasn't captured a frame yet. Start a stream session to capture one — then draw counting lines here.";
+      "This camera hasn't captured a frame yet. Start a stream session to capture one — then draw lines and ROIs here.";
   } else if (isDefault) {
     body =
-      "No operator-saved geometry yet. Draw counting lines on the latest frame and save to commit revision 1.";
+      "No operator-saved geometry yet. Draw counting lines and polygon ROIs on the latest frame, then save to commit revision 1.";
   } else {
     body =
-      "Draw counting lines on the latest frame. ROIs render read-only and pass through saves unchanged.";
+      "Draw counting lines and polygon ROIs on the latest frame. ROIs are saved as normalized polygons; lines as two normalized endpoints.";
   }
   return (
     <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
@@ -124,7 +124,7 @@ function HeaderTile({
             geometry editor
           </p>
           <h2 className="mt-1 font-bold text-[clamp(1.1rem,1.6vw,1.5rem)] text-black">
-            Counting lines on the latest frame
+            Counting lines and polygon ROIs on the latest frame
           </h2>
           <p className="mt-2 text-sm text-[var(--dn-text-50)]">{body}</p>
         </div>

@@ -4,6 +4,80 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B2: Polygon ROI authoring (draw / select / drag vertices / delete)
+
+**Subject:** Extend the P6-B1 geometry editor with first-class polygon ROI authoring. Operators can now Draw ROI, click vertices on the latest frame, finish via button or by clicking the first vertex, drag individual ROI vertices, and delete ROIs — alongside the existing line authoring. ROI ids stay stable across edits (observation-lineage guarantee). The persistence boundary is unchanged: `editorStateToGeometryConfig` is still the only path to the wire shape, and the round-trip tests prove that editing lines preserves ROIs AND editing ROIs preserves lines.
+
+**Why:** P6-B1 shipped line authoring with ROIs as read-only passthrough. ROI geometry is the substrate for half the processor's observation vocabulary (`processor.roi_occupancy`, `processor.zone_entered`, `processor.zone_exited`, `processor.dwell_*`), so authoring it from the dashboard is a prerequisite for P6-C's processor consumption and everything downstream — reliability findings, review queues, replay/shadow tests, version comparisons. The schema already supported it (the api-server's Pydantic `GeometryRoi` has been live since P6-A); P6-B2 wires the dashboard side.
+
+**Selection model upgrade.** Replaced `selectedLineId: string | null` with `SelectedGeometry = { kind: "line"; id } | { kind: "roi"; id } | null` so the same selection drives both shape kinds. The toolbar's Delete button label adapts (`Delete line` / `Delete ROI` / `Delete`). Drag state stays separate from selection (tracked via window-level pointer listeners) — clicking a handle selects + starts dragging in one gesture.
+
+**Drawing flow.** Click Draw ROI → tool switches → each click on the canvas adds a vertex → the SVG renders a solid polyline through placed vertices, a dashed segment from the last placed vertex to the cursor, and (at 3+ vertices) a faint close-back segment from cursor to the first vertex. The first vertex itself becomes a clickable close-target. Finish ROI button enables at 3+ vertices. **Escape** cancels the entire draft. **Backspace** removes the last vertex (low-cost, asked for as optional). On finish, the new ROI is appended, the tool switches back to Select, and the new ROI is auto-selected so Delete / drag are immediately available.
+
+**Vertex drag.** Same mechanic as line endpoint drag: `onPointerDown` on a handle attaches window-level `pointermove` / `pointerup` / `pointercancel` listeners (mirroring `scroll-area.tsx` — no `setPointerCapture`), translates pointer coords to normalized via the canvas's `getBoundingClientRect` + `clampNormalized`, applies via `updateRoiPoint(state, roiId, vertexIndex, p)` from the model. The helper preserves ROI id / label / type / enabled across vertex edits — the api-server's `_reject_duplicate_ids` validator and the future observation-lineage guarantee both depend on this stability.
+
+**ROI styling.** Editable ROIs use sage-green stroke + translucent fill from `OVERLAY_COLORS.box`, with a brighter sage when selected and a translucent fill bump. Unselected ROIs render quiet vertex dots so the polygon's geometry is visible without competing visually with selected shapes. Selected ROIs expose per-vertex drag handles (white-filled circles, sage ring, soft drop shadow). All sizing is in device pixels via percentages-not-viewBox — same pattern as the P6-B1 SVG fix, so circles stay circular at any frame aspect.
+
+**No new validation.** `validateGeometryConfig` from `@/lib/perception/geometry-schema` already enforced every ROI rule the api-server's Pydantic models enforce: 3–64 vertices, normalized point bounds, slug-pattern IDs, ≤ 20 ROIs, ≤ 80-char labels, no duplicate ROI ids, no `type` other than `polygon`. P6-B2 simply exercises rules that P6-B1 already tested. Same validation flow: client-side before save, server-side inside the action as defense-in-depth.
+
+**Files touched:**
+
+- **Modified — model + tests** (`src/components/dashboard-next/geometry/`)
+  - `geometry-editor-model.ts` — added `EditorTool` value `"draw-roi"`; added `SelectedGeometry` union; new helpers `createRoiId` (gap-filling slug, separate namespace from lines per Pydantic `_reject_duplicate_ids`), `createDefaultRoiLabel`, `createRoi`, `updateRoiPoint` (preserves id/label/type/enabled; out-of-range index is a silent no-op).
+  - `geometry-editor-model.test.ts` — **+19 tests** (146 → 165). ROI id gap-filling, ROI/line id-namespace independence, `createRoi` defaults, `updateRoiPoint` preserves identity, vertex editing doesn't drop lines, unknown ROI id is a no-op, ROI-authoring round-trip via `editorStateToGeometryConfig`, ROI ids stable across multi-vertex edits.
+- **Modified — SVG + panel**
+  - `geometry-editor-svg.tsx` — full rewrite. `selectedLineId` prop replaced with `selected: SelectedGeometry`; `draft` split into `lineDraft` + `roiDraft`. ROIs render editable (sage palette, per-vertex handles on selection, quiet vertex dots otherwise). ROI draft renders polyline + cursor preview + close-back preview + clickable close-target on first vertex. Same percentages-not-viewBox approach as the existing line rendering.
+  - `geometry-editor-panel.tsx` — added `Draw ROI` toolbar chip; added ROI draft state; added vertex drag via window listeners; unified Delete handler across `selected.kind`; toolbar shows `Finish ROI` + `Cancel` while drafting; Backspace pops last vertex; Hint copy adapts to tool + draft state + selection.
+- **Modified — copy + docs**
+  - `configure/page.tsx` — CTA description: "Draw and save counting lines and polygon ROIs on the latest frame."
+  - `configure/geometry/page.tsx` — header tile body updated across all three branches (no-frame / `is_default` / saved) to mention ROIs.
+  - `docs/dashboard-next.md` — added a "P6-B2 — Polygon ROI Authoring" section after "P6-B1". Updated the "Out of scope" list under P6-B1 (P6-B2 promoted to implemented, P6-B3 remains).
+  - `src/app/dashboard-next/README.md` — geometry row in status table updated.
+  - `docs/commit-log.md` — this entry.
+
+**Files NOT touched:**
+
+- `src/lib/api/types.ts`, `src/lib/api/geometry.ts`, `src/lib/perception/geometry-schema.ts`, the server-side contract — no schema or wire-shape changes. All rules + types from P6-A/P6-B Preflight already covered editable ROIs.
+- `actions.ts` — `saveGeometryAction` already accepts any `GeometryConfig`; ROIs ride the same path lines do.
+- `frame-canvas.tsx` — coordinate translation is shape-agnostic; nothing to change.
+
+**Verification:**
+
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — **165 passing across 11 files** (+19 new in `geometry-editor-model.test.ts`).
+- `npm run build` — known limitation: page-data step fails locally without `NEXT_PUBLIC_*` env vars; compile + typecheck pass.
+- Repo-wide grep guards returned nothing:
+  - No legacy dark classes in any geometry file.
+  - No `fabric` / `konva` / `paper-js` / `d3-` imports — editor is still hand-rolled SVG.
+  - No raw `rtsp:` / `srt:` / `mediamtx` / `service_role` strings.
+
+**Manual verification (post-deploy):**
+
+- `/dashboard-next/cameras/<id>/configure/geometry` renders.
+- Existing lines + ROIs load.
+- Switch to Draw ROI; click 3+ vertices; Finish ROI commits; ROI appears + auto-selects.
+- Click the first vertex (after 3+ are placed) closes the polygon instead.
+- Escape cancels a draft; Backspace pops the last vertex.
+- Click a saved ROI polygon to select; vertex handles appear; drag a vertex; geometry updates live; release commits.
+- Delete ROI removes only that ROI; other ROIs + all lines untouched.
+- Line authoring still works (P6-B1 regression check); editing a line doesn't drop ROIs.
+- Save: client validates → action runs → toast → sidebar revision bumps via `router.refresh()`.
+- Refresh page after save → lines + ROIs reload.
+- Invalid geometry (e.g. via a forged config that fails the slug regex) → inline validation list; action not called; local edits stay.
+- No fake reliability metrics anywhere.
+
+**Follow-up:**
+
+1. **P6-B live verification** — save real line + ROI geometry against the deployed api-server; confirm round-trip on refresh; note any aesthetics or UX friction.
+2. **P6-B3 polish** — undo/redo, label editing, line direction toggle, "Refresh frame" button, perception overlay as read-only context toggle.
+3. **P6-C** — processor consumes saved geometry on next session; Monitor surfaces `applied revision`.
+4. **P6-D** — end-to-end verification; reliability tab gets its first real signal (revision-of-observation lineage).
+
+**Docs updated:** this commit-log entry, `docs/dashboard-next.md` (new P6-B2 section + P6-B1 "out of scope" trim), `src/app/dashboard-next/README.md` (status table row).
+
+---
+
 ## 2026-05-27 — P6-B1 SVG rendering fix: visible lines + nicer endpoint handles
 
 **Subject:** The geometry editor that shipped in `62cd5d5` rendered endpoint handles correctly but the lines connecting them were effectively invisible, and the handles themselves stretched into ovals at non-square frame aspect ratios. Rewrite `GeometryEditorSvg` to use percentages for positions and device pixels for sizes — no viewBox, no `non-scaling-stroke`. Style the handles as larger white-filled circles with colored rings, plus a soft drop shadow + inner dot when selected.

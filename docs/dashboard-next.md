@@ -282,8 +282,38 @@ Same source of truth in both places — no inlined rules.
 
 ### Out of scope (deferred)
 
-- **P6-B2** — polygon ROI authoring (vertex add/move/delete, close polygon, min/max-vertex enforcement). The current ROI passthrough becomes editable.
 - **P6-B3** — undo/redo, "Refresh frame" button, live perception overlay as read-only context toggle, line direction toggle in toolbar, label editing.
+
+## P6-B2 — Polygon ROI Authoring
+
+Extends the P6-B1 editor with first-class polygon ROI authoring at the same route. Operators draw, select, drag-vertex, and delete ROIs alongside lines. The persistence boundary is unchanged — `editorStateToGeometryConfig` still converts editor-local state to the wire shape, and both line and ROI passthroughs are verified by `geometry-editor-model.test.ts`.
+
+### What changed from P6-B1
+
+- **Selection** is now shape-typed via `SelectedGeometry = { kind: "line"; id } | { kind: "roi"; id } | null`. The toolbar's Delete button label adapts (`Delete line` / `Delete ROI` / `Delete`).
+- **New tool** `"draw-roi"` in `EditorTool`. The toolbar adds a Draw ROI chip alongside Draw line.
+- **ROI rendering** in `GeometryEditorSvg` is editable (sage-green fill + stroke, brighter when selected). Unselected ROIs render quiet vertex dots; selected ROIs expose per-vertex drag handles. The earlier dim "read-only" styling is gone.
+- **ROI draft preview** — placed vertices connect via a solid polyline; a dashed segment previews the next vertex from cursor; once 3+ vertices exist, a faint close-back segment shows from cursor to first vertex, and the first vertex itself becomes a clickable close target.
+
+### Drawing flow
+
+1. Click **Draw ROI** in the toolbar — tool switches to `draw-roi`, an empty draft (`points: []`) is created.
+2. Click on the frame to add each vertex. The hint at the bottom of the editor tracks progress (`1 of 3 minimum vertices placed`, etc.).
+3. **Finish ROI** button enables at 3+ vertices. Alternatively, click the first vertex (rendered as a slightly larger close-target) to close the polygon.
+4. **Escape** cancels the draft. **Backspace** removes the most recent vertex.
+5. On finish, the ROI is appended to `shapes.rois`, the editor switches back to Select and selects the new ROI so Delete and vertex drag are immediately available.
+
+### Vertex drag
+
+Identical mechanic to line endpoint drag — `onPointerDown` on a handle attaches window-level `pointermove` / `pointerup` / `pointercancel` listeners, computes the new normalized point via `getBoundingClientRect()` + `clampNormalized`, calls `updateRoiPoint(shapes, roiId, vertexIndex, p)` from the model. ROI id, label, type, and enabled flag are preserved across vertex edits — the observation-lineage guarantee that matters for reliability surfaces once P6-D wires the revision into observations.
+
+### Validation
+
+No new rules — the existing `validateGeometryConfig` in `@/lib/perception/geometry-schema` already enforces every ROI rule the api-server's Pydantic models enforce (≥ 3 / ≤ 64 vertices, normalized point bounds, slug-pattern IDs, ≤ 20 ROIs, ≤ 80-char labels, no duplicate ROI ids, no `type` other than `polygon`). Validation runs client-side before the save action AND server-side inside the action.
+
+### Reliability framing
+
+ROI geometry is the substrate for the next wave of processor observations: `processor.roi_occupancy`, `processor.zone_entered`, `processor.zone_exited`, `processor.dwell_started/_updated/_exceeded` (already typed in `src/lib/api/types.ts:ObservationType`). Once P6-C lands, the revision of the saved geometry pins which polygons produced which observations — that lineage is what reliability findings, review queues, and replay/shadow tests will rely on. The dashboard's job here is to make that authoring honest, stable, and inspectable, without leaking any drawing-library state into the persisted record.
 
 ## Token security
 

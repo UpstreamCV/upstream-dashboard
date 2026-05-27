@@ -11,8 +11,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import clsx from "clsx";
 import {
+  CheckCheck,
   MousePointer2,
   PencilLine,
+  Pentagon,
   Save,
   Trash2,
   Undo2,
@@ -30,33 +32,46 @@ import {
   type EditorShapesState,
   type EditorTool,
   type NormalizedPoint,
+  type SelectedGeometry,
   clampNormalized,
   createLine,
+  createRoi,
   editorStateToGeometryConfig,
   geometryConfigToEditorState,
+  updateRoiPoint,
 } from "@/components/dashboard-next/geometry/geometry-editor-model";
 
-// P6-B1 — the geometry editor's brains. Owns ALL editor-local state and
-// drives the Server Action. Composes FrameCanvas (image + coord
+// P6-B1 / P6-B2 — the geometry editor's brains. Owns ALL editor-local
+// state and drives the Server Action. Composes FrameCanvas (image + coord
 // translation) with GeometryEditorSvg (shape rendering + per-element
 // pointer events). The persistence boundary is enforced by
 // `editorStateToGeometryConfig` from geometry-editor-model.ts — only the
 // `GeometryConfig` shape is ever sent to the api-server.
 //
-// Scope: line authoring only. Existing ROIs render read-only inside
-// GeometryEditorSvg and pass through saves unchanged via the model's
-// passthrough — see ROI-preservation test in geometry-editor-model.test.ts.
+// Scope: line and polygon ROI authoring. Selection is shape-typed via
+// SelectedGeometry so the toolbar / Delete button can adapt to either
+// kind. Vertex / endpoint drag uses window-level pointer listeners
+// (mirroring scroll-area.tsx).
 
 interface GeometryEditorPanelProps {
   cameraId: string;
   latestFrame: LatestFrame;
   initialConfig: GeometryConfig;
-  // True when the server returned the probe-default (is_default: true) — we
-  // ignore those starter shapes and let the operator author from scratch.
+  // True when the server returned the probe-default (is_default: true) —
+  // we ignore those starter shapes and let the operator author from
+  // scratch.
   startEmpty: boolean;
 }
 
-type Draft = { start: NormalizedPoint; current: NormalizedPoint };
+type LineDraft = { start: NormalizedPoint; current: NormalizedPoint };
+
+// ROI draft accumulates placed vertices and tracks the cursor while
+// hovering for the dashed preview. Once `points.length >= 3` the user
+// can finalize via Finish button or by clicking the first vertex.
+type RoiDraft = {
+  points: NormalizedPoint[];
+  current: NormalizedPoint | null;
+};
 
 export function GeometryEditorPanel({
   cameraId,
@@ -66,8 +81,6 @@ export function GeometryEditorPanel({
 }: GeometryEditorPanelProps) {
   const router = useRouter();
 
-  // Snapshot the initial editor state once. Discard reverts to this; the
-  // memo prevents accidental re-derivation on every render.
   const initialShapes = useMemo<EditorShapesState>(
     () =>
       geometryConfigToEditorState(initialConfig, {
@@ -78,85 +91,144 @@ export function GeometryEditorPanel({
 
   const [shapes, setShapes] = useState<EditorShapesState>(initialShapes);
   const [tool, setTool] = useState<EditorTool>("select");
-  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [selected, setSelected] = useState<SelectedGeometry>(null);
+  const [lineDraft, setLineDraft] = useState<LineDraft | null>(null);
+  const [roiDraft, setRoiDraft] = useState<RoiDraft | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveIssues, setSaveIssues] = useState<GeometryValidationIssue[]>([]);
   const [saving, startTransition] = useTransition();
 
-  // Escape cancels an in-flight draft without finalizing.
+  // --- ROI draft finalization (used by both the Finish button and the
+  // close-on-first-vertex SVG hit target) ---------------------------------
+
+  const finalizeRoiDraft = useCallback(() => {
+    setRoiDraft((draft) => {
+      if (!draft || draft.points.length < 3) return draft;
+      setShapes((prev) => {
+        const fresh = createRoi(draft.points, prev.rois);
+        const next = { ...prev, rois: [...prev.rois, fresh] };
+        // Defer selection of the new ROI so the toolbar's Delete button
+        // immediately points at it.
+        setSelected({ kind: "roi", id: fresh.id });
+        return next;
+      });
+      setDirty(true);
+      setTool("select");
+      return null;
+    });
+  }, []);
+
+  const cancelRoiDraft = useCallback(() => setRoiDraft(null), []);
+
+  // Keyboard shortcuts while a draft is in flight: Escape cancels either
+  // draft; Backspace pops the last ROI vertex during ROI drawing.
   useEffect(() => {
-    if (!draft) return;
+    if (!lineDraft && !roiDraft) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDraft(null);
+      if (e.key === "Escape") {
+        setLineDraft(null);
+        setRoiDraft(null);
+        return;
+      }
+      if (
+        roiDraft &&
+        (e.key === "Backspace" || e.key === "Delete") &&
+        // Don't steal Backspace from a focused input (none in the editor
+        // today, but a forward-looking guard).
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        setRoiDraft((draft) => {
+          if (!draft) return draft;
+          if (draft.points.length <= 1) return null;
+          return { ...draft, points: draft.points.slice(0, -1) };
+        });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [draft]);
+  }, [lineDraft, roiDraft]);
 
   // --- canvas pointer handlers ---------------------------------------------
 
   const handleCanvasPointerDown = useCallback(
     (p: NormalizedPoint) => {
-      // Draw tool: first click sets start, second click finalizes.
       if (tool === "draw") {
-        if (!draft) {
-          setDraft({ start: p, current: p });
+        if (!lineDraft) {
+          setLineDraft({ start: p, current: p });
           return;
         }
-        // Reject zero-length lines (the api-server would 422 these anyway
-        // through the points-out-of-range or duplicate-point rules; better
-        // to silently skip than create garbage).
+        // Reject near-zero-length lines (api-server would reject too via
+        // point-out-of-range adjacency; better to silently skip than
+        // create garbage).
         if (
-          Math.abs(p.x - draft.start.x) < 0.005 &&
-          Math.abs(p.y - draft.start.y) < 0.005
+          Math.abs(p.x - lineDraft.start.x) < 0.005 &&
+          Math.abs(p.y - lineDraft.start.y) < 0.005
         ) {
           return;
         }
         setShapes((prev) => {
-          const fresh = createLine(draft.start, p, prev.lines);
+          const fresh = createLine(lineDraft.start, p, prev.lines);
           return { ...prev, lines: [...prev.lines, fresh] };
         });
-        setDraft(null);
+        setLineDraft(null);
         setDirty(true);
-        setSelectedLineId(null);
+        setSelected(null);
         setTool("select");
         return;
       }
+
+      if (tool === "draw-roi") {
+        setRoiDraft((draft) => {
+          if (!draft) return { points: [p], current: null };
+          // Reject duplicate-adjacent points (a misclick at the same
+          // spot). The api-server's coord validation would let these
+          // through, but a degenerate polygon helps nobody.
+          const last = draft.points[draft.points.length - 1];
+          if (
+            Math.abs(p.x - last.x) < 0.005 &&
+            Math.abs(p.y - last.y) < 0.005
+          ) {
+            return draft;
+          }
+          return { ...draft, points: [...draft.points, p] };
+        });
+        return;
+      }
+
       // Select tool: clicking background deselects.
-      setSelectedLineId(null);
+      setSelected(null);
     },
-    [tool, draft],
+    [tool, lineDraft],
   );
 
   const handleCanvasPointerMove = useCallback(
     (p: NormalizedPoint) => {
-      // Live-update the draft's second endpoint while drawing.
-      if (tool === "draw" && draft) {
-        setDraft({ start: draft.start, current: p });
+      if (tool === "draw" && lineDraft) {
+        setLineDraft({ start: lineDraft.start, current: p });
+        return;
+      }
+      if (tool === "draw-roi" && roiDraft) {
+        setRoiDraft((draft) => (draft ? { ...draft, current: p } : draft));
       }
     },
-    [tool, draft],
+    [tool, lineDraft, roiDraft],
   );
 
-  // --- endpoint drag (window-level listeners, mirroring scroll-area.tsx) ---
+  // --- line endpoint + ROI vertex drag (window-level listeners) ------------
 
   const startEndpointDrag = useCallback(
     (lineId: string, endpoint: "a" | "b", e: React.PointerEvent) => {
       e.preventDefault();
-      // Snapshot the FrameCanvas rect at drag-start. The endpoint handle
-      // is INSIDE FrameCanvas, so `closest` finds the canvas container —
-      // not the SVG (which doesn't carry pointer-event geometry we want).
       const canvas = (e.target as Element).closest(
         "[data-frame-canvas]",
       ) as HTMLElement | null;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
 
-      // Select the line so the toolbar's Delete button is enabled
-      // immediately and the SVG visually highlights the dragged line.
-      setSelectedLineId(lineId);
+      setSelected({ kind: "line", id: lineId });
 
       const move = (ev: PointerEvent) => {
         const p = clampNormalized({
@@ -178,22 +250,63 @@ export function GeometryEditorPanel({
     [],
   );
 
+  const startRoiVertexDrag = useCallback(
+    (roiId: string, vertexIndex: number, e: React.PointerEvent) => {
+      e.preventDefault();
+      const canvas = (e.target as Element).closest(
+        "[data-frame-canvas]",
+      ) as HTMLElement | null;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+
+      setSelected({ kind: "roi", id: roiId });
+
+      const move = (ev: PointerEvent) => {
+        const p = clampNormalized({
+          x: rect.width === 0 ? 0 : (ev.clientX - rect.left) / rect.width,
+          y: rect.height === 0 ? 0 : (ev.clientY - rect.top) / rect.height,
+        });
+        setShapes((prev) => updateRoiPoint(prev, roiId, vertexIndex, p));
+        setDirty(true);
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    },
+    [],
+  );
+
   // --- toolbar actions -----------------------------------------------------
 
   const handleDelete = useCallback(() => {
-    if (!selectedLineId) return;
-    setShapes((prev) => ({
-      ...prev,
-      lines: prev.lines.filter((l) => l.id !== selectedLineId),
-    }));
-    setSelectedLineId(null);
+    if (!selected) return;
+    if (selected.kind === "line") {
+      const id = selected.id;
+      setShapes((prev) => ({
+        ...prev,
+        lines: prev.lines.filter((l) => l.id !== id),
+      }));
+    } else {
+      const id = selected.id;
+      setShapes((prev) => ({
+        ...prev,
+        rois: prev.rois.filter((r) => r.id !== id),
+      }));
+    }
+    setSelected(null);
     setDirty(true);
-  }, [selectedLineId]);
+  }, [selected]);
 
   const handleDiscard = useCallback(() => {
     setShapes(initialShapes);
-    setSelectedLineId(null);
-    setDraft(null);
+    setSelected(null);
+    setLineDraft(null);
+    setRoiDraft(null);
     setSaveError(null);
     setSaveIssues([]);
     setDirty(false);
@@ -202,9 +315,6 @@ export function GeometryEditorPanel({
   const handleSave = useCallback(() => {
     const nextConfig = editorStateToGeometryConfig(shapes);
 
-    // Client-side validation first — keeps a structurally broken save off
-    // the network. The Server Action re-runs the same validator as
-    // defense-in-depth.
     const issues = validateGeometryConfig(nextConfig);
     if (issues.length > 0) {
       const summary = createGeometryValidationSummary(issues);
@@ -227,8 +337,6 @@ export function GeometryEditorPanel({
       if (result.ok) {
         toast.success("Geometry saved");
         setDirty(false);
-        // router.refresh() so the sidebar's server-rendered status panel
-        // re-fetches and shows the bumped revision.
         router.refresh();
         return;
       }
@@ -242,18 +350,30 @@ export function GeometryEditorPanel({
 
   const handleToolSelect = useCallback(() => {
     setTool("select");
-    setDraft(null);
+    setLineDraft(null);
+    setRoiDraft(null);
   }, []);
 
   const handleToolDraw = useCallback(() => {
     setTool("draw");
-    setSelectedLineId(null);
+    setSelected(null);
+    setRoiDraft(null);
+  }, []);
+
+  const handleToolDrawRoi = useCallback(() => {
+    setTool("draw-roi");
+    setSelected(null);
+    setLineDraft(null);
+    setRoiDraft({ points: [], current: null });
   }, []);
 
   // --- render --------------------------------------------------------------
 
   const lineCount = shapes.lines.length;
   const roiCount = shapes.rois.length;
+  const draftCanFinish = (roiDraft?.points.length ?? 0) >= 3;
+  const cursorClass =
+    tool === "draw" || tool === "draw-roi" ? "cursor-crosshair" : "cursor-default";
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -261,14 +381,18 @@ export function GeometryEditorPanel({
         tool={tool}
         dirty={dirty}
         saving={saving}
-        selectedLineId={selectedLineId}
+        selected={selected}
+        draftCanFinish={draftCanFinish}
         lineCount={lineCount}
         roiCount={roiCount}
         onToolSelect={handleToolSelect}
         onToolDraw={handleToolDraw}
+        onToolDrawRoi={handleToolDrawRoi}
         onDelete={handleDelete}
         onDiscard={handleDiscard}
         onSave={handleSave}
+        onFinishRoi={finalizeRoiDraft}
+        onCancelRoi={cancelRoiDraft}
       />
 
       <div data-frame-canvas>
@@ -279,23 +403,29 @@ export function GeometryEditorPanel({
           frameHeight={latestFrame.height}
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handleCanvasPointerMove}
-          className={clsx(
-            "rounded-xl",
-            tool === "draw" ? "cursor-crosshair" : "cursor-default",
-          )}
+          className={clsx("rounded-xl", cursorClass)}
         >
           <GeometryEditorSvg
             lines={shapes.lines}
             rois={shapes.rois}
-            selectedLineId={selectedLineId}
-            draft={draft}
-            onLineSelect={setSelectedLineId}
-            onEndpointPointerDown={startEndpointDrag}
+            selected={selected}
+            lineDraft={lineDraft}
+            roiDraft={roiDraft}
+            onLineSelect={(id) => setSelected({ kind: "line", id })}
+            onRoiSelect={(id) => setSelected({ kind: "roi", id })}
+            onLineEndpointPointerDown={startEndpointDrag}
+            onRoiVertexPointerDown={startRoiVertexDrag}
+            onRoiDraftClose={finalizeRoiDraft}
           />
         </FrameCanvas>
       </div>
 
-      <Hint tool={tool} draft={draft} selectedLineId={selectedLineId} />
+      <Hint
+        tool={tool}
+        lineDraft={lineDraft}
+        roiDraft={roiDraft}
+        selected={selected}
+      />
 
       {saveIssues.length > 0 ? (
         <ValidationList issues={saveIssues} />
@@ -317,29 +447,45 @@ interface ToolbarProps {
   tool: EditorTool;
   dirty: boolean;
   saving: boolean;
-  selectedLineId: string | null;
+  selected: SelectedGeometry;
+  draftCanFinish: boolean;
   lineCount: number;
   roiCount: number;
   onToolSelect: () => void;
   onToolDraw: () => void;
+  onToolDrawRoi: () => void;
   onDelete: () => void;
   onDiscard: () => void;
   onSave: () => void;
+  onFinishRoi: () => void;
+  onCancelRoi: () => void;
 }
 
 function Toolbar({
   tool,
   dirty,
   saving,
-  selectedLineId,
+  selected,
+  draftCanFinish,
   lineCount,
   roiCount,
   onToolSelect,
   onToolDraw,
+  onToolDrawRoi,
   onDelete,
   onDiscard,
   onSave,
+  onFinishRoi,
+  onCancelRoi,
 }: ToolbarProps) {
+  const deleteLabel =
+    selected?.kind === "roi"
+      ? "Delete ROI"
+      : selected?.kind === "line"
+        ? "Delete line"
+        : "Delete";
+  const drawingRoi = tool === "draw-roi";
+
   return (
     <div className="dn-tile flex flex-wrap items-center gap-2 p-2.5">
       <ToolChip
@@ -354,20 +500,48 @@ function Toolbar({
         icon={PencilLine}
         label="Draw line"
       />
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={!selectedLineId}
-        className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        Delete line
-      </button>
+      <ToolChip
+        active={tool === "draw-roi"}
+        onClick={onToolDrawRoi}
+        icon={Pentagon}
+        label="Draw ROI"
+      />
+
+      {drawingRoi ? (
+        <>
+          <button
+            type="button"
+            onClick={onFinishRoi}
+            disabled={!draftCanFinish}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-2.5 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <CheckCheck className="h-3.5 w-3.5" />
+            Finish ROI
+          </button>
+          <button
+            type="button"
+            onClick={onCancelRoi}
+            className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04]"
+          >
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={!selected}
+          className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          {deleteLabel}
+        </button>
+      )}
 
       <div className="ml-auto flex flex-wrap items-center gap-2">
         <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
           {lineCount} line{lineCount === 1 ? "" : "s"} · {roiCount} ROI
-          {roiCount === 1 ? "" : "s"} (read-only)
+          {roiCount === 1 ? "" : "s"}
         </span>
         {dirty ? (
           <span className="rounded-full bg-[#8a6d1f]/15 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-[#8a6d1f]">
@@ -428,27 +602,41 @@ function ToolChip({
 
 function Hint({
   tool,
-  draft,
-  selectedLineId,
+  lineDraft,
+  roiDraft,
+  selected,
 }: {
   tool: EditorTool;
-  draft: Draft | null;
-  selectedLineId: string | null;
+  lineDraft: LineDraft | null;
+  roiDraft: RoiDraft | null;
+  selected: SelectedGeometry;
 }) {
   let message: string;
-  if (tool === "draw" && draft) {
+  if (tool === "draw" && lineDraft) {
     message = "Click to place the second endpoint. Esc cancels.";
   } else if (tool === "draw") {
     message = "Click on the frame to place the line's first endpoint.";
-  } else if (selectedLineId) {
+  } else if (tool === "draw-roi") {
+    const n = roiDraft?.points.length ?? 0;
+    if (n === 0) {
+      message = "Click to add polygon points. ROIs need at least 3 vertices.";
+    } else if (n < 3) {
+      message = `${n} of 3 minimum vertices placed. Keep clicking. Esc cancels, Backspace removes last.`;
+    } else {
+      message =
+        "Click Finish ROI, or click the first vertex to close the polygon. Esc cancels, Backspace removes last.";
+    }
+  } else if (selected?.kind === "line") {
     message =
       "Drag an endpoint to move it, or use Delete line to remove this line.";
+  } else if (selected?.kind === "roi") {
+    message =
+      "Drag a vertex to move it, or use Delete ROI to remove this ROI.";
   } else {
-    message = "Click a line to select it, or switch to Draw line to add one.";
+    message =
+      "Click a shape to select it. Use Draw line or Draw ROI to add new geometry.";
   }
-  return (
-    <p className="text-xs text-[var(--dn-text-50)]">{message}</p>
-  );
+  return <p className="text-xs text-[var(--dn-text-50)]">{message}</p>;
 }
 
 function ValidationList({ issues }: { issues: GeometryValidationIssue[] }) {
