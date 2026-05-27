@@ -4,6 +4,60 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B Preflight: geometry types, schema validation, server-only API wrapper, read-only preflight route
+
+**Subject:** Wire up the geometry data contract end-to-end before any drawing UI ships. TS mirrors of the `upstream-api-server` Pydantic geometry schema land in `src/lib/api/types.ts`. A pure validation module at `src/lib/perception/geometry-schema.ts` mirrors every server-side rule (slug pattern, point bounds, shape/label limits, duplicate-id rules, schema version, coordinate space) with 35 unit tests. A server-only API wrapper at `src/lib/api/geometry.ts` exposes `getCameraGeometryConfig` (GET) and `updateCameraGeometryConfig` (PUT) against the existing P6-A endpoints. A new read-only preflight page at `/dashboard-next/cameras/[cameraId]/configure/geometry/` renders the camera's real saved `GeometryConfigRecord` — revision banner, ROI/line counts, raw JSON inspector — with no drawing UI. The Configure tab gains a "Geometry editor → Open preflight" card linking into it. `CameraTabs` widens its active-state matching from exact to prefix so the Configure tab stays highlighted on `/configure/geometry`.
+
+**Why:** P6-B is the latest-frame geometry editor; before any drawing code, the data contract must be proven against the real backend rather than guessed. Exploration found the geometry endpoints already exist as **P6-A** on `upstream-api-server` (`GET`/`PUT /v1/cameras/{camera_id}/geometry-config`, Pydantic source at `../upstream-api-server/src/upstream_api/schemas/geometry.py`, contract at `../upstream-api-server/docs/api-contracts.md` ~line 818) — so this pass aligns the dashboard with the real shapes instead of inventing parallel ones. The original task spec proposed `coordinate_space: "normalized_frame"`, `version` on the record, `applies_to_classes`, `a_to_b`/`b_to_a` direction values, a `/versions` list endpoint, and `CameraGeometrySpec`/`CameraGeometryVersion` type names — none of which match the real contract (which uses `"normalized"`, `revision`, `extra="forbid"` so `applies_to_classes` is 422-rejected, `"any"`/`"in"`/`"out"` directions, no versions endpoint, `GeometryConfig`/`GeometryConfigRecord`). The dashboard side follows the server.
+
+**What's deliberately deferred:** no drawing tools, no canvas, no Server Action for PUT — the editor in P6-B owns the mutation UI surface and the optimistic/error/revalidate flow. No `listCameraGeometryVersions` wrapper because the server endpoint does not exist. No legacy `/dashboard` changes.
+
+**Always-200 GET awareness:** the server returns a system probe-default `GeometryConfig` (near-full-frame entry ROI + horizontal entry line) with `is_default: true`, `revision: 0`, `id: null` when a camera has no operator save. There's no "no geometry yet" 404 branch — only `camera_not_found` (404) when the camera id is unknown or belongs to a different account. The preflight banner distinguishes "Probe default — no operator save yet" from "Operator-saved" so operators can tell which they're looking at.
+
+**Files touched:**
+
+- **Added**
+  - `src/lib/api/geometry.ts` — server-only wrapper. `getCameraGeometryConfig` (unwraps `geometry_config` envelope); `updateCameraGeometryConfig` (PUT `{config: GeometryConfig}` body, returns the new record with `is_default: false` and `revision` bumped). Header comment documents the always-200 GET behavior, the missing versions endpoint, and the deferred Server Action.
+  - `src/lib/perception/geometry-schema.ts` — pure validation. Exports `GEOMETRY_LIMITS`, `LINE_DIRECTIONS`, `GeometryValidationIssue`, `validateNormalizedPoint`, `validateGeometrySlug`, `validateGeometryLabel`, `validateGeometryRoi`, `validateGeometryLine`, `validateGeometryConfig`, `createGeometryValidationSummary`. Mirrors `_MAX_SHAPES=20`, `_MAX_ROI_POINTS=64`, `_MAX_LABEL_LEN=80`, line points exactly 2, ROI points ≥ 3, slug regex `^[a-z0-9][a-z0-9-]{0,63}$`, schema version 1, coordinate space `"normalized"`, duplicate-id rejection (ROI and line namespaces separate, matching server).
+  - `src/lib/perception/geometry-schema.test.ts` — 35 tests. Covers every rule the api-server enforces, plus regression guards: a `direction: "a_to_b"` test catches the user's proposed-but-wrong value; a `coordinate_space: "normalized_frame"` test catches the proposed-but-wrong value.
+  - `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/page.tsx` — Server Component preflight. Fetches via `getCameraGeometryConfig`; 404 → `notFound()`. Renders: status banner (revision, `is_default` distinction, updated_at), shape counts (ROI / line totals + "≤ 20 of each" copy), roadmap card with the persistence warning, raw JSON inspector. No drawing tools, no save buttons, no editable inputs.
+- **Modified**
+  - `src/lib/api/types.ts` — appended a "Camera Geometry Config (P6-A)" section: `GeometryLineDirection`, `GeometryPoint`, `GeometryFrame`, `GeometryRoi`, `GeometryLine`, `GeometryConfig`, `GeometryConfigRecord`, `GeometryConfigResponse`, `GeometryConfigUpdateRequest`. Header comment cites Pydantic source + contract location.
+  - `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/page.tsx` — added the "Geometry editor → Open preflight" card at the top. Kept the existing P6-B/C/D roadmap bullets. Page now takes `params` to build the geometry href.
+  - `src/components/dashboard-next/camera-tabs.tsx` — one-line widening of `active` from `pathname === href` to `pathname === href || pathname.startsWith(\`${href}/\`)` so sub-routes keep their parent tab highlighted. Inline comment notes that this is safe today because no tab href is a prefix of another, and to revisit if that overlap ever arises.
+  - `docs/dashboard-next.md` — added a "P6-B Preflight — Geometry API + Schema Contract" section after "Shared perception lib": source-of-truth pointers, what's in place, always-200 GET awareness, persistence-boundary rationale, why versioning matters for reliability (observation lineage, findings provenance, replay/shadow tests), P6-C/P6-D outlook. Updated the camera-detail tabs table to add a Configure → Geometry row.
+  - `src/app/dashboard-next/README.md` — appended the `/configure/geometry` row to the status table, calling out `getCameraGeometryConfig` as the source.
+  - `docs/commit-log.md` — this entry.
+
+**Verification:**
+
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — 129 passing (35 new in `geometry-schema.test.ts`), all 10 test files green.
+- `npm run build` — known limitation: page-data step fails locally without `NEXT_PUBLIC_*` env vars (same as prior commits). Compile + typecheck pass.
+- Repo-wide grep guards return nothing:
+  - `git grep -nE 'className=.*\b(glass|text-accent|text-ink-|border-glass-stroke|bg-glass-bg)\b' src/components/dashboard-next/ src/app/dashboard-next/` — no legacy dark classes in the new files.
+  - `git grep -nE '\b(rtsp:|srt:|mediamtx|service_role)\b' src/` — no secrets/raw URLs.
+  - `git grep -nE '\b(applies_to_classes|a_to_b|b_to_a|normalized_frame|listCameraGeometryVersions|CameraGeometrySpec|CameraGeometryVersion)\b' src/` — guards against the original task proposal's wrong names sneaking back in alongside the real ones.
+- Manual browser verification deferred to deploy preview:
+  - `/dashboard-next/cameras/<id>/configure` renders; "Geometry editor → Open preflight" card visible at the top; existing P6-B/C/D roadmap bullets below.
+  - Clicking "Open preflight" navigates to `/dashboard-next/cameras/<id>/configure/geometry`.
+  - On the preflight: revision banner shows real `r0`/`r1+` + `is_default` distinction; ROI/line counts non-fake; raw JSON renders the real `GeometryConfigRecord`; back link returns to Configure.
+  - For a never-configured camera: banner reads "Probe default — no operator save yet", `r0`, no timestamps (verifies always-200 contract).
+  - Bad `cameraId`: renders the existing `not-found.tsx`.
+  - Configure tab in the tab strip stays highlighted on both `/configure` and `/configure/geometry`.
+
+**Follow-up — P6-B (actual editor):**
+
+1. Add `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/actions.ts` wrapping `updateCameraGeometryConfig` with a Server Action. Pattern: mirror `src/app/dashboard-next/(app)/api-tokens/actions.ts`. Call `validateGeometryConfig` from `@/lib/perception/geometry-schema` **before** the upstream call so authoring errors render inline.
+2. Build `<FrameCanvas>` + `<GeometryEditorSvg>` under `src/components/dashboard-next/geometry/`. Working state is editor-local (selection, drag origin, undo); convert to `GeometryConfig` only at save time. `<PerceptionOverlaySvg>` from `@/lib/perception/overlay-svg` becomes a read-only "current detections" layer over the editor.
+3. The preflight page evolves into the editor route — its read-only revision/JSON panels become a "current saved" sidebar; the canvas takes the main column.
+4. After P6-B, P6-C lights up processor consumption (the `/v1/internal/processor/eligible-sessions` field already wire-carries `geometry_config`); P6-D verifies end-to-end.
+
+**Docs updated:** this commit-log entry, `docs/dashboard-next.md` (new "P6-B Preflight" section + tabs table row), `src/app/dashboard-next/README.md` (status table row).
+
+---
+
 ## 2026-05-27 — dashboard-next foundation: lift P5 to shared lib, port to /dashboard-next, refactor camera detail into tabbed workflow
 
 **Subject:** Prepare `/dashboard-next` for P6-B (latest-frame geometry editor) without promoting or deleting legacy `/dashboard`. Three coordinated moves: (1) lift the pure perception helpers out of the legacy route directory into a shared `src/lib/perception/` module so both segments share them; (2) port the three P5 surfaces (latest-frame perception overlay P5-D, live perception overlay P5-E, recent observations panel P5-B) to dashboard-next with light-theme styling; (3) refactor `/dashboard-next/cameras/[cameraId]` into a tabbed workflow with persistent header (Monitor / Observations / Configure / Settings / Reliability) so the Configure tab becomes the explicit seam for the upcoming geometry editor.
