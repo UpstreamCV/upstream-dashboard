@@ -4,6 +4,86 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B1: Latest-Frame Geometry Editor Foundation (line authoring, ROI passthrough, Server Action)
+
+**Subject:** Turn the geometry preflight at `/dashboard-next/cameras/[cameraId]/configure/geometry` into a real editor. Operators draw, select, drag, and delete **counting lines** on top of the camera's latest frame and save them via `saveGeometryAction` wrapping `updateCameraGeometryConfig`. Polygon ROI authoring is deferred to P6-B2 — existing ROIs render read-only inside the editor and pass through saves unchanged via `editorStateToGeometryConfig`. The page is a two-column server layout: editor canvas + toolbar in the main column, server-rendered status panel + persistence-boundary card + collapsed raw-JSON disclosure in the sidebar.
+
+**Why:** This is the first real authoring surface that produces geometry the processor will consume in P6-C. Building it on the existing P6-B Preflight foundation (`75960ee` + `3e98ed7`) means we already have the types, the schema validator, the API wrapper, the route placeholder, and the read-only sidebar panels. The work this commit adds is the editor brains, the canvas + SVG primitives, the Server Action, and the page wiring. Everything stays inside `/dashboard-next` — no legacy `/dashboard` changes, no promotion, no backend changes (the api-server's P6-A endpoints are already shipped).
+
+**Persistence boundary preserved.** Editor-local state (tool, selection, draft line, drag state, dirty flag, save state) lives in the panel component and never leaves the browser. The only shape that round-trips to the api-server is `GeometryConfig` from `src/lib/api/types.ts`, built by `editorStateToGeometryConfig` from the model module. The api-server's `extra="forbid"` Pydantic config would reject any field that leaked, but the model is the boundary that prevents the leak in the first place. The ROI-preservation test in `geometry-editor-model.test.ts` is the load-bearing safety guarantee: editing lines does not drop ROIs from the saved config.
+
+**Validation in two places.** `validateGeometryConfig` from `@/lib/perception/geometry-schema` runs client-side inside `handleSave` (keeps structurally broken saves off the network; renders inline `<ValidationList>`) AND server-side inside the action (defense-in-depth against forged payloads). Same source of truth — no inlined rules. The action returns issues in its result envelope so the call site can render them identically.
+
+**Drag pattern.** Endpoint drags use the existing `scroll-area.tsx` precedent: `onPointerDown` on the handle attaches window-level `pointermove` / `pointerup` / `pointercancel` listeners that detach on release. No `setPointerCapture`. Coordinates translate through `getBoundingClientRect()` snapshotted at drag-start, then `clampNormalized` keeps them in `[0, 1]`.
+
+**Probe-default behavior.** When the server returns `is_default: true` (the synthesized probe-default record from `GET /v1/cameras/{id}/geometry-config`), the editor opens empty — the model's `geometryConfigToEditorState(config, { ignoreDefault: true })` drops the synthesized lines + ROIs so operators author fresh geometry instead of inheriting scaffolding. The sidebar status panel still shows `r0 — Not configured yet` so the relationship between "save here" and "revision bumps to r1" stays explicit.
+
+**Files touched:**
+
+- **Added — geometry components** (`src/components/dashboard-next/geometry/`)
+  - `geometry-editor-model.ts` — pure helpers + types. `EditorTool`, `NormalizedPoint`, `EditorShapesState`, `geometryConfigToEditorState` (with `ignoreDefault` for the probe-default case), `editorStateToGeometryConfig` (the ROI/frame passthrough boundary), `createLineId` (gap-filling slug generator), `createDefaultLineLabel`, `createLine`, `clampNormalized`.
+  - `geometry-editor-model.test.ts` — 17 vitest tests. Round-trip preservation (with ROIs), ROI passthrough survives line edits, deleting a line removes only that line, slug-pattern compliance, gap-filling ID generator, label/id mirror, clamping.
+  - `frame-canvas.tsx` — pure layout primitive. Image underlay with frame-aspect-ratio + 16/9 fallback, SVG slot, `getBoundingClientRect`-based pointer translation through `clampNormalized`, `touch-action: none`.
+  - `geometry-editor-svg.tsx` — pure SVG renderer. Lines + endpoint handles + dashed draft preview, read-only ROI polygons (dimmer). `viewBox="0 0 1 1"` + `preserveAspectRatio="none"` so normalized coords map directly to canvas pixels. `vectorEffect="non-scaling-stroke"` everywhere.
+  - `geometry-editor-panel.tsx` — Client Component brains. Owns tool / selection / draft / dirty / save state. Wires window-level drag listeners (mirroring `scroll-area.tsx`). Toolbar: Select / Draw line / Delete line / shape counts + dirty badge / Discard changes / Save. Inline `<ValidationList>` for save-time issues.
+- **Added — Server Action**
+  - `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/actions.ts` — `saveGeometryAction(formData)`. Parses `camera_id` + `config` (JSON), re-runs `validateGeometryConfig` server-side, calls `updateCameraGeometryConfig`, `revalidatePath`s the editor route. Returns `{ ok: true, message, record } | { ok: false, message, issues? }`. Never throws into the UI.
+- **Modified**
+  - `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/page.tsx` — rewritten. Server-side fetches `getCameraGeometryConfig` + `getLatestFrame`. Renders the back link + header tile + two-column grid (editor main / sidebar aside). The sidebar's `<StatusPanel>` distinguishes `r0 — Not configured yet` from `Operator-saved` + timestamps. `<NoFrameEmptyState>` renders in the main column when `latestFrame` is null (camera hasn't streamed yet). `<RawJsonDetails>` stays collapsed for engineers.
+  - `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/page.tsx` — CTA text "Open preflight" → "Open editor"; description updated to "Draw and save counting lines on the latest frame. ROIs come next in P6-B2."
+  - `docs/dashboard-next.md` — new "P6-B1 — Latest-Frame Geometry Editor Foundation" section after "P6-B Preflight". Documents the editor module split, persistence boundary, probe-default behavior, validation flow, and out-of-scope items (P6-B2 ROIs, P6-B3 polish).
+  - `src/app/dashboard-next/README.md` — geometry row in the status table updated to reflect the editor is live.
+  - `docs/commit-log.md` — this entry.
+
+**What's deliberately deferred:**
+
+- Polygon ROI authoring (P6-B2). Existing ROIs render read-only and pass through unchanged.
+- Live perception overlay as read-only context inside the editor (P6-B3).
+- "Refresh frame" button — the underlay is server-rendered at page load and stays fixed during editing (P6-B3).
+- Undo/redo (P6-B3).
+- Line direction toggle in toolbar — every new line gets `direction: "any"` (P6-B3 adds the toggle).
+- Label editing — new lines get an auto-generated `Line N` label (P6-B3).
+- Component interaction tests — `vitest.config.ts` is `environment: "node"`; no jsdom installed. Coverage focuses on the pure helpers in `geometry-editor-model.test.ts`.
+
+**Verification:**
+
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — 146 passing across 11 files (+17 new in `geometry-editor-model.test.ts`).
+- `npm run build` — known limitation: page-data step fails locally without `NEXT_PUBLIC_*` env vars (same as prior commits). Compile + typecheck pass.
+- Repo-wide grep guards returned nothing:
+  - `git grep -nE 'className=.*\b(glass|text-accent|text-ink-|border-glass-stroke|bg-glass-bg)\b' src/components/dashboard-next/geometry/ src/app/dashboard-next/` — no legacy dark classes in the new files.
+  - `git grep -nE '\b(rtsp:|srt:|mediamtx|service_role)\b' src/` — no secrets/raw URLs.
+  - `git grep -n 'fabric\|konva\|paper-js' src/` — no drawing-library imports; the editor is hand-rolled SVG against the UpStream schema.
+
+**Manual verification (post-deploy):**
+
+- `/dashboard-next/cameras/<id>/configure` — CTA reads "Open editor" with updated description.
+- `/dashboard-next/cameras/<id>/configure/geometry`:
+  - **No latest frame**: `<NoFrameEmptyState>` in main column; sidebar still visible.
+  - **Operator-saved + frame present**: editor loads with current lines; existing ROIs render dim/read-only; toolbar shows live shape counts.
+  - **Probe-default + frame present (`is_default: true`)**: editor opens empty; sidebar status panel reads `r0 — Not configured yet`.
+- Switch to Draw tool → click start point → cursor draws a dashed preview → second click finalizes the line; tool auto-switches back to Select; "unsaved" badge appears.
+- Select a line by clicking its stroke; Delete line button enables.
+- Drag an endpoint; handle follows cursor; line geometry updates live; release commits the new position.
+- Delete the selected line; other lines unchanged.
+- Save: client validates → action runs → toast "Geometry saved" → sidebar revision bumps via `router.refresh()`.
+- Save with invalid geometry (e.g. a forged config that fails the slug regex): inline `<ValidationList>` shows; action not called; local edits stay.
+- ROI preservation: load a camera with both ROIs and lines, edit a line, save, refresh — ROIs unchanged.
+- No polygon ROI editing exposed (no vertex handles, no "Add ROI" tool).
+
+**Follow-up:**
+
+1. **P6-B live verification** — operator saves a real config against the deployed api-server; confirm revision bump + GET round-trip on refresh.
+2. **P6-B2** — polygon ROI authoring (vertex add/move/delete, polygon close, min/max-vertex enforcement via `GEOMETRY_LIMITS`). The current passthrough becomes editable.
+3. **P6-B3** — editor polish (undo/redo, refresh frame, perception overlay context toggle, line direction toggle, label editing).
+4. **P6-C** — processor consumes saved geometry on next session. Dashboard surfaces "applied revision" in Monitor.
+5. **P6-D** — end-to-end verification; reliability tab gets its first real signal (revision-of-observation lineage).
+
+**Docs updated:** this commit-log entry, `docs/dashboard-next.md` (new P6-B1 section), `src/app/dashboard-next/README.md` (status table row).
+
+---
+
 ## 2026-05-27 — P6-B Preflight UX fix: render unconfigured empty state instead of probe-default shapes
 
 **Subject:** The preflight page rendered shape counts and the raw JSON inspector unconditionally, which surfaced the api-server's synthesized probe-default config (1 ROI + 1 line) as if it were operator-saved data on every fresh camera. Operator feedback: "It looks like maybe the shapes aren't sensitive to each camera — i am looking at a clean camera and it shouldn't have shapes or crossing lines but it says it has both." The shapes were the same on every clean camera because they were the system default. Branch the preflight on `is_default`: for unconfigured cameras (`is_default: true`, `revision: 0`) render an explicit "No geometry saved" empty state instead of the shape counts + JSON inspector; keep the raw record available behind a collapsed `<details>` for engineers verifying the contract. For operator-saved configs (`is_default: false`) render the full status banner + counts + JSON layout as before.
