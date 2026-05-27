@@ -4,6 +4,33 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B3 hotfix: polygons never actually rendered (percentages aren't valid in `<polygon points>`)
+
+**Subject:** P6-B2 introduced ROI polygon rendering using percentage strings in the SVG `<polygon>` `points` attribute (`"10%,10% 90%,10% 50%,90%"`). The SVG spec defines `points` as a list of `<number>` coordinates — percentages are **not** valid syntax there, unlike `<line>` `x1`/`y1` or `<circle>` `cx`/`cy`. Browsers silently parsed only the numeric prefix, so every ROI polygon rendered at near-origin device pixels (~10×10 px), invisible at typical canvas sizes. That's why none of the P6-B3 polish landed visually: no rendered polygon means no border to see, no fill to read, no hover events to fire, no interior to grab for whole-shape drag. Lines and handles always worked because their attributes accept percentages.
+
+**Operator report:** "im not seeing the hover do anything, i dont see the roi edge lines which we want, i cant drag interior, i dont see any fills" — all four symptoms trace to one root cause: the polygon never rendered as a usable shape.
+
+**Fix:** measure the SVG's actual rendered size with a `ResizeObserver` (initial measurement via `useLayoutEffect` + `getBoundingClientRect` so polygons are correct on first paint, then ResizeObserver tracks container reshapes). Polygon `points` are computed in **device pixels** = `normalized × measuredSize`. Lines and circles continue to use percentages — their attributes accept them. The SVG keeps no viewBox, so the polygon's device-pixel coords just slot into the SVG's implicit viewport coordinate system.
+
+**Why no test caught this:** the rendering bug is pure SVG markup behavior; `vitest.config.ts` is `environment: "node"`, so the test surface is pure helpers + node-renderable SSR. Component visual behavior isn't reachable. The bug also wasn't caught by `npm run build`'s typecheck because TypeScript doesn't know SVG's `points` attribute grammar — to TS it's just a string.
+
+**Lesson for the next contributor (codified in the file header comment):** `<line>` + `<circle>` accept percentages on position attrs (`x1`/`y1`/`cx`/`cy`/`r`); `<polygon>` + `<polyline>` + `<path>` do NOT accept percentages in `points` or `d` — those are number lists per spec.
+
+**Files touched:**
+
+- `src/components/dashboard-next/geometry/geometry-editor-svg.tsx` — added `useRef` + `useLayoutEffect` + `ResizeObserver` to track SVG size; `roiPointsAttr` now takes `(points, w, h)` and returns device-pixel coords; three polygon call sites updated; `polygonsReady` gate so polygons don't render at (0, 0) for the one paint before measurement. Header comment expanded with a "POLYGON CAVEAT" block documenting the percentage-vs-number distinction.
+
+**Verification:**
+
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — 182/182 (no test changes; bug isn't reachable from node-env vitest).
+- Manual: open the editor, draw a polygon — the fill, border, vertex dots all render. Hover an existing ROI: fill brightens, cursor reads `move`. Click + drag the interior: whole polygon follows the cursor. Saved-ROI vertex handles + selection still work.
+
+**Docs updated:** this commit-log entry.
+
+---
+
 ## 2026-05-27 — P6-B3: Visual polish + usability (ROI fill tiers, whole-ROI drag, label editing, cross-tool click fix)
 
 **Subject:** Make the geometry editor feel visually correct and trustworthy before P6-C wires the processor to consume saved geometry. Three concrete improvements + one bug fix:
