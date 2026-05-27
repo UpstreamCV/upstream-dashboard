@@ -185,13 +185,17 @@ export function GeometryEditorPanel({
           if (!draft) return { points: [p], current: null };
           // Reject duplicate-adjacent points (a misclick at the same
           // spot). The api-server's coord validation would let these
-          // through, but a degenerate polygon helps nobody.
-          const last = draft.points[draft.points.length - 1];
-          if (
-            Math.abs(p.x - last.x) < 0.005 &&
-            Math.abs(p.y - last.y) < 0.005
-          ) {
-            return draft;
+          // through, but a degenerate polygon helps nobody. Skip the
+          // check on the very first vertex — there's no "last" to
+          // compare against, and dereferencing points[-1] would crash.
+          if (draft.points.length > 0) {
+            const last = draft.points[draft.points.length - 1];
+            if (
+              Math.abs(p.x - last.x) < 0.005 &&
+              Math.abs(p.y - last.y) < 0.005
+            ) {
+              return draft;
+            }
           }
           return { ...draft, points: [...draft.points, p] };
         });
