@@ -3,7 +3,7 @@ import type { ObservationRecord } from "@/lib/api/types";
 import {
   buildRecentObservationsPath,
   summarizeObservation,
-} from "./summarize-observation";
+} from "@/lib/perception/summarize-observation";
 
 function obs(type: string, payload: unknown): ObservationRecord {
   return {

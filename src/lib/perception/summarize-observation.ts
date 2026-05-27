@@ -1,5 +1,7 @@
 // Pure helpers for the Recent Observations panel — no React, no I/O, so they
-// stay importable from both the client panel and node-environment vitest.
+// stay importable from server code, both dashboards' client panels, and
+// node-environment vitest. Previously lived under
+// src/app/dashboard/cameras/[cameraId]/.
 
 import type { ObservationRecord, ObservationType } from "@/lib/api/types";
 

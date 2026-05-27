@@ -11,7 +11,7 @@ import {
   pointsToAttr,
   resolveBBox,
   selectOverlayObjects,
-} from "./perception-overlay";
+} from "@/lib/perception/overlay-helpers";
 
 function obj(over: Partial<PerceptionObject> = {}): PerceptionObject {
   return {

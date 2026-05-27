@@ -8,6 +8,17 @@ The canonical reference for the parallel light-theme redesign at `src/app/dashbo
 
 Two of the home tiles (Network, Billing) remain illustrative — see [Placeholder tiles](#placeholder-tiles).
 
+## Route policy
+
+`/dashboard-next` is the target for **all new product-facing dashboard work**. New feature work — the P6-B latest-frame geometry editor, reliability surfaces, camera workflow tabs, review queue, debug UI — builds here.
+
+- Legacy `/dashboard` is available for production stability and bug fixes only. Do not add new major features to it unless explicitly approved.
+- Theme-agnostic perception/observation helpers live under `src/lib/perception/` (`overlay-helpers.ts`, `overlay-svg.tsx`, `summarize-observation.ts`) so both segments share them without duplication. Previously these lived under `src/app/dashboard/cameras/[cameraId]/`; the route-placement was historical.
+- Dashboard-next UI components live under `src/components/dashboard-next/` (suffix `-next` until promotion).
+- Dashboard-next routes live under `src/app/dashboard-next/(app)/`.
+
+The promotion checklist (below) eventually retires the legacy segment — but until then, every new feature goes here, not there. Each ported feature shrinks the promotion's blast radius.
+
 ## Architecture
 
 ### Segment scope
@@ -36,8 +47,14 @@ src/app/dashboard-next/
     ├── cameras/
     │   ├── page.tsx
     │   └── [cameraId]/
-    │       ├── page.tsx
-    │       └── not-found.tsx
+    │       ├── layout.tsx         # Persistent header + Realtime + CameraTabs.
+    │       ├── page.tsx           # Redirects to ./monitor.
+    │       ├── not-found.tsx
+    │       ├── monitor/page.tsx       # Live stream + overlays + meta panels.
+    │       ├── observations/page.tsx  # Recent processor observations + JSON.
+    │       ├── configure/page.tsx     # P6-B seam — geometry editor placeholder.
+    │       ├── settings/page.tsx      # Read-only camera metadata.
+    │       └── reliability/page.tsx   # Stub — backend signals don't exist yet.
     ├── agents/page.tsx
     ├── stream-sessions/page.tsx
     └── api-tokens/
@@ -102,25 +119,65 @@ The actions file is a mirror of `src/app/dashboard/settings/api-tokens/actions.t
 
 See [Realtime channel naming](#realtime-channel-naming-convention) for the `dn-` prefix.
 
-## Camera detail
+## Camera detail — workflow tabs
 
-`(app)/cameras/[cameraId]/page.tsx` is the most intricate page in either dashboard. Five concurrent data sources feed it:
+The camera detail page is a **tabbed workflow** under `(app)/cameras/[cameraId]/`. Each tab is a real route segment so deep links resolve, loading boundaries scope per tab, and per-tab fetches don't block each other.
 
-1. **`getCamera`** — the page's primary subject. 404 from this triggers `notFound()` and renders `not-found.tsx`.
+| Tab | Route segment | Purpose | Server fetches |
+|---|---|---|---|
+| Monitor | `/monitor` | Live video + perception overlays + meta panels (operator view) | `getCamera`, `getAgent`, `listStreamSessions(limit:1)`, `getLatestFrame`, `getLatestPerception`, `listValidations` |
+| Observations | `/observations` | Recent processor observations + per-row JSON (debug/reliability) | `listRecentObservations(limit: DEFAULT)` |
+| Configure | `/configure` | P6-B seam — geometry editor placeholder | none |
+| Settings | `/settings` | Read-only camera metadata + ids + timestamps | `getCamera` |
+| Reliability | `/reliability` | Stub — surfaces findings once backend signals exist | none |
+
+`/cameras/[cameraId]/page.tsx` itself just `redirect()`s to `./monitor`, so bare camera URLs continue to resolve.
+
+### Layout responsibilities
+
+`(app)/cameras/[cameraId]/layout.tsx` is the persistent shell across all five tabs. It owns:
+
+- `getCamera()` (404 → `notFound()`) and `listStreamSessions(limit:1)` for the header status + Realtime initial state.
+- The header block: back link, eyebrow, name, `<CameraStreamStatusBadgeNext />`, copy id.
+- `<CameraDetailRealtimeNext />` — mounted here so session-state pushes survive tab navigation. If it lived in `monitor/page.tsx` only, switching to Observations would silently kill push updates until the next manual nav.
+- `<CameraTabs cameraId />` — the tab strip (Client Component, uses `usePathname()` for active state).
+
+Per-tab fetches live in each tab's `page.tsx`. Layout/page fetch duplication for `getCamera` + `listStreamSessions` is accepted today (`serverFetch` uses `cache: "no-store"` per `AGENTS.md`); revisit with React `cache()` or a layout-only loader if it becomes a hot spot.
+
+### Monitor tab — five data sources, four client islands
+
+1. **`getCamera`** — primary subject. 404 → `notFound()`.
 2. **`getAgent`** — gracefully `null` on 404 (agent may have been deleted while the camera row persists).
-3. **`listStreamSessions({ cameraId, limit: 1 })`** — the most recent session, used to drive the live-stream panel.
-4. **`getLatestFrame`** — already returns `null` on `snapshot_not_found`; the latest-frame card polls this endpoint on its own.
-5. **`listValidations({ sessionId })`** — only if there's a current session.
+3. **`listStreamSessions({ cameraId, limit: 1 })`** — drives the live-stream panel.
+4. **`getLatestFrame`** — returns `null` on `snapshot_not_found`; the latest-frame card polls this endpoint on its own.
+5. **`getLatestPerception`** — returns `null` on `perception_snapshot_not_found`; the two perception overlay cards consume this.
+6. **`listValidations({ sessionId })`** — only if there's a current session.
 
-Four client islands inside the page:
+Client islands inside the Monitor tab:
 
 - **`LiveStreamPlayerNext`** — WHEP client. Signals go through `/api/upstream/v1/stream-sessions/{id}/whep`, so the api-server enforces account-scoped auth; the browser never sees the agent's bearer token. Backoff schedule `[500, 1000, 2000, 4000, 8000]` ms; tear-down on visibility-hidden and `pagehide` (bfcache); reconnect on visibility-return. Dispatches a window-scoped `upstream:player-state` custom event on every state transition, filtered by `cameraId` so a second tab on a different camera can't flip this badge. See `src/components/stream/player-state-event.ts` for the contract.
 
 - **`LatestFrameCardNext`** — `useUpstreamList` polling `/v1/cameras/{id}/latest-frame` on a 7 s cadence. Renders the `signed_url` from Supabase Storage (private bucket, time-limited URLs) and the captured-at relative time. Empty state when 404 / `snapshot_not_found`.
 
-- **`CameraDetailRealtimeNext`** — Realtime listener (above). Returns `null` from render; purely a side-effect component.
+- **`LatestFramePerceptionOverlayNext`** — Renders the latest perception snapshot over the latest captured frame. Server-rendered initial data + on-demand `mutate()` + optional 5 s live toggle. Reuses the shared `<PerceptionOverlaySvg />` and helpers from `@/lib/perception/*`.
+
+- **`LivePerceptionOverlayNext`** — Wraps `<LiveStreamPlayerNext />` via the `overlay` slot and draws the latest perception snapshot over the live video. Polls at 1 s while live (matches the processor's ~1 FPS publish rate); does not stream frame-synced metadata.
+
+- **`RecentObservationsPanelNext`** — Lives on the Observations tab. Recent processor observations with type/limit filters, optional 5 s live polling, and per-row JSON expand. Raw fields (processor id, package id, payload) stay accessible — reliability work needs them.
+
+- **`CameraDetailRealtimeNext`** — Realtime listener (above). Returns `null` from render; purely a side-effect component. Lives in `layout.tsx`, not Monitor, so it stays alive across tab navigation.
 
 - **`CameraStreamStatusBadgeNext`** — Bridges the DB's `cameras.status` column to the WebRTC player's connection state. The DB flips to `streaming` the moment MediaMTX accepts the SRT publish, but the dashboard's WHEP player needs another 1–3 s to handshake + first keyframe. Without this bridge the badge says "streaming" above a "Connecting…" video pane. While `cameras.status === "streaming"` but the player hasn't dispatched `connected`, the badge displays `connecting` instead. See `src/components/stream/camera-stream-status-badge.tsx` for the original (the dashboard-next port preserves the logic and React-19 render-time reset pattern).
+
+### Shared perception lib
+
+The three pieces of pure perception logic are theme-agnostic and shared with legacy `/dashboard`:
+
+- `@/lib/perception/overlay-helpers.ts` — `normalizeSnapshot`, `resolveBBox`, `selectOverlayObjects`, `formatObjectLabel`, `buildLatestPerceptionPath`, `CONFIDENCE_THRESHOLDS`, `OVERLAY_COLORS`. Pure, deterministic, defensive against malformed JSONB.
+- `@/lib/perception/overlay-svg.tsx` — `<PerceptionOverlaySvg />`. Pure presentational SVG; colors come from `OVERLAY_COLORS` constants so it reads on any background. Reused unchanged by both dashboards.
+- `@/lib/perception/summarize-observation.ts` — `summarizeObservation`, `buildRecentObservationsPath`, `OBSERVATION_TYPES`, `OBSERVATION_LIMITS`, `DEFAULT_OBSERVATION_LIMIT`. Pure helpers for the observations panel.
+
+These previously lived under `src/app/dashboard/cameras/[cameraId]/`; the directory placement was historical, not architectural. New perception work goes under `@/lib/perception/` so both segments share it.
 
 ## Token security
 

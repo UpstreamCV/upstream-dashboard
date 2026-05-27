@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 import type { PerceptionObject } from "@/lib/api/types";
-import type { NormalizedSnapshot } from "./perception-overlay";
-import { PerceptionOverlaySvg } from "./perception-overlay-svg";
+import type { NormalizedSnapshot } from "@/lib/perception/overlay-helpers";
+import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
 
 function obj(over: Partial<PerceptionObject> = {}): PerceptionObject {
   return {

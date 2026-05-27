@@ -18,8 +18,8 @@ import {
   hasFrameDimensions,
   normalizeSnapshot,
   selectOverlayObjects,
-} from "./perception-overlay";
-import { PerceptionOverlaySvg } from "./perception-overlay-svg";
+} from "@/lib/perception/overlay-helpers";
+import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
 
 /**
  * P5-D — latest-frame perception overlay. Draws the latest perception snapshot

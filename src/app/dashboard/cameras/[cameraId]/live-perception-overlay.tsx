@@ -18,8 +18,8 @@ import {
   hasFrameDimensions,
   normalizeSnapshot,
   selectOverlayObjects,
-} from "./perception-overlay";
-import { PerceptionOverlaySvg } from "./perception-overlay-svg";
+} from "@/lib/perception/overlay-helpers";
+import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
 
 // Polled snapshot cadence while the overlay is live. Matched to the processor's
 // ~1 FPS perception publish rate — polling faster wouldn't surface newer data.

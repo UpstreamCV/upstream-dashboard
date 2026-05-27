@@ -4,6 +4,66 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — dashboard-next foundation: lift P5 to shared lib, port to /dashboard-next, refactor camera detail into tabbed workflow
+
+**Subject:** Prepare `/dashboard-next` for P6-B (latest-frame geometry editor) without promoting or deleting legacy `/dashboard`. Three coordinated moves: (1) lift the pure perception helpers out of the legacy route directory into a shared `src/lib/perception/` module so both segments share them; (2) port the three P5 surfaces (latest-frame perception overlay P5-D, live perception overlay P5-E, recent observations panel P5-B) to dashboard-next with light-theme styling; (3) refactor `/dashboard-next/cameras/[cameraId]` into a tabbed workflow with persistent header (Monitor / Observations / Configure / Settings / Reliability) so the Configure tab becomes the explicit seam for the upcoming geometry editor.
+
+**Why:** Audit found `/dashboard-next` is declared as the future target (`docs/dashboard-next.md:7`, full promotion checklist exists) but every recent piece of reliability-adjacent work — P5-A through P5-E — landed only on legacy `/dashboard`. Building P6-B on legacy would put the most reliability-relevant UpStream-owned UI on the segment slated for deletion. This pass closes the regression risk for promotion by porting P5 forward, and locks the camera-detail IA into a tab shape that reads as a workflow (monitor → configure → observe → reliability) rather than a single dense screen — exactly what the Reliability Layer's future surfaces need to slot into. P6-B is *not* implemented; the Configure tab is a placeholder with the four P6 milestones called out.
+
+**Route policy locked in docs.** New product-facing dashboard work builds under `/dashboard-next`. Legacy `/dashboard` is bug-fixes only. Theme-agnostic perception helpers go under `src/lib/perception/`; new dashboard-next UI under `src/components/dashboard-next/`; new routes under `src/app/dashboard-next/(app)/`. Codified in `AGENTS.md`, `docs/dashboard-next.md` "Route policy", and `src/app/dashboard-next/README.md`.
+
+**Shared perception module.** Three pure files moved from `src/app/dashboard/cameras/[cameraId]/` to `src/lib/perception/`:
+- `perception-overlay.ts` → `overlay-helpers.ts` (24 tests)
+- `perception-overlay-svg.tsx` → `overlay-svg.tsx` (8 tests)
+- `summarize-observation.ts` → `summarize-observation.ts` (23 tests)
+
+The route-dir placement was historical, not architectural. The legacy `/dashboard/cameras/[id]` page and its three remaining mock-based tests keep working transparently — their imports moved from `./perception-overlay` to `@/lib/perception/overlay-helpers`, etc. Tests colocated with the moved code.
+
+**Additive slots on `LiveStreamPlayerNext` / `LiveStreamPanelNext`.** The next variants were missing the `overlay?: ReactNode` prop and `renderStreaming?: (session) => ReactNode` render-prop that the legacy player/panel carry. Added both, defaulting to undefined so today's call site (`cameras/[cameraId]/page.tsx` → `cameras/[cameraId]/monitor/page.tsx`) is unaffected when neither is passed. The overlay slot stacks between the `<video>` and the connection-state scrim so reconnect/needs-gesture/fail messages still occlude the perception SVG.
+
+**Three new dashboard-next components.** `LatestFramePerceptionOverlayNext`, `RecentObservationsPanelNext`, and `LivePerceptionOverlayNext` mirror their legacy counterparts' data flow exactly — same SWR keys, same poll cadences (5 s opt-in for the first two, 1 s default-on for the live overlay), same 404 handling, same toggle semantics. JSX restyled against `.dn-tile`/`--dn-text-50`/`--dn-creek-mid`/`--dn-creek-deep` tokens. All three reuse the shared `<PerceptionOverlaySvg />` unchanged. No new tests for the next variants — the moved helpers stay covered by the relocated unit tests, and the next-side components are JSX shells around the same logic; adding parallel tests would triple maintenance through promotion.
+
+**Tabbed camera-detail workflow.** New shape under `src/app/dashboard-next/(app)/cameras/[cameraId]/`:
+- `layout.tsx` (new) — persistent header (back link, eyebrow, name, `CameraStreamStatusBadgeNext`, copy id), `CameraDetailRealtimeNext`, and `CameraTabs`. Layout owns the lightest fetches (`getCamera` + `listStreamSessions(limit:1)`) so the header + Realtime have what they need; per-tab fetches live in each tab.
+- `page.tsx` (rewritten) — 12-line redirect to `./monitor`, so bare camera URLs still resolve.
+- `monitor/page.tsx` (new) — lifts today's body. Adds `LatestFramePerceptionOverlayNext` and threads `LivePerceptionOverlayNext` through the new `renderStreaming` slot.
+- `observations/page.tsx` (new) — server-renders the default unfiltered observations and hands them to `RecentObservationsPanelNext`.
+- `configure/page.tsx` (new) — static placeholder naming P6-B/C/D milestones. No API calls, no fake editor.
+- `settings/page.tsx` (new) — read-only camera metadata (`CameraMetaPanel`), identifiers, and timestamps.
+- `reliability/page.tsx` (new) — stub. No fake data; explains it'll surface findings once backend signals exist.
+
+Reusing the `Realtime` listener in `layout.tsx` (rather than `monitor/page.tsx`) is the load-bearing choice: navigating Monitor → Observations preserves session-state pushes instead of silently killing them until the next manual nav. The session-state badge in the header continues to react on every tab.
+
+**Tab strip.** New `src/components/dashboard-next/camera-tabs.tsx` — Client Component, `usePathname()` for active state, hardcoded segments, dn-tokens only (active = `bg-white text-black font-bold dn-glow-soft`; inactive = `text-white/70 hover:bg-white/10`).
+
+**Shared panels extracted.** `CameraMetaPanel`, `AgentPanel`, `ValidationPanel`, `SessionPanel` moved from inline functions in the old `cameras/[cameraId]/page.tsx` into `src/components/dashboard-next/camera-panels.tsx` so Monitor and Settings share `CameraMetaPanel` without duplicating JSX.
+
+**Files touched:**
+- **Added:** `src/lib/perception/{overlay-helpers,overlay-svg,summarize-observation}.{ts,tsx}` + colocated tests; `src/components/dashboard-next/{latest-frame-perception-overlay-next,recent-observations-panel-next,live-perception-overlay-next,camera-tabs,camera-panels}.tsx`; `src/app/dashboard-next/(app)/cameras/[cameraId]/{layout,monitor/page,observations/page,configure/page,settings/page,reliability/page}.tsx`.
+- **Modified:** `src/components/dashboard-next/{live-stream-player-next,live-stream-panel-next}.tsx` (additive slots); `src/app/dashboard-next/(app)/cameras/[cameraId]/page.tsx` (now a redirect); legacy `src/app/dashboard/cameras/[cameraId]/{latest-frame-perception-overlay,live-perception-overlay,recent-observations-panel,page}.tsx` (import paths updated to `@/lib/perception/*`); `AGENTS.md`, `docs/dashboard-next.md`, `src/app/dashboard-next/README.md`.
+- **Deleted:** `src/app/dashboard/cameras/[cameraId]/{perception-overlay,perception-overlay-svg,summarize-observation}.{ts,tsx}` + their colocated tests (moved to `src/lib/perception/`).
+
+**Out of scope (deliberate):**
+- No promotion of `/dashboard-next` → `/dashboard`; no deletion of legacy.
+- No P6-B drawing tools — Configure is placeholder only.
+- No reliability data plumbing — Reliability tab is stub only.
+- No new dashboard-next variants of `EmptyState` / `PageHeader` — those use prod tokens and are imported by legacy. Inlined empty blocks in the new components instead. Revisit on promotion.
+
+**Verification:**
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — 94 passing across 9 files (no test count change; relocated helpers now under `src/lib/perception/`).
+- `npm run build` compiles + typechecks cleanly; page-data collection fails locally without `NEXT_PUBLIC_*` env vars — same known limitation called out in prior commit-log entries, not caused by this work.
+- Legacy-class grep across new dashboard-next files (`glass`, `text-accent`, `text-ink-*`, `border-glass-stroke`, `bg-glass-bg`) returns nothing.
+- Secrets/raw-URL grep (`rtsp:`, `srt:`, `mediamtx`, `service_role`) returns nothing.
+- Manual browser verification to be done post-deploy on `/dashboard-next/cameras/<id>/{monitor,observations,configure,settings,reliability}`: tab strip routes, header + Realtime persistence, perception overlay over live video, perception overlay over latest frame, observations rows + JSON expand, Configure placeholder, Settings read-only metadata, Reliability stub.
+
+**Next milestone:** P6-B latest-frame geometry editor at `/dashboard-next/cameras/[cameraId]/configure/geometry/`. The Configure tab is the seam. Preflight: contract `PUT/GET/GET /v1/cameras/{id}/geometry[/versions]` with `upstream-api-server`; add `src/lib/api/geometry.ts` + `src/lib/perception/geometry-schema.ts` (UpStream-owned constraints) so no drawing library's mutable state ever becomes the persistence shape.
+
+**Docs updated:** this commit-log entry, `AGENTS.md` (Route policy bullet under dashboard-next section), `docs/dashboard-next.md` (Route policy section + new "Camera detail — workflow tabs" section + updated route-structure tree + new "Shared perception lib" section), `src/app/dashboard-next/README.md` (status table now lists five camera-detail sub-routes + pointer to canonical docs).
+
+---
+
 ## 2026-05-21 — P5-E cleanup: fix LiveStreamPlayer hydration mismatch, tighten live overlay poll
 
 **Subject:** Two fixes from the P5-E deployed verification round. (1) `<LiveStreamPlayer />` no longer throws a React #418 hydration mismatch when the camera detail page is hard-refreshed while the camera is streaming. (2) The live perception overlay now polls every 1 s instead of 2 s.

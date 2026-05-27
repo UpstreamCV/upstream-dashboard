@@ -1,4 +1,4 @@
-// Pure presentational SVG layer for the P5-D perception overlay. No hooks, no
+// Pure presentational SVG layer for the perception overlay. No hooks, no
 // data fetching — given a normalized snapshot and a set of display toggles it
 // renders one `<svg>`. Kept separate from the data/state client component so it
 // can be unit-tested directly with `renderToStaticMarkup` (no SWR, no jsdom).
@@ -7,15 +7,18 @@
 // itself, so the browser scales every shape to the displayed image for us.
 // Strokes use `non-scaling-stroke` to keep a constant on-screen weight; text
 // scales with the frame.
+//
+// Theme-agnostic: colors come from OVERLAY_COLORS constants and read on any
+// background. Shared between /dashboard (dark) and /dashboard-next (light).
 
-import type { NormalizedSnapshot } from "./perception-overlay";
+import type { NormalizedSnapshot } from "./overlay-helpers";
 import {
   OVERLAY_COLORS,
   centroid,
   formatObjectLabel,
   pointsToAttr,
   selectOverlayObjects,
-} from "./perception-overlay";
+} from "./overlay-helpers";
 
 const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
