@@ -25,7 +25,7 @@ import { CameraDetailRealtime } from "./camera-detail-realtime";
 import { LatestFramePerceptionOverlay } from "./latest-frame-perception-overlay";
 import { LivePerceptionOverlay } from "./live-perception-overlay";
 import { RecentObservationsPanel } from "./recent-observations-panel";
-import { DEFAULT_OBSERVATION_LIMIT } from "./summarize-observation";
+import { DEFAULT_OBSERVATION_LIMIT } from "@/lib/perception/summarize-observation";
 
 export default async function CameraDetailPage({
   params,

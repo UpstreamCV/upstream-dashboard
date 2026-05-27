@@ -17,7 +17,7 @@ import {
   OBSERVATION_LIMITS,
   OBSERVATION_TYPES,
   summarizeObservation,
-} from "./summarize-observation";
+} from "@/lib/perception/summarize-observation";
 
 const CONTROL_CLASS =
   "rounded-lg bg-glass-bg border border-glass-stroke px-2.5 py-1.5 text-sm text-ink transition focus:outline-none focus:border-accent/60";

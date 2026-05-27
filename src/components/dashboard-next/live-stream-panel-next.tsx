@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Radio } from "lucide-react";
 import type { StreamSession } from "@/lib/api/types";
 import { LiveStreamPlayerNext } from "./live-stream-player-next";
@@ -8,8 +9,14 @@ import { LiveStreamPlayerNext } from "./live-stream-player-next";
 
 export function LiveStreamPanelNext({
   session,
+  renderStreaming,
 }: {
   session: StreamSession | null;
+  // Optional override for the `streaming` state. Lets a caller wrap the live
+  // player (e.g. the perception overlay) without this panel needing to know
+  // anything about perception — it still owns the session-state → UI mapping
+  // for every other state. Mirrors the legacy panel's renderStreaming prop.
+  renderStreaming?: (session: StreamSession) => ReactNode;
 }) {
   if (!session) {
     return (
@@ -48,6 +55,7 @@ export function LiveStreamPanelNext({
   }
 
   if (session.state === "streaming") {
+    if (renderStreaming) return <>{renderStreaming(session)}</>;
     return (
       <LiveStreamPlayerNext
         sessionId={session.id}

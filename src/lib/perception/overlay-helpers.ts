@@ -1,6 +1,7 @@
-// Pure helpers for the P5-D latest-frame perception overlay — no React, no I/O,
-// so they stay importable from both the client overlay and node-environment
-// vitest.
+// Pure helpers for the perception overlay — no React, no I/O, so they stay
+// importable from both server code, client overlays, and node-environment
+// vitest. Shared between the legacy /dashboard and the new /dashboard-next
+// segments; previously lived under src/app/dashboard/cameras/[cameraId]/.
 //
 // The perception snapshot payload is stored server-side as opaque JSONB; the
 // api-server validates only the envelope, never the nested objects/geometry.

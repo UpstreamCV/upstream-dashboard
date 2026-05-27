@@ -1,11 +1,11 @@
 # dashboard-next — at-a-glance status
 
-The **new dashboard**, built in parallel with the live one.
+The **new dashboard**, built in parallel with the live one. **This is the target for all new product-facing dashboard work** — see `docs/dashboard-next.md` "Route policy."
 
-- **Live (production):** `src/app/dashboard/` → `/dashboard`. Do not break it.
+- **Live (production):** `src/app/dashboard/` → `/dashboard`. Bug fixes only; no new major features.
 - **New (this folder):** `src/app/dashboard-next/` → `/dashboard-next` (authed) and `/dashboard-next/login` (public).
 
-Both run in the same Next app; the new one reuses the existing data layer (`@/lib/api/*`), the `/api/upstream` proxy, and auth (`getActiveAccount()`) — no duplication, no second build.
+Both run in the same Next app; the new one reuses the existing data layer (`@/lib/api/*`), shared perception helpers (`@/lib/perception/*`), the `/api/upstream` proxy, and auth (`getActiveAccount()`) — no duplication, no second build.
 
 **For the full picture** — architecture, theme tokens, Realtime channel naming, shared modules, token security, promotion checklist — read `docs/dashboard-next.md`. This README is intentionally short and focuses on day-to-day status.
 
@@ -17,11 +17,18 @@ Every page reads real data from the upstream API via `serverFetch` + `useUpstrea
 |---|---|---|
 | `/dashboard-next` | `getDashboardSummary` + `listAgents` + `listTokens` + `getAccount` + `getAccountLimits` | 10 s × 4 |
 | `/dashboard-next/cameras` | `listCameras` + `listAgents` | 10 s × 2 |
-| `/dashboard-next/cameras/[cameraId]` | `getCamera` + `getAgent` + `listStreamSessions` + `getLatestFrame` + `listValidations`; WHEP player + latest-frame poll + Supabase Realtime listener | 7 s frame + Realtime push |
+| `/dashboard-next/cameras/[cameraId]` | redirect → `./monitor` | n/a |
+| `/dashboard-next/cameras/[cameraId]/monitor` | `getCamera` + `getAgent` + `listStreamSessions` + `getLatestFrame` + `getLatestPerception` + `listValidations`; WHEP player + latest-frame poll + live perception overlay + latest-frame perception overlay | 7 s frame + 1 s live perception + Realtime push (layout) |
+| `/dashboard-next/cameras/[cameraId]/observations` | `listRecentObservations` | optional 5 s "live" toggle |
+| `/dashboard-next/cameras/[cameraId]/configure` | none — P6-B seam | n/a |
+| `/dashboard-next/cameras/[cameraId]/settings` | `getCamera` | n/a |
+| `/dashboard-next/cameras/[cameraId]/reliability` | none — stub, waiting on backend signals | n/a |
 | `/dashboard-next/agents` | `listAgents` | 10 s |
 | `/dashboard-next/stream-sessions` | `listStreamSessions` + `listCameras` + `listAgents` | 10 s |
 | `/dashboard-next/api-tokens` | `listTokens` + `createTokenAction` + `revokeTokenAction` | none (Server Action revalidate) |
 | `/dashboard-next/login` | `signInAction` (in `PUBLIC_PATHS`) | n/a |
+
+The camera detail's shared header + Realtime listener live in `cameras/[cameraId]/layout.tsx`; tabs are real route segments. See `docs/dashboard-next.md` "Camera detail — workflow tabs" for the per-tab fetch/responsibility table.
 
 Two home tiles remain illustrative on purpose (the backing services don't exist yet) — see `docs/dashboard-next.md` "Placeholder tiles".
 

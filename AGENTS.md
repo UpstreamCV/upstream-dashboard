@@ -24,6 +24,14 @@ A parallel light-theme redesign lives at `src/app/dashboard-next/` and is the ta
 
 Read `docs/dashboard-next.md` for the canonical reference: architecture, theme tokens, the Realtime channel-naming convention (`dn-camera:` prefix during parallel run), shared modules with `/dashboard` (`player-state-event.ts`, `whep-client.ts`), token security model, and the authoritative promotion checklist. `src/app/dashboard-next/README.md` has the at-a-glance route status table.
 
+### Route policy — `/dashboard-next` is the target for new work
+
+- New product-facing dashboard features (P6-B geometry editor, reliability surfaces, camera workflow tabs, review/debug UI) build under `/dashboard-next`. Do **not** add new major feature work to legacy `/dashboard` unless explicitly approved.
+- Legacy `/dashboard` remains available for production stability and bug fixes only.
+- New theme-agnostic perception/observation helpers go under `src/lib/perception/` so both segments can share them (see `src/lib/perception/overlay-helpers.ts`, `overlay-svg.tsx`, `summarize-observation.ts`).
+- New dashboard-next UI components go under `src/components/dashboard-next/` (suffix `-next` until promotion).
+- New dashboard-next routes go under `src/app/dashboard-next/(app)/`.
+
 ## Source of truth for API contracts
 
 `../upstream-api-server/docs/` is authoritative:

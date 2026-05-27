@@ -35,10 +35,17 @@ export function LiveStreamPlayerNext({
   sessionId,
   cameraId,
   approved,
+  overlay,
 }: {
   sessionId: string;
   cameraId: string;
   approved: StreamParams;
+  // Optional visual layer drawn over the video (perception overlay). Generic
+  // on purpose — the player knows nothing about perception; it just stacks
+  // this absolutely over the <video>, beneath the connection-state scrim, and
+  // never lets it intercept pointer events. Mirrors the legacy player's
+  // `overlay` slot in src/components/stream/live-stream-player.tsx.
+  overlay?: React.ReactNode;
 }) {
   // WHEP signaling goes through /api/upstream/* so the api-server enforces
   // account-scoped auth. Same-origin relative URL — no mixed-content risk.
@@ -274,6 +281,12 @@ export function LiveStreamPlayerNext({
           playsInline
           className="w-full h-auto block aspect-video"
         />
+        {overlay ? (
+          // Sits between the video and the connection-state scrim. Later
+          // siblings stack on top in HTML, so the scrim still wins when both
+          // are visible (e.g. "Reconnecting…" must occlude the perception SVG).
+          <div className="pointer-events-none absolute inset-0">{overlay}</div>
+        ) : null}
         {showOverlay ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <Overlay
