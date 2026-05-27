@@ -219,6 +219,72 @@ Today the dashboard only sees the **current** `revision`. The number is exposed 
 - **P6-C** — the processor begins consuming `geometry_config` on its next session. The plumbing is already in place: `/v1/internal/processor/eligible-sessions` wire-carries the camera's current geometry config so the processor doesn't need a separate fetch (see `../upstream-api-server/docs/api-contracts.md` ~line 978).
 - **P6-D** — end-to-end verification: an operator saves geometry, the next session starts, observations re-emit against the new revision within seconds. The Monitor tab's perception overlay should reflect the change.
 
+## P6-B1 — Latest-Frame Geometry Editor Foundation
+
+The first real editor lands at the same route (`/dashboard-next/cameras/[cameraId]/configure/geometry`). Operators draw counting **lines** on top of the camera's latest frame, save them via a Server Action, and watch the sidebar's revision banner bump from `r0` (probe default) to `r1+` (operator-saved). Polygon ROI authoring is deferred to **P6-B2** — existing ROIs render read-only inside the editor and pass through saves unchanged.
+
+### Components
+
+All three live under `src/components/dashboard-next/geometry/`:
+
+- `geometry-editor-model.ts` — **the persistence boundary.** Pure helpers + types. `geometryConfigToEditorState` / `editorStateToGeometryConfig` are the load/save converters; the save direction always passes through `rois` + `frame` verbatim so the editor cannot accidentally drop them. `createLineId` / `createDefaultLineLabel` / `createLine` mint stable slug-pattern-compliant identifiers (`line-1`, `line-2`, gap-filling). `clampNormalized` snaps pointer coords to `[0, 1]`. Unit-tested in `geometry-editor-model.test.ts` (17 tests; ROI passthrough is the load-bearing one).
+- `frame-canvas.tsx` — pure layout primitive. Renders the `LatestFrame.signed_url` as a fixed underlay with the right aspect ratio (frame width/height when present, `16/9` fallback), and translates browser pointer events into normalized points via `getBoundingClientRect`. Knows nothing about lines, tools, or saves.
+- `geometry-editor-svg.tsx` — pure SVG overlay. Renders existing lines (with endpoint handles), read-only ROI polygons (dimmer styling), and the dashed draft preview. Emits `onLineSelect` + `onEndpointPointerDown` for the parent panel to drive. `viewBox="0 0 1 1"` so normalized coords map directly; `preserveAspectRatio="none"` so the SVG stretches to whatever the canvas decides.
+- `geometry-editor-panel.tsx` — the Client Component **brains**. Owns all editor-local state (tool, selection, draft, dragging, dirty, save). Wires endpoint drag through window-level `pointermove` / `pointerup` / `pointercancel` listeners (mirrors the `scroll-area.tsx` precedent — no `setPointerCapture`). Calls the Server Action via `useTransition` with FormData + JSON-stringified config. Toasts via `sonner`; `router.refresh()` after success so the sidebar re-fetches.
+
+### Server Action
+
+`src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/actions.ts` exports `saveGeometryAction(formData)` returning `{ ok: true, message, record } | { ok: false, message, issues? }`:
+
+1. Parse `camera_id` + `config` (JSON) from FormData.
+2. **Re-run** `validateGeometryConfig` server-side — defense-in-depth against forged payloads even though the client validated first.
+3. `getActiveAccount()` for `accountId`.
+4. `updateCameraGeometryConfig`. `UpstreamApiError` → `friendlyMessage`.
+5. `revalidatePath` the editor route. Return the new `GeometryConfigRecord`.
+
+Mirrors `api-tokens/actions.ts`. Never throws raw errors into the UI.
+
+### Page layout
+
+The page (`configure/geometry/page.tsx`) stays a Server Component. It fetches `getCameraGeometryConfig` + `getLatestFrame` in series and composes a two-column grid:
+
+| Column | Contents |
+|---|---|
+| Main (`1fr`) | `<GeometryEditorPanel>` when a latest frame exists; `<NoFrameEmptyState>` otherwise. |
+| Aside (`360px` on `lg+`) | `<StatusPanel>` (revision + `is_default` distinction + timestamps), `<PersistenceWarningCard>`, `<RawJsonDetails>` (collapsed). |
+
+The aside re-renders after every save because the panel calls `router.refresh()`.
+
+### Editor-local state vs `GeometryConfig`
+
+The panel keeps these in component state only — they NEVER leave the browser:
+
+- `tool: "select" | "draw"`
+- `selectedLineId: string | null`
+- `draft: { start, current } | null` (mid-draw preview)
+- `dragging` set indirectly via window-level listeners
+- `dirty`, `saving`, `saveError`, `saveIssues[]`
+
+Only `editorStateToGeometryConfig(shapes)` is converted to the wire shape at save time. The api-server's `extra="forbid"` would reject any leak.
+
+### Probe-default behavior
+
+When `is_default: true`, the editor opens **empty** (no lines, no ROIs). The synthesized probe shapes the server returns for UI scaffolding are dropped — the operator authors fresh geometry from scratch. The status panel still shows `r0 — Not configured yet` so the relationship between "save here" and "revision bump to r1" stays explicit.
+
+### Validation flow
+
+`validateGeometryConfig` from `@/lib/perception/geometry-schema` runs in **two** places:
+
+1. Client-side, inside `handleSave` — keeps a structurally broken save off the network. Issues render in an inline `<ValidationList>` under the toolbar.
+2. Server-side, inside the action — defense-in-depth. Returns the same `GeometryValidationIssue[]` in the result envelope so the call site can render them identically.
+
+Same source of truth in both places — no inlined rules.
+
+### Out of scope (deferred)
+
+- **P6-B2** — polygon ROI authoring (vertex add/move/delete, close polygon, min/max-vertex enforcement). The current ROI passthrough becomes editable.
+- **P6-B3** — undo/redo, "Refresh frame" button, live perception overlay as read-only context toggle, line direction toggle in toolbar, label editing.
+
 ## Token security
 
 The plaintext API token is shown exactly once at creation, then never again — neither stored nor logged. `src/components/dashboard-next/token-create-dialog-next.tsx` is the *only* component in the entire app that ever holds the plaintext (in its `secret` React state).

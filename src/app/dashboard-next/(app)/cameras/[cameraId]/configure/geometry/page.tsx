@@ -1,26 +1,28 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ShieldAlert, Shapes } from "lucide-react";
+import { ChevronLeft, ImageOff, Shapes, ShieldAlert } from "lucide-react";
 import { RelativeTime } from "@/components/data/relative-time";
+import { GeometryEditorPanel } from "@/components/dashboard-next/geometry/geometry-editor-panel";
 import { getActiveAccount } from "@/lib/account/active";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { getCameraGeometryConfig } from "@/lib/api/geometry";
-import type { GeometryConfigRecord } from "@/lib/api/types";
+import { getLatestFrame } from "@/lib/api/snapshots";
+import type { GeometryConfigRecord, LatestFrame } from "@/lib/api/types";
 
-// P6-B Preflight — Geometry API + Schema Contract.
+// P6-B1 — Latest-Frame Geometry Editor Foundation.
 //
-// Read-only preview of the camera's current saved geometry config. Renders
-// real data from /v1/cameras/{id}/geometry-config (P6-A endpoint). When no
-// operator save exists, the server returns the system probe-default with
-// `is_default: true, revision: 0, id: null` — surfaced explicitly in the
-// banner so the operator knows the difference between "system default" and
-// "you saved this".
+// Server-renders the camera's current geometry record + latest frame, then
+// hands both to the interactive <GeometryEditorPanel> (Client Component).
+// Line authoring only in this milestone; ROIs render read-only and pass
+// through unchanged on save (the model's editorStateToGeometryConfig is the
+// boundary — see geometry-editor-model.ts + its tests).
 //
-// No drawing tools yet. The P6-B editor will land in this same route,
-// keeping these read-only panels as a "current saved" sidebar while a
-// canvas takes the main column.
+// Sidebar carries the server-rendered status panel (revision + timestamps),
+// the persistence-boundary reminder, and a collapsed raw-JSON inspector
+// for engineers verifying the wire shape. The sidebar re-renders after
+// every successful save because the editor calls router.refresh().
 
-export default async function CameraGeometryPreflightPage({
+export default async function CameraGeometryEditorPage({
   params,
 }: {
   params: Promise<{ cameraId: string }>;
@@ -41,17 +43,14 @@ export default async function CameraGeometryPreflightPage({
     throw err;
   }
 
-  const roiCount = record.config.rois.length;
-  const lineCount = record.config.lines.length;
-
-  // The api-server returns a synthesized probe-default config (is_default:
-  // true, revision: 0) when a camera has never been configured. That payload
-  // exists for the dashboard's benefit only — the processor reads a separate
-  // endpoint that returns geometry_config: null and applies its own fallback.
-  // So a camera with is_default: true is genuinely unconfigured from an
-  // operator's perspective; rendering the probe shapes as if they were saved
-  // geometry is misleading. Branch on is_default and surface an unconfigured
-  // state instead. See docs/dashboard-next.md "P6-B Preflight" for context.
+  // getLatestFrame returns null on 404 / snapshot_not_found — the camera
+  // hasn't streamed yet, so there's nothing to draw on. We still render
+  // the sidebar (operator can read the status + raw record) but show an
+  // empty state where the canvas would be.
+  const latestFrame: LatestFrame | null = await getLatestFrame({
+    accountId: activeAccountId,
+    cameraId,
+  });
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -65,31 +64,54 @@ export default async function CameraGeometryPreflightPage({
         </Link>
       </div>
 
-      <HeaderTile isDefault={record.is_default} />
+      <HeaderTile
+        isDefault={record.is_default}
+        hasFrame={latestFrame != null}
+      />
 
-      {record.is_default ? (
-        <>
-          <UnconfiguredEmptyState />
-          <RoadmapCard />
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 md:gap-6 items-start">
+        <div>
+          {latestFrame ? (
+            <GeometryEditorPanel
+              cameraId={cameraId}
+              latestFrame={latestFrame}
+              initialConfig={record.config}
+              startEmpty={record.is_default}
+            />
+          ) : (
+            <NoFrameEmptyState />
+          )}
+        </div>
+        <aside className="space-y-4">
+          <StatusPanel record={record} />
+          <PersistenceWarningCard />
           <RawJsonDetails record={record} />
-        </>
-      ) : (
-        <>
-          <GeometryStatusPanel record={record} />
-          <ShapeCountsCard roiCount={roiCount} lineCount={lineCount} />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-            <RoadmapCard />
-            <RawJsonCard record={record} />
-          </div>
-        </>
-      )}
+        </aside>
+      </div>
     </div>
   );
 }
 
-// --- header + empty state ---------------------------------------------------
+// --- header -----------------------------------------------------------------
 
-function HeaderTile({ isDefault }: { isDefault: boolean }) {
+function HeaderTile({
+  isDefault,
+  hasFrame,
+}: {
+  isDefault: boolean;
+  hasFrame: boolean;
+}) {
+  let body: string;
+  if (!hasFrame) {
+    body =
+      "This camera hasn't captured a frame yet. Start a stream session to capture one — then draw counting lines here.";
+  } else if (isDefault) {
+    body =
+      "No operator-saved geometry yet. Draw counting lines on the latest frame and save to commit revision 1.";
+  } else {
+    body =
+      "Draw counting lines on the latest frame. ROIs render read-only and pass through saves unchanged.";
+  }
   return (
     <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
       <div className="flex items-start gap-3">
@@ -99,57 +121,58 @@ function HeaderTile({ isDefault }: { isDefault: boolean }) {
         />
         <div>
           <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-            geometry preflight
+            geometry editor
           </p>
           <h2 className="mt-1 font-bold text-[clamp(1.1rem,1.6vw,1.5rem)] text-black">
-            {isDefault
-              ? "Geometry not configured yet"
-              : "Saved geometry for this camera"}
+            Counting lines on the latest frame
           </h2>
-          <p className="mt-2 text-sm text-[var(--dn-text-50)]">
-            {isDefault
-              ? "This camera has no operator-saved geometry. The drawing editor (P6-B) lands here next."
-              : "Read-only view of the geometry config the processor will use on its next session. The drawing editor (P6-B) lands here next."}
-          </p>
+          <p className="mt-2 text-sm text-[var(--dn-text-50)]">{body}</p>
         </div>
       </div>
     </div>
   );
 }
 
-function UnconfiguredEmptyState() {
+// --- main-column empty state (no latest frame) ------------------------------
+
+function NoFrameEmptyState() {
   return (
     <div className="dn-tile p-[clamp(1.5rem,3vw,2.5rem)] text-center">
-      <ShieldAlert
-        className="mx-auto h-8 w-8 text-[#8a6d1f]"
+      <ImageOff
+        className="mx-auto h-8 w-8 text-[var(--dn-text-50)]"
         aria-hidden
       />
       <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
-        No geometry saved for this camera
+        Latest frame required to draw geometry
       </h3>
       <p className="mx-auto mt-3 max-w-prose text-sm text-[var(--dn-text-50)]">
-        Lines, ROIs, and zones haven&rsquo;t been drawn yet. Until they are,
-        the processor falls back to its own analytics default — any
-        observations it emits should be treated as scaffolding, not signal.
+        Start a stream session for this camera to capture a latest frame.
+        Once one is available, the editor opens here and you can draw
+        counting lines directly on the captured frame.
       </p>
       <p className="mx-auto mt-2 max-w-prose text-xs text-[var(--dn-text-50)]">
-        The geometry editor (P6-B) lands in this tab next. Saving here will
-        bump <span className="font-mono">revision</span> from{" "}
-        <span className="font-mono">0</span> to{" "}
-        <span className="font-mono">1</span> and the processor will pick it up
-        on the camera&rsquo;s next session.
+        The sidebar still shows the current geometry record so engineers can
+        verify the wire shape without waiting for a stream.
       </p>
     </div>
   );
 }
 
-// --- panels ----------------------------------------------------------------
+// --- sidebar ----------------------------------------------------------------
 
-// Only rendered for operator-saved records (is_default: false). The
-// unconfigured case has its own empty state above.
-function GeometryStatusPanel({ record }: { record: GeometryConfigRecord }) {
+function StatusPanel({ record }: { record: GeometryConfigRecord }) {
+  // is_default: probe default, no operator save yet — small muted banner.
+  // Saved: full panel with creek-mid accent + timestamps.
+  const isDefault = record.is_default;
   return (
-    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)] border border-[var(--dn-creek-mid)]/30 bg-[var(--dn-creek-mid)]/10">
+    <div
+      className={
+        "dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)] border " +
+        (isDefault
+          ? "border-black/10 bg-black/[0.02]"
+          : "border-[var(--dn-creek-mid)]/30 bg-[var(--dn-creek-mid)]/10")
+      }
+    >
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         revision
       </p>
@@ -161,117 +184,80 @@ function GeometryStatusPanel({ record }: { record: GeometryConfigRecord }) {
           schema v{record.config.version} · {record.config.frame.coordinate_space}
         </span>
       </div>
-      <h3 className="mt-3 font-bold text-black">Operator-saved</h3>
-      <p className="mt-1 text-sm text-[var(--dn-text-50)]">
-        This config was authored from the dashboard. The processor uses it from
-        its next session onward.
-      </p>
-      {record.updated_at ? (
-        <p className="mt-2 text-xs font-mono text-[var(--dn-text-50)]">
-          updated{" "}
-          <RelativeTime
-            value={record.updated_at}
-            className="text-black/70"
-          />
-          {record.created_at ? (
-            <>
-              {" · created "}
+      {isDefault ? (
+        <>
+          <h3 className="mt-3 inline-flex items-center gap-2 font-bold text-black">
+            <ShieldAlert
+              className="h-4 w-4 text-[#8a6d1f]"
+              aria-hidden
+            />
+            Not configured yet
+          </h3>
+          <p className="mt-1 text-sm text-[var(--dn-text-50)]">
+            Draw and save geometry to bump revision to <span className="font-mono">r1</span>.
+            The processor falls back to its own default until you do.
+          </p>
+        </>
+      ) : (
+        <>
+          <h3 className="mt-3 font-bold text-black">Operator-saved</h3>
+          <p className="mt-1 text-sm text-[var(--dn-text-50)]">
+            The processor picks this up on the camera&rsquo;s next session.
+          </p>
+          {record.updated_at ? (
+            <p className="mt-2 text-xs font-mono text-[var(--dn-text-50)]">
+              updated{" "}
               <RelativeTime
-                value={record.created_at}
+                value={record.updated_at}
                 className="text-black/70"
               />
-            </>
+              {record.created_at ? (
+                <>
+                  {" · created "}
+                  <RelativeTime
+                    value={record.created_at}
+                    className="text-black/70"
+                  />
+                </>
+              ) : null}
+            </p>
           ) : null}
-        </p>
-      ) : null}
+        </>
+      )}
     </div>
   );
 }
 
-function ShapeCountsCard({
-  roiCount,
-  lineCount,
-}: {
-  roiCount: number;
-  lineCount: number;
-}) {
+function PersistenceWarningCard() {
   return (
     <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-        shapes
-      </p>
-      <div className="mt-2 grid grid-cols-2 gap-4">
-        <div>
-          <p className="font-mono text-3xl font-bold text-black">{roiCount}</p>
-          <p className="text-xs uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-            ROI polygon{roiCount === 1 ? "" : "s"}
-          </p>
-        </div>
-        <div>
-          <p className="font-mono text-3xl font-bold text-black">{lineCount}</p>
-          <p className="text-xs uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-            crossing line{lineCount === 1 ? "" : "s"}
-          </p>
-        </div>
-      </div>
-      <p className="mt-3 text-xs text-[var(--dn-text-50)]">
-        ≤ 20 of each. Coordinates are normalized floats in [0, 1] — resolution
-        independent.
-      </p>
-    </div>
-  );
-}
-
-function RoadmapCard() {
-  return (
-    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
-      <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-        what lands here
+        persistence boundary
       </p>
       <ul className="mt-3 space-y-2 text-sm text-black/80">
         <li>
-          <span className="font-bold">P6-B —</span> latest-frame drawing of
-          lines, ROI polygons, and (later) exclusion zones. Save uses the
-          schema below.
+          Geometry saves in normalized coordinates (0..1) so it&rsquo;s
+          resolution-independent.
         </li>
         <li>
-          <span className="font-bold">P6-C —</span> the processor consumes
-          saved geometry on its next session.
+          Editor working state (selection, drag, draft, hover) is never
+          persisted — only the UpStream schema rides the wire.
         </li>
         <li>
-          <span className="font-bold">P6-D —</span> end-to-end verification:
-          observations re-emit against the new revision within seconds.
+          <span className="font-bold">P6-C —</span> processor consumes saved
+          geometry on its next session.
+        </li>
+        <li>
+          <span className="font-bold">P6-D —</span> observations re-emit
+          against the new revision; reliability tab gets its first signal.
         </li>
       </ul>
-      <p className="mt-4 rounded-lg border border-[#8a6d1f]/30 bg-[#8a6d1f]/[0.08] p-3 text-xs text-[#8a6d1f]">
-        Drawing-library state (selections, drag handles, undo) is editor-local
-        only. The persisted shape is the UpStream-owned schema below — the
-        server rejects unknown fields with 422.
-      </p>
     </div>
   );
 }
 
-function RawJsonCard({ record }: { record: GeometryConfigRecord }) {
-  return (
-    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
-      <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-        raw record
-      </p>
-      <p className="mt-1 text-xs text-[var(--dn-text-50)]">
-        The exact shape the api-server returns and the editor will PUT back.
-      </p>
-      <pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-black/[0.04] p-3 font-mono text-[11px] text-black/80">
-        {JSON.stringify(record, null, 2)}
-      </pre>
-    </div>
-  );
-}
-
-// Collapsed-by-default raw-record disclosure for the unconfigured case.
-// Engineers verifying the contract still want to see what the server actually
-// returned (including the synthesized probe-default shapes the operator
-// doesn't see); operators don't need it cluttering the empty state.
+// Collapsed-by-default raw-record disclosure. Engineers verifying the
+// contract still want to see the exact shape; operators don't need it.
 function RawJsonDetails({ record }: { record: GeometryConfigRecord }) {
   return (
     <details className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
@@ -279,9 +265,9 @@ function RawJsonDetails({ record }: { record: GeometryConfigRecord }) {
         Show raw record (debug)
       </summary>
       <p className="mt-2 text-xs text-[var(--dn-text-50)]">
-        The api-server returns a synthesized probe-default for unconfigured
-        cameras so the dashboard always has a valid shape. The processor reads
-        a separate endpoint and applies its own fallback.
+        The exact GeometryConfigRecord the api-server returns. For a
+        never-configured camera this is the system probe-default — the
+        processor reads a separate endpoint and applies its own fallback.
       </p>
       <pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-black/[0.04] p-3 font-mono text-[11px] text-black/80">
         {JSON.stringify(record, null, 2)}

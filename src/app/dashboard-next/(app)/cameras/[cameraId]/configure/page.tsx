@@ -28,12 +28,12 @@ export default async function CameraConfigurePage({
             Geometry editor
           </h3>
           <p className="mt-1 text-sm text-[var(--dn-text-50)]">
-            Draw lines, ROIs, and zones on the latest frame. Coming next in
-            P6-B — preflight is open now.
+            Draw and save counting lines on the latest frame. ROIs come next
+            in P6-B2.
           </p>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dn-creek-mid)]/15 px-3 py-1.5 text-sm font-bold text-[var(--dn-creek-deep)] transition group-hover:bg-[var(--dn-creek-mid)]/25">
-          Open preflight
+          Open editor
           <ArrowRight className="h-3.5 w-3.5" />
         </span>
       </Link>
