@@ -4,6 +4,34 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B Preflight UX fix: render unconfigured empty state instead of probe-default shapes
+
+**Subject:** The preflight page rendered shape counts and the raw JSON inspector unconditionally, which surfaced the api-server's synthesized probe-default config (1 ROI + 1 line) as if it were operator-saved data on every fresh camera. Operator feedback: "It looks like maybe the shapes aren't sensitive to each camera — i am looking at a clean camera and it shouldn't have shapes or crossing lines but it says it has both." The shapes were the same on every clean camera because they were the system default. Branch the preflight on `is_default`: for unconfigured cameras (`is_default: true`, `revision: 0`) render an explicit "No geometry saved" empty state instead of the shape counts + JSON inspector; keep the raw record available behind a collapsed `<details>` for engineers verifying the contract. For operator-saved configs (`is_default: false`) render the full status banner + counts + JSON layout as before.
+
+**Why:** The dashboard-facing `GET /v1/cameras/{id}/geometry-config` endpoint synthesizes a probe-default config (near-full-frame entry-ROI + horizontal entry-line) when a camera has never been configured — pure UI scaffolding so the dashboard always has a valid shape to render. The processor reads a *separate* endpoint (`/v1/internal/processor/eligible-sessions`) that returns `geometry_config: null` and the processor applies its **own** probe-default fallback (`../upstream-api-server/docs/api-contracts.md:978-984`). So the dashboard-facing default and the processor-facing default are independent — suppressing the former on the dashboard doesn't change runtime behavior. The reliability-layer framing is unambiguous: an unconfigured camera should look unconfigured. Rendering ghost data as if it were saved geometry is exactly what the reliability layer should prevent — it inflates trust in a camera that is, in product terms, not yet ready.
+
+**What changed:**
+- `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/page.tsx` — branch the layout on `record.is_default`. Extracted `HeaderTile` (title + sub-line vary by config state). Added `UnconfiguredEmptyState` (amber ShieldAlert icon, "No geometry saved for this camera" copy, processor-fallback caveat, revision-bump explainer). Added `RawJsonDetails` (collapsed `<details>` disclosure for engineers; surfaces the synthesized probe-default raw record without putting it in front of operators). Simplified `GeometryStatusPanel` — it's now only invoked for operator-saved configs (`is_default: false`), so the dead `is_default` banner branch is gone.
+
+**Why dashboard-only (not server-side):** The server-side fix — having the GET return empty `rois`/`lines` arrays or 404 when no save exists — is the right architectural cleanup but cross-repo (touches `upstream-api-server` Pydantic models and any other consumers). The dashboard-only fix is small, immediate, and honest, and does not change processor runtime. The server-side cleanup is a follow-up worth tracking.
+
+**Files touched:**
+- `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/page.tsx` — single-file change. Roughly 80 LOC added (HeaderTile + UnconfiguredEmptyState + RawJsonDetails + branched render), 30 LOC simplified (GeometryStatusPanel dead branch removed).
+
+**Verification:**
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — 129 passing (no test changes; this is presentational).
+- Manual browser checks (post-deploy):
+  - Clean camera (`is_default: true`): header reads "Geometry not configured yet"; empty state with ShieldAlert icon and explainer renders; shape counts and inline JSON inspector are gone; "Show raw record (debug)" disclosure exposes the underlying record on click.
+  - Saved camera (`is_default: false`): unchanged — status banner with `r1+`, "Operator-saved" copy, timestamps, shape counts, inline raw JSON card.
+
+**Follow-up (server-side, cross-repo, not in this commit):** Change `GET /v1/cameras/{camera_id}/geometry-config` on `upstream-api-server` to return `is_default: true` with empty `rois: []` and `lines: []` (or 404 `geometry_not_configured`) when no operator save exists. This makes the contract truthful: the dashboard wouldn't need to branch on `is_default`, and any other future consumer of this endpoint would see the same honest "nothing saved" signal. Requires Pydantic model adjustment (the probe-default synthesis lives in the geometry service layer; the schema needs to allow empty shape arrays for the unsaved path) and a check for any other readers besides the dashboard.
+
+**Docs updated:** this commit-log entry.
+
+---
+
 ## 2026-05-27 — P6-B Preflight: geometry types, schema validation, server-only API wrapper, read-only preflight route
 
 **Subject:** Wire up the geometry data contract end-to-end before any drawing UI ships. TS mirrors of the `upstream-api-server` Pydantic geometry schema land in `src/lib/api/types.ts`. A pure validation module at `src/lib/perception/geometry-schema.ts` mirrors every server-side rule (slug pattern, point bounds, shape/label limits, duplicate-id rules, schema version, coordinate space) with 35 unit tests. A server-only API wrapper at `src/lib/api/geometry.ts` exposes `getCameraGeometryConfig` (GET) and `updateCameraGeometryConfig` (PUT) against the existing P6-A endpoints. A new read-only preflight page at `/dashboard-next/cameras/[cameraId]/configure/geometry/` renders the camera's real saved `GeometryConfigRecord` — revision banner, ROI/line counts, raw JSON inspector — with no drawing UI. The Configure tab gains a "Geometry editor → Open preflight" card linking into it. `CameraTabs` widens its active-state matching from exact to prefix so the Configure tab stays highlighted on `/configure/geometry`.

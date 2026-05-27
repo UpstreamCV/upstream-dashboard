@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Shapes } from "lucide-react";
+import { ChevronLeft, ShieldAlert, Shapes } from "lucide-react";
 import { RelativeTime } from "@/components/data/relative-time";
 import { getActiveAccount } from "@/lib/account/active";
 import { UpstreamApiError } from "@/lib/api/errors";
@@ -44,6 +44,15 @@ export default async function CameraGeometryPreflightPage({
   const roiCount = record.config.rois.length;
   const lineCount = record.config.lines.length;
 
+  // The api-server returns a synthesized probe-default config (is_default:
+  // true, revision: 0) when a camera has never been configured. That payload
+  // exists for the dashboard's benefit only — the processor reads a separate
+  // endpoint that returns geometry_config: null and applies its own fallback.
+  // So a camera with is_default: true is genuinely unconfigured from an
+  // operator's perspective; rendering the probe shapes as if they were saved
+  // geometry is misleading. Branch on is_default and surface an unconfigured
+  // state instead. See docs/dashboard-next.md "P6-B Preflight" for context.
+
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="flex items-center gap-3">
@@ -56,67 +65,91 @@ export default async function CameraGeometryPreflightPage({
         </Link>
       </div>
 
-      <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
-        <div className="flex items-start gap-3">
-          <Shapes
-            className="h-6 w-6 shrink-0 text-[var(--dn-creek-mid)]"
-            aria-hidden
-          />
-          <div>
-            <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-              geometry preflight
-            </p>
-            <h2 className="mt-1 font-bold text-[clamp(1.1rem,1.6vw,1.5rem)] text-black">
-              Saved geometry for this camera
-            </h2>
-            <p className="mt-2 text-sm text-[var(--dn-text-50)]">
-              Read-only view of the geometry config the processor will use on
-              its next session. The drawing editor (P6-B) lands here next.
-            </p>
+      <HeaderTile isDefault={record.is_default} />
+
+      {record.is_default ? (
+        <>
+          <UnconfiguredEmptyState />
+          <RoadmapCard />
+          <RawJsonDetails record={record} />
+        </>
+      ) : (
+        <>
+          <GeometryStatusPanel record={record} />
+          <ShapeCountsCard roiCount={roiCount} lineCount={lineCount} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            <RoadmapCard />
+            <RawJsonCard record={record} />
           </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- header + empty state ---------------------------------------------------
+
+function HeaderTile({ isDefault }: { isDefault: boolean }) {
+  return (
+    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
+      <div className="flex items-start gap-3">
+        <Shapes
+          className="h-6 w-6 shrink-0 text-[var(--dn-creek-mid)]"
+          aria-hidden
+        />
+        <div>
+          <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
+            geometry preflight
+          </p>
+          <h2 className="mt-1 font-bold text-[clamp(1.1rem,1.6vw,1.5rem)] text-black">
+            {isDefault
+              ? "Geometry not configured yet"
+              : "Saved geometry for this camera"}
+          </h2>
+          <p className="mt-2 text-sm text-[var(--dn-text-50)]">
+            {isDefault
+              ? "This camera has no operator-saved geometry. The drawing editor (P6-B) lands here next."
+              : "Read-only view of the geometry config the processor will use on its next session. The drawing editor (P6-B) lands here next."}
+          </p>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <GeometryStatusPanel record={record} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <RoadmapCard />
-        <RawJsonCard record={record} />
-      </div>
-
-      <ShapeCountsCard roiCount={roiCount} lineCount={lineCount} />
+function UnconfiguredEmptyState() {
+  return (
+    <div className="dn-tile p-[clamp(1.5rem,3vw,2.5rem)] text-center">
+      <ShieldAlert
+        className="mx-auto h-8 w-8 text-[#8a6d1f]"
+        aria-hidden
+      />
+      <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+        No geometry saved for this camera
+      </h3>
+      <p className="mx-auto mt-3 max-w-prose text-sm text-[var(--dn-text-50)]">
+        Lines, ROIs, and zones haven&rsquo;t been drawn yet. Until they are,
+        the processor falls back to its own analytics default — any
+        observations it emits should be treated as scaffolding, not signal.
+      </p>
+      <p className="mx-auto mt-2 max-w-prose text-xs text-[var(--dn-text-50)]">
+        The geometry editor (P6-B) lands in this tab next. Saving here will
+        bump <span className="font-mono">revision</span> from{" "}
+        <span className="font-mono">0</span> to{" "}
+        <span className="font-mono">1</span> and the processor will pick it up
+        on the camera&rsquo;s next session.
+      </p>
     </div>
   );
 }
 
 // --- panels ----------------------------------------------------------------
 
+// Only rendered for operator-saved records (is_default: false). The
+// unconfigured case has its own empty state above.
 function GeometryStatusPanel({ record }: { record: GeometryConfigRecord }) {
-  const banner = record.is_default
-    ? {
-        title: "Probe default — no operator save yet",
-        body:
-          "The server returned the system default (near-full-frame entry ROI + horizontal entry line). The processor uses this until an operator saves a config.",
-        tone: "default" as const,
-      }
-    : {
-        title: "Operator-saved",
-        body:
-          "This config was authored from the dashboard. The processor uses it from its next session onward.",
-        tone: "saved" as const,
-      };
-
-  const tintBg =
-    banner.tone === "saved"
-      ? "bg-[var(--dn-creek-mid)]/10"
-      : "bg-black/[0.04]";
-  const tintBorder =
-    banner.tone === "saved"
-      ? "border-[var(--dn-creek-mid)]/30"
-      : "border-black/10";
-
   return (
-    <div className={`dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)] border ${tintBorder} ${tintBg}`}>
+    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)] border border-[var(--dn-creek-mid)]/30 bg-[var(--dn-creek-mid)]/10">
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         revision
       </p>
@@ -128,8 +161,11 @@ function GeometryStatusPanel({ record }: { record: GeometryConfigRecord }) {
           schema v{record.config.version} · {record.config.frame.coordinate_space}
         </span>
       </div>
-      <h3 className="mt-3 font-bold text-black">{banner.title}</h3>
-      <p className="mt-1 text-sm text-[var(--dn-text-50)]">{banner.body}</p>
+      <h3 className="mt-3 font-bold text-black">Operator-saved</h3>
+      <p className="mt-1 text-sm text-[var(--dn-text-50)]">
+        This config was authored from the dashboard. The processor uses it from
+        its next session onward.
+      </p>
       {record.updated_at ? (
         <p className="mt-2 text-xs font-mono text-[var(--dn-text-50)]">
           updated{" "}
@@ -229,5 +265,27 @@ function RawJsonCard({ record }: { record: GeometryConfigRecord }) {
         {JSON.stringify(record, null, 2)}
       </pre>
     </div>
+  );
+}
+
+// Collapsed-by-default raw-record disclosure for the unconfigured case.
+// Engineers verifying the contract still want to see what the server actually
+// returned (including the synthesized probe-default shapes the operator
+// doesn't see); operators don't need it cluttering the empty state.
+function RawJsonDetails({ record }: { record: GeometryConfigRecord }) {
+  return (
+    <details className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
+      <summary className="cursor-pointer text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)] hover:text-black">
+        Show raw record (debug)
+      </summary>
+      <p className="mt-2 text-xs text-[var(--dn-text-50)]">
+        The api-server returns a synthesized probe-default for unconfigured
+        cameras so the dashboard always has a valid shape. The processor reads
+        a separate endpoint and applies its own fallback.
+      </p>
+      <pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-black/[0.04] p-3 font-mono text-[11px] text-black/80">
+        {JSON.stringify(record, null, 2)}
+      </pre>
+    </details>
   );
 }
