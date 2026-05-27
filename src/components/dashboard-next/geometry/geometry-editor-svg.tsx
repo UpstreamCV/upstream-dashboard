@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import type { GeometryLine, GeometryRoi } from "@/lib/api/types";
 import type {
   NormalizedPoint,
@@ -9,10 +10,21 @@ import { OVERLAY_COLORS } from "@/lib/perception/overlay-helpers";
 
 // P6-B1 / B2 / B3 — pure SVG overlay for the geometry editor.
 //
-// COORDINATE SYSTEM: no viewBox. Positions are percentages; sizes are
-// device pixels. See the commit-log "P6-B1 SVG rendering fix" entry for
-// the rationale (viewBox + non-scaling-stroke produced invisible lines
-// and stretched-oval handles).
+// COORDINATE SYSTEM: no viewBox. Positions for <line> + <circle> use
+// percentage strings (their x1/y1/cx/cy attrs accept them and resolve
+// against the SVG's actual viewport). Sizes (stroke widths, handle
+// radii) are device pixels.
+//
+// POLYGON CAVEAT (P6-B3 fix): <polygon>'s `points` attribute is defined
+// by SVG as a list of <number> coordinates — percentages are NOT valid
+// syntax there. P6-B2 erroneously used percentages on `points`; browsers
+// silently parsed the numeric prefix ("10%,10%" → "10,10"), placing
+// polygons at near-origin device pixels (~10×10 px). The result: no
+// visible polygon border, no fill, no hover (no rendered shape to hit),
+// no whole-shape drag. Fix: measure the SVG's actual size via
+// ResizeObserver + useLayoutEffect, then compute polygon points in
+// device pixels = (normalized × measured size). Re-renders on container
+// resize. Lines + circles are unaffected (their attrs accept percentages).
 //
 // P6-B3 additions: three-tier ROI fill (normal / hovered / selected);
 // draft polygon gets a translucent fill once ≥ 3 vertices exist; an
@@ -91,8 +103,14 @@ function pct(n: number): string {
   return `${n * 100}%`;
 }
 
-function roiPointsAttr(points: NormalizedPoint[]): string {
-  return points.map((p) => `${pct(p.x)},${pct(p.y)}`).join(" ");
+// Polygon points must be NUMBERS (device pixels). See header note.
+// `w` / `h` are the SVG's actual rendered size from the ResizeObserver.
+function roiPointsAttr(
+  points: NormalizedPoint[],
+  w: number,
+  h: number,
+): string {
+  return points.map((p) => `${p.x * w},${p.y * h}`).join(" ");
 }
 
 export function GeometryEditorSvg({
@@ -121,8 +139,34 @@ export function GeometryEditorSvg({
     ? "auto"
     : "none";
 
+  // Measure the SVG's rendered size in device pixels so polygon points
+  // (which must be numbers, not percentages — see header note) can be
+  // computed correctly. useLayoutEffect + initial getBoundingClientRect
+  // guarantees the size is known before first paint, so polygons don't
+  // briefly render at (0, 0). ResizeObserver keeps them in sync if the
+  // container reshapes (responsive layout, window resize, etc).
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setSize({ w: rect.width, h: rect.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Until we've measured at least once, polygon coords would all be 0.
+  // Hide polygons in that first paint (other shapes still render).
+  const polygonsReady = size.w > 0 && size.h > 0;
+
   return (
     <svg
+      ref={svgRef}
       className="absolute inset-0 h-full w-full"
       // SVG root never eats events — individual hit targets opt in.
       style={{ pointerEvents: "none" }}
@@ -144,8 +188,10 @@ export function GeometryEditorSvg({
       </defs>
 
       {/* Editable ROI polygons. Three fill states by selected/hover/normal.
-          Per-vertex handles render only when the ROI is selected. */}
-      {rois.map((roi) => {
+          Per-vertex handles render only when the ROI is selected.
+          Polygon rendering is gated on `polygonsReady` so we don't briefly
+          render at (0, 0) before the ResizeObserver fires. */}
+      {polygonsReady && rois.map((roi) => {
         const isSel = roi.id === selectedRoiId;
         const isHov = roi.id === hoveredRoiId;
         const stroke = isSel ? ROI_COLOR_SELECTED : ROI_COLOR;
@@ -162,7 +208,7 @@ export function GeometryEditorSvg({
         return (
           <g key={`roi-${roi.id}`}>
             <polygon
-              points={roiPointsAttr(roi.points)}
+              points={roiPointsAttr(roi.points, size.w, size.h)}
               fill={fill}
               stroke={stroke}
               strokeWidth={strokeWidth}
@@ -327,10 +373,11 @@ export function GeometryEditorSvg({
           the polyline + cursor preview. */}
       {roiDraft && roiDraft.points.length > 0 ? (
         <g>
-          {/* Translucent fill for the in-progress polygon, ≥ 3 vertices. */}
-          {roiDraft.points.length >= 3 ? (
+          {/* Translucent fill for the in-progress polygon, ≥ 3 vertices.
+              Gated on `polygonsReady` for the same reason as saved ROIs. */}
+          {polygonsReady && roiDraft.points.length >= 3 ? (
             <polygon
-              points={roiPointsAttr(roiDraft.points)}
+              points={roiPointsAttr(roiDraft.points, size.w, size.h)}
               fill={ROI_FILL_DRAFT}
               stroke="none"
               style={{ pointerEvents: "none" }}
@@ -338,9 +385,9 @@ export function GeometryEditorSvg({
           ) : null}
 
           {/* Solid polyline through committed draft vertices. */}
-          {roiDraft.points.length >= 2 ? (
+          {polygonsReady && roiDraft.points.length >= 2 ? (
             <polyline
-              points={roiPointsAttr(roiDraft.points)}
+              points={roiPointsAttr(roiDraft.points, size.w, size.h)}
               fill="none"
               stroke={ROI_COLOR}
               strokeWidth={ROI_STROKE}
