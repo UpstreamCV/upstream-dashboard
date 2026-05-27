@@ -4,6 +4,39 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — P6-B1 SVG rendering fix: visible lines + nicer endpoint handles
+
+**Subject:** The geometry editor that shipped in `62cd5d5` rendered endpoint handles correctly but the lines connecting them were effectively invisible, and the handles themselves stretched into ovals at non-square frame aspect ratios. Rewrite `GeometryEditorSvg` to use percentages for positions and device pixels for sizes — no viewBox, no `non-scaling-stroke`. Style the handles as larger white-filled circles with colored rings, plus a soft drop shadow + inner dot when selected.
+
+**Why — invisible lines:** the SVG used `viewBox="0 0 1 1"` plus `vectorEffect="non-scaling-stroke"` so a normalized `[0..1]` coordinate space would map directly. But `non-scaling-stroke` makes the `strokeWidth` value interpret in **device pixels** instead of user units, and the original widths were `0.004`/`0.006` — effectively zero. The endpoints rendered because their `r={0.014}` was in user units (no `vectorEffect` for radii), which scaled with the 1×1 viewBox; the connecting strokes never came through. The first-deploy operator caught this immediately ("we can draw lines now but we cant actually see the lines, just the end points").
+
+**Why — stretched handles:** with `viewBox="0 0 1 1"` and `preserveAspectRatio="none"`, x and y scale independently to fill whatever rectangle the canvas slot occupies. A `<circle r="0.014">` at a 16:9 frame becomes an oval — taller than wide on portrait slots, vice versa on landscape. Visually awkward and worse the further the canvas drifts from square.
+
+**Fix:** drop `viewBox` and `preserveAspectRatio` entirely. Use percentages for positions (`cx="50%"` etc. — referenced to the SVG's actual render rect) and device-pixel scalar sizes for radii and stroke widths. No coordinate scaling, no aspect-ratio distortion, no `vectorEffect` shenanigans. Circles stay circular; line widths read consistently regardless of canvas dimensions.
+
+**Styling pass on handles:**
+
+- Default: 9px white-filled circle with a 2.5px amber ring. Cursor `grab`.
+- Selected: 11px circle, 3.5px brighter-amber ring (`#fde68a`), soft drop shadow via SVG `<filter>`, plus a 3px filled inner dot in the brighter amber. Reads as "this handle is the active drag target" without any layout shift.
+- Hit-target line: 18px transparent stroke under the visible line so clicks near the stroke still select.
+- Lines: 3px default / 4px selected, brighter amber when selected so the whole line + handle combo reads as a unit.
+- Draft preview: existing dashed amber line plus a small filled anchor marker at the start point so the first-click position is obvious.
+
+**Files touched:**
+
+- `src/components/dashboard-next/geometry/geometry-editor-svg.tsx` — full rewrite. Same component API (props unchanged), all callers continue to work as-is. Header comment documents the coord-system rationale so the next contributor doesn't reintroduce the `viewBox` + `non-scaling-stroke` trap.
+
+**Verification:**
+
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — 146 passing (no test changes; SVG is presentational and uncovered by node-env vitest).
+- Manual: open the editor on any camera with a latest frame, switch to Draw line, click-click-click — the line stroke is now plainly visible at standard frame ratios; handles are round, larger, and the selected one lifts off the frame with a subtle shadow + inner dot.
+
+**Docs updated:** this commit-log entry.
+
+---
+
 ## 2026-05-27 — P6-B1: Latest-Frame Geometry Editor Foundation (line authoring, ROI passthrough, Server Action)
 
 **Subject:** Turn the geometry preflight at `/dashboard-next/cameras/[cameraId]/configure/geometry` into a real editor. Operators draw, select, drag, and delete **counting lines** on top of the camera's latest frame and save them via `saveGeometryAction` wrapping `updateCameraGeometryConfig`. Polygon ROI authoring is deferred to P6-B2 — existing ROIs render read-only inside the editor and pass through saves unchanged via `editorStateToGeometryConfig`. The page is a two-column server layout: editor canvas + toolbar in the main column, server-rendered status panel + persistence-boundary card + collapsed raw-JSON disclosure in the sidebar.
