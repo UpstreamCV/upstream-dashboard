@@ -127,7 +127,8 @@ The camera detail page is a **tabbed workflow** under `(app)/cameras/[cameraId]/
 |---|---|---|---|
 | Monitor | `/monitor` | Live video + perception overlays + meta panels (operator view) | `getCamera`, `getAgent`, `listStreamSessions(limit:1)`, `getLatestFrame`, `getLatestPerception`, `listValidations` |
 | Observations | `/observations` | Recent processor observations + per-row JSON (debug/reliability) | `listRecentObservations(limit: DEFAULT)` |
-| Configure | `/configure` | P6-B seam — geometry editor placeholder | none |
+| Configure | `/configure` | P6-B seam — geometry editor placeholder + preflight link | none |
+| Configure → Geometry | `/configure/geometry` | Read-only preflight: real `GeometryConfigRecord` from `/v1/cameras/{id}/geometry-config` | `getCameraGeometryConfig` |
 | Settings | `/settings` | Read-only camera metadata + ids + timestamps | `getCamera` |
 | Reliability | `/reliability` | Stub — surfaces findings once backend signals exist | none |
 
@@ -178,6 +179,45 @@ The three pieces of pure perception logic are theme-agnostic and shared with leg
 - `@/lib/perception/summarize-observation.ts` — `summarizeObservation`, `buildRecentObservationsPath`, `OBSERVATION_TYPES`, `OBSERVATION_LIMITS`, `DEFAULT_OBSERVATION_LIMIT`. Pure helpers for the observations panel.
 
 These previously lived under `src/app/dashboard/cameras/[cameraId]/`; the directory placement was historical, not architectural. New perception work goes under `@/lib/perception/` so both segments share it.
+
+## P6-B Preflight — Geometry API + Schema Contract
+
+The geometry editor (P6-B) will live at `/dashboard-next/cameras/[cameraId]/configure/geometry/`. Before any drawing UI ships, the data contract is wired up end-to-end against the **already-existing** `upstream-api-server` P6-A endpoints (`GET` + `PUT` on `/v1/cameras/{camera_id}/geometry-config`). The Configure tab links into this preflight; the preflight renders the camera's real saved geometry, read-only.
+
+### Source of truth
+
+Do not drift from these — the api-server's Pydantic models reject unknown fields with 422:
+
+- **Pydantic models**: `../upstream-api-server/src/upstream_api/schemas/geometry.py` (`GeometryPoint`, `GeometryFrame`, `GeometryRoi`, `GeometryLine`, `GeometryConfig`, `GeometryConfigRecord`, `GeometryConfigResponse`).
+- **Contract**: `../upstream-api-server/docs/api-contracts.md` around line 818.
+
+### What's in place
+
+- **TS types** — `src/lib/api/types.ts`. Mirrors the Pydantic shapes exactly, snake_case throughout. `GeometryConfig.version: 1` and `GeometryConfigRecord.revision: number` are two distinct fields and must not be conflated.
+- **Validation** — `src/lib/perception/geometry-schema.ts`. Pure functions; mirrors every server-side rule so authoring errors fail fast in the browser instead of round-tripping through 422. `GEOMETRY_LIMITS` exposes the constants; `validateGeometryConfig` returns `GeometryValidationIssue[]` for inline error rendering; `createGeometryValidationSummary` rolls them up.
+- **API wrapper** — `src/lib/api/geometry.ts`. Server-only (`import "server-only"`). `getCameraGeometryConfig` for reads, `updateCameraGeometryConfig` for the eventual PUT. There is **no** `listCameraGeometryVersions` — the server keeps no version-history endpoint today; only the current row is queryable via `revision`.
+- **Preflight page** — `src/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/page.tsx`. Server Component. Renders the real `GeometryConfigRecord`: a status banner that distinguishes "Probe default — no operator save yet" from "Operator-saved", ROI/line counts, schema/coordinate-space facts, a raw-JSON inspector, and a back link to Configure. No drawing tools.
+
+### Always-200 GET — system probe default
+
+The server returns a probe-default `GeometryConfig` (near-full-frame `entry-roi` + horizontal `entry-line`) when a camera has no operator save: `is_default: true`, `revision: 0`, `id: null`, null timestamps. The preflight banner makes the distinction explicit so operators can tell "system default" from "I saved this." The only 404 the GET fires is `camera_not_found`.
+
+### Why drawing-library state never persists
+
+The persisted schema is **UpStream-owned**: the api-server's Pydantic models use `extra="forbid"`, so any drawing-library field (selection state, fabric.js object handles, undo stack, presentation styling) sent in a PUT body is rejected with 422 `validation_error`. The editor's working state will be entirely editor-local; conversion to `GeometryConfig` happens at save time only. The `geometry-schema.ts` validator is the early-warning layer that catches drift before the network round-trip.
+
+### Why versioning matters for reliability
+
+Today the dashboard only sees the **current** `revision`. The number is exposed in the preflight banner so an operator can tell a save round-tripped. Future reliability work pivots on this number:
+
+- **Observation lineage** — every processor observation should record which geometry revision produced it, so the dashboard can answer "did this event come from the geometry I'm looking at, or an old one?"
+- **Findings provenance** — reliability findings tied to a revision can age out when the operator saves new geometry, instead of lingering as stale alerts.
+- **Replay / shadow tests** — playing a recorded session against an alternate revision requires both revisions to be addressable; persisting per-revision history is a future api-server change.
+
+### P6-C / P6-D
+
+- **P6-C** — the processor begins consuming `geometry_config` on its next session. The plumbing is already in place: `/v1/internal/processor/eligible-sessions` wire-carries the camera's current geometry config so the processor doesn't need a separate fetch (see `../upstream-api-server/docs/api-contracts.md` ~line 978).
+- **P6-D** — end-to-end verification: an operator saves geometry, the next session starts, observations re-emit against the new revision within seconds. The Monitor tab's perception overlay should reflect the change.
 
 ## Token security
 

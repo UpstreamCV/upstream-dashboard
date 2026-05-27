@@ -31,7 +31,10 @@ export function CameraTabs({ cameraId }: { cameraId: string }) {
     >
       {TABS.map((tab) => {
         const href = `/dashboard-next/cameras/${cameraId}/${tab.segment}`;
-        const active = pathname === href;
+        // Prefix match so sub-routes (e.g. /configure/geometry) keep their
+        // parent tab highlighted. Safe today because no tab href is a prefix
+        // of another tab href; revisit if a sibling tab grows that overlap.
+        const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
             key={tab.segment}

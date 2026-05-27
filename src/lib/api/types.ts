@@ -283,3 +283,86 @@ export interface LatestPerceptionRecord {
 export interface LatestPerceptionResponse {
   snapshot: LatestPerceptionRecord;
 }
+
+// --- Camera Geometry Config (P6-A) ------------------------------------------
+// Dashboard-authored ROI/line geometry for one camera. *Processing geometry
+// only* — presentation (colors, strokes, fill) stays frontend-owned. The
+// server uses Pydantic models with `extra="forbid"`, so any unknown field
+// in a PUT body is rejected with 422 `validation_error`.
+//
+// Source of truth (do not drift): ../upstream-api-server/src/upstream_api/
+// schemas/geometry.py and ../upstream-api-server/docs/api-contracts.md
+// (`/v1/cameras/{camera_id}/geometry-config` GET + PUT, ~line 818).
+//
+// Two version-like numbers, never conflated:
+//  - `GeometryConfig.version`  — JSON schema version (always 1 today).
+//  - `GeometryConfigRecord.revision` — DB row revision: 0 = unsaved
+//    probe-default the server returns when nothing is saved yet, 1 = first
+//    save, +1 on every subsequent PUT.
+
+export type GeometryLineDirection = "any" | "in" | "out";
+
+/** Normalized vertex; origin top-left, x/y both in [0, 1]. */
+export interface GeometryPoint {
+  x: number;
+  y: number;
+}
+
+/** Reference frame the geometry was authored against (provenance only). */
+export interface GeometryFrame {
+  width?: number | null;
+  height?: number | null;
+  coordinate_space: "normalized";
+}
+
+/** Analytics ROI as an ordered polygon (≥ 3 vertices, ≤ 64). */
+export interface GeometryRoi {
+  id: string;
+  label?: string | null;
+  type: "polygon";
+  points: GeometryPoint[];
+  enabled: boolean;
+}
+
+/** Crossing line — exactly two segment endpoints. */
+export interface GeometryLine {
+  id: string;
+  label?: string | null;
+  points: GeometryPoint[];
+  direction: GeometryLineDirection;
+  enabled: boolean;
+}
+
+/** Full geometry config payload stored in `camera_geometry_configs.config`. */
+export interface GeometryConfig {
+  version: 1;
+  frame: GeometryFrame;
+  rois: GeometryRoi[];
+  lines: GeometryLine[];
+}
+
+/**
+ * One camera's geometry config, shaped for a read response. `id` and
+ * timestamps are `null` and `revision` is `0` when this is the unsaved
+ * probe-default (`is_default = true`). The GET endpoint always returns a
+ * valid record — there is no "no geometry yet" 404 branch.
+ */
+export interface GeometryConfigRecord {
+  id: Uuid | null;
+  camera_id: Uuid;
+  revision: number;
+  config: GeometryConfig;
+  is_default: boolean;
+  created_at: IsoDateTime | null;
+  updated_at: IsoDateTime | null;
+}
+
+/** GET /v1/cameras/{camera_id}/geometry-config response envelope. */
+export interface GeometryConfigResponse {
+  geometry_config: GeometryConfigRecord;
+}
+
+/** PUT /v1/cameras/{camera_id}/geometry-config request body. */
+export interface GeometryConfigUpdateRequest {
+  config: GeometryConfig;
+}
