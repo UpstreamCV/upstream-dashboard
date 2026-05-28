@@ -448,7 +448,8 @@ export type ReliabilityCategory =
   | "stream"
   | "processor"
   | "scene_quality"
-  | "geometry_config";
+  | "geometry_config"
+  | "detection";
 
 export type ReliabilitySeverity = "info" | "warning" | "critical";
 
@@ -466,6 +467,7 @@ export type ReliabilityFindingType =
   | "latest_frame_stale"
   | "scene_too_dark_for_reliable_detection"
   | "processor_using_default_geometry"
+  | "unstable_detection_confidence"
   | (string & {});
 
 export interface ReliabilityFinding {
