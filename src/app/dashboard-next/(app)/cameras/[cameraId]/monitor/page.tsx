@@ -9,12 +9,14 @@ import { LatestFrameCardNext } from "@/components/dashboard-next/latest-frame-ca
 import { LatestFramePerceptionOverlayNext } from "@/components/dashboard-next/latest-frame-perception-overlay-next";
 import { LivePerceptionOverlayNext } from "@/components/dashboard-next/live-perception-overlay-next";
 import { LiveStreamPanelNext } from "@/components/dashboard-next/live-stream-panel-next";
+import { ReliabilityPanel } from "@/components/dashboard-next/reliability-panel";
 import { getActiveAccount } from "@/lib/account/active";
 import { getAgent } from "@/lib/api/agents";
 import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { getLatestPerception } from "@/lib/api/perception";
 import { getLatestProcessorStatus } from "@/lib/api/processor-status";
+import { getReliabilitySummary } from "@/lib/api/reliability";
 import { getLatestFrame } from "@/lib/api/snapshots";
 import { listStreamSessions } from "@/lib/api/stream-sessions";
 import { listValidations } from "@/lib/api/validations";
@@ -22,6 +24,7 @@ import { notFound } from "next/navigation";
 import type {
   Camera,
   ProcessorStatusRecord,
+  ReliabilitySummary,
   StreamSession,
   StreamValidation,
 } from "@/lib/api/types";
@@ -53,25 +56,34 @@ export default async function CameraMonitorPage({
     throw err;
   }
 
-  const [agent, sessions, latestFrame, latestPerception] = await Promise.all([
-    // 404 = agent removed; other errors bubble to the segment error boundary.
-    getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
-      (err) => {
-        if (err instanceof UpstreamApiError && err.status === 404) return null;
-        throw err;
-      },
-    ),
-    listStreamSessions({
-      accountId: activeAccountId,
-      cameraId: camera.id,
-      limit: 1,
-    }),
-    // getLatestFrame already returns null on 404 / snapshot_not_found.
-    getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
-    // getLatestPerception already returns null on 404 /
-    // perception_snapshot_not_found.
-    getLatestPerception({ accountId: activeAccountId, cameraId: camera.id }),
-  ]);
+  const [agent, sessions, latestFrame, latestPerception, reliabilitySummary] =
+    await Promise.all([
+      // 404 = agent removed; other errors bubble to the segment error boundary.
+      getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
+        (err) => {
+          if (err instanceof UpstreamApiError && err.status === 404) return null;
+          throw err;
+        },
+      ),
+      listStreamSessions({
+        accountId: activeAccountId,
+        cameraId: camera.id,
+        limit: 1,
+      }),
+      // getLatestFrame already returns null on 404 / snapshot_not_found.
+      getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
+      // getLatestPerception already returns null on 404 /
+      // perception_snapshot_not_found.
+      getLatestPerception({ accountId: activeAccountId, cameraId: camera.id }),
+      // Reliability M0/M1-A — evaluates on read in the api-server. Returns
+      // null on 404 so an unavailable endpoint doesn't crash the tab.
+      getReliabilitySummary({
+        accountId: activeAccountId,
+        cameraId: camera.id,
+      }),
+    ]);
+  // Local rebinding so the panel prop type stays narrow.
+  const reliability: ReliabilitySummary | null = reliabilitySummary;
 
   const currentSession: StreamSession | null = sessions[0] ?? null;
 
@@ -134,6 +146,9 @@ export default async function CameraMonitorPage({
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
+        {/* Reliability is the operator-facing roll-up; lead the meta-panel
+            grid with it so the verdict is the first thing on the row. */}
+        <ReliabilityPanel summary={reliability} />
         <CameraMetaPanel camera={camera} />
         <AgentPanel agent={agent} />
         <ValidationPanel validation={latestValidation} />

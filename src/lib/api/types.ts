@@ -431,3 +431,81 @@ export interface ProcessorStatusRecord {
 export interface LatestProcessorStatusResponse {
   status: ProcessorStatusRecord;
 }
+
+// ---------------------------------------------------------------------------
+// Reliability findings (M0/M1-A). Source of truth:
+// upstream-api-server/src/upstream_api/schemas/reliability.py
+// upstream-api-server/supabase/migrations/20260528120000_reliability_findings.sql
+//
+// `category` and `severity` are closed unions (DB CHECK-constrained) so the
+// dashboard switches on them safely. `finding_type` is an open `string` —
+// the table column is open vocabulary so the API server can ship new rules
+// without a contract change. The `(string & {})` brand keeps known literals
+// surfacing in autocomplete while still accepting future values.
+// ---------------------------------------------------------------------------
+
+export type ReliabilityCategory =
+  | "stream"
+  | "processor"
+  | "scene_quality"
+  | "geometry_config";
+
+export type ReliabilitySeverity = "info" | "warning" | "critical";
+
+export type ReliabilityStatus = "open" | "resolved" | "suppressed" | "ignored";
+
+export type ReliabilitySummaryStatus =
+  | "healthy"
+  | "info"
+  | "needs_review"
+  | "critical"
+  | "unknown";
+
+export type ReliabilityFindingType =
+  | "stream_valid_processor_silent"
+  | "latest_frame_stale"
+  | "scene_too_dark_for_reliable_detection"
+  | "processor_using_default_geometry"
+  | (string & {});
+
+export interface ReliabilityFinding {
+  id: string;
+  camera_id: string;
+  stream_session_id: string | null;
+  processor_status_id: string | null;
+  finding_type: ReliabilityFindingType;
+  category: ReliabilityCategory;
+  severity: ReliabilitySeverity;
+  status: ReliabilityStatus;
+  title: string;
+  message: string;
+  likely_cause: string | null;
+  recommended_action: string | null;
+  // Opaque JSONB — evaluators stamp rule-specific keys. The dashboard never
+  // reads these directly today; surfacing them through the UI happens via
+  // the structured `title` / `message` / `recommended_action` strings.
+  evidence: Record<string, unknown>;
+  dedupe_key: string;
+  detector_version: string;
+  first_seen_at: IsoDateTime;
+  last_seen_at: IsoDateTime;
+  resolved_at: IsoDateTime | null;
+  resolved_reason: string | null;
+  created_at: IsoDateTime;
+  updated_at: IsoDateTime;
+}
+
+export interface ReliabilityFindingsResponse {
+  findings: ReliabilityFinding[];
+  last_evaluated_at: IsoDateTime;
+}
+
+export interface ReliabilitySummary {
+  camera_id: string;
+  status: ReliabilitySummaryStatus;
+  highest_severity: ReliabilitySeverity | null;
+  open_findings_count: number;
+  top_findings: ReliabilityFinding[];
+  recommended_next_action: string | null;
+  last_evaluated_at: IsoDateTime;
+}
