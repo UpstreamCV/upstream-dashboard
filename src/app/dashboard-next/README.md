@@ -18,7 +18,7 @@ Every page reads real data from the upstream API via `serverFetch` + `useUpstrea
 | `/dashboard-next` | `getDashboardSummary` + `listAgents` + `listTokens` + `getAccount` + `getAccountLimits` | 10 s × 4 |
 | `/dashboard-next/cameras` | `listCameras` + `listAgents` | 10 s × 2 |
 | `/dashboard-next/cameras/[cameraId]` | redirect → `./monitor` | n/a |
-| `/dashboard-next/cameras/[cameraId]/monitor` | `getCamera` + `getAgent` + `listStreamSessions` + `getLatestFrame` + `getLatestPerception` + `listValidations`; WHEP player + latest-frame poll + live perception overlay + latest-frame perception overlay | 7 s frame + 1 s live perception + Realtime push (layout) |
+| `/dashboard-next/cameras/[cameraId]/monitor` | `getCamera` + `getAgent` + `listStreamSessions` + `getLatestFrame` + `getLatestPerception` + `listValidations` + `getLatestProcessorStatus`; WHEP player + latest-frame poll + live perception overlay + latest-frame perception overlay + Applied Geometry chip | 7 s frame + 1 s live perception + Realtime push (layout) |
 | `/dashboard-next/cameras/[cameraId]/observations` | `listRecentObservations` | optional 5 s "live" toggle |
 | `/dashboard-next/cameras/[cameraId]/configure` | none — P6-B seam (links to geometry preflight) | n/a |
 | `/dashboard-next/cameras/[cameraId]/configure/geometry` | `getCameraGeometryConfig` + `getLatestFrame`; interactive editor — line + ROI authoring, whole-ROI drag, label editing, hover/selected fill states — via `saveGeometryAction` | n/a |

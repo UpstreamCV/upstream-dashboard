@@ -366,3 +366,68 @@ export interface GeometryConfigResponse {
 export interface GeometryConfigUpdateRequest {
   config: GeometryConfig;
 }
+
+// --- Processor Status (P6-D latest-processor-status API) ---------------------
+// The latest `processor_statuses` row for one camera, including the `payload`
+// JSONB where the P6-C analytics worker stamps the `applied_geometry` lineage
+// block. Read counterpart that lets the Monitor-tab Applied Geometry chip
+// confirm the processor actually picked up the operator's saved geometry.
+//
+// Source of truth (do not drift): ../upstream-api-server/src/upstream_api/
+// schemas/processor.py (`ProcessorStatusRecord`, `LatestProcessorStatusResponse`)
+// and ../upstream-api-server/docs/api-contracts.md
+// (`/v1/cameras/{camera_id}/processor-status/latest`).
+
+/**
+ * The geometry lineage block the P6-C analytics worker stamps onto every
+ * status post via `payload.applied_geometry`. The chip reads this directly.
+ *
+ * `source` is unioned with `string` so a future server-side source value
+ * doesn't crash the type — the chip explicitly handles the unknown case.
+ */
+export interface AppliedGeometry {
+  source:
+    | "operator_saved"
+    | "default"
+    | "fallback_default_on_error"
+    | (string & {});
+  revision: number | null;
+  line_count: number;
+  roi_count: number;
+  error_reason?: string | null;
+}
+
+export type ProcessorStatusValue =
+  | "starting"
+  | "attached"
+  | "processing"
+  | "lagging"
+  | "failed"
+  | "stopped";
+
+export interface ProcessorStatusRecord {
+  id: Uuid;
+  camera_id: Uuid;
+  stream_session_id: Uuid;
+  processor_id: string;
+  runtime: string;
+  package_id: string;
+  status: ProcessorStatusValue | (string & {});
+  fps_input: number | null;
+  fps_processed: number | null;
+  last_frame_at: IsoDateTime | null;
+  last_observation_at: IsoDateTime | null;
+  error_code: string | null;
+  error_message: string | null;
+  // Opaque JSONB — the server doesn't deep-validate. `applied_geometry` is
+  // the P6-C lineage block when present; future runtime metadata may live
+  // alongside it under other keys.
+  payload: Record<string, unknown> & { applied_geometry?: AppliedGeometry };
+  created_at: IsoDateTime;
+  updated_at: IsoDateTime;
+}
+
+/** GET /v1/cameras/{camera_id}/processor-status/latest response envelope. */
+export interface LatestProcessorStatusResponse {
+  status: ProcessorStatusRecord;
+}

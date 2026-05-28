@@ -15,7 +15,10 @@ import type {
 // src/app/dashboard-next/(app)/cameras/[cameraId]/page.tsx; extracted so the
 // Settings tab can render the camera defaults without duplicating JSX.
 
-function Row({
+// Re-used by the Applied Geometry panel and any future Monitor-tab tile that
+// follows the label / value row shape — exported so they don't have to
+// duplicate the styling.
+export function Row({
   label,
   value,
 }: {
@@ -34,7 +37,7 @@ function Row({
   );
 }
 
-function PanelHeader({ children }: { children: React.ReactNode }) {
+export function PanelHeader({ children }: { children: React.ReactNode }) {
   return (
     <p className="mb-3 text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
       {children}

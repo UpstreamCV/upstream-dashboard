@@ -4,6 +4,72 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-27 — Applied Geometry chip on the Monitor tab (P6-D follow-up)
+
+**Subject:** P6-C taught the processor to consume operator-saved geometry; P6-D verified the lineage end-to-end via a CLI. Operators still couldn't *see* whether their saved geometry took effect — they had to trust that hitting Save in the editor and restarting a session got picked up by the runtime. This adds a small read-only panel on the camera Monitor tab that reads the `processor_statuses.payload.applied_geometry` block (the P6-C lineage stamp) via the new `GET /v1/cameras/{id}/processor-status/latest` endpoint and renders it in one of seven variants: operator-saved (positive), default (warning), fallback-on-error (warning), geometry-invalid (danger), no-status (muted), missing-applied-geometry (muted), unknown-source (warning, forward-compat).
+
+**Why:** the chip is the first visible reliability surface backed by the P6-D lineage work. Future reliability findings (e.g., "alert when source=default on an actively-running production session") will read the same block; surfacing it visually first gives operators an immediate way to self-check "did my save reach the runtime?" without grepping processor logs.
+
+**Scope kept tight:** server-rendered only — matches `CameraMetaPanel` / `AgentPanel` / `ValidationPanel`. No polling. Processor status changes on session restarts and lifecycle transitions, not per frame; operators inspect the chip once after a save+restart, and a tab reload gives them the fresh state. No mutations, no findings persisted, no new backend work (the endpoint already exists from P6-D).
+
+**Display variants — single hue per tone, no DeepStream-internal copy.** Green for operator-saved (the happy path), moss yellow for default / fallback / unknown-source (warning tones), red for geometry-invalid (danger), neutral for no-status / missing-applied-geometry. Copy never mentions DeepStream / nvdsanalytics / GStreamer / pyds — the chip is operator-facing, not a runtime debug surface. A test pins this across every variant.
+
+**Verdict resolution priority** (first match wins, in `formatAppliedGeometryStatus`):
+
+1. `null` status → no_status
+2. `error_code === "geometry_invalid"` → geometry_invalid (P6-C stamps this at the row level alongside `source=fallback_default_on_error`; surfacing it first gives the chip the strongest signal)
+3. `payload.applied_geometry` not an object → missing_applied_geometry
+4. `source === "operator_saved"` → operator_saved (with revision, line/ROI counts)
+5. `source === "default"` → default
+6. `source === "fallback_default_on_error"` → fallback (with optional saved revision + error_reason)
+7. anything else → unknown_source (with the source label rendered verbatim)
+
+**Session scoping.** The Monitor page already fetches `currentSession`; the chip narrows by passing `stream_session_id` to the endpoint when one is active. That avoids confusing "latest historical row from a previous session" results when multiple processor restarts have stamped overlapping rows. When no session is active, the chip falls back to the latest-ever row.
+
+**Layout.** The existing three-panel meta grid (`grid-cols-1 md:grid-cols-3`) becomes a four-column grid (`grid-cols-1 md:grid-cols-2 xl:grid-cols-4`) — two-by-two on tablet, four-across on wide screens, single-column on mobile. Avoids cramming four tiles into a 3-column row on intermediate widths.
+
+**Files touched:**
+
+- **New — types**
+  - `src/lib/api/types.ts` — added `AppliedGeometry`, `ProcessorStatusValue`, `ProcessorStatusRecord`, `LatestProcessorStatusResponse` matching the api-server's P6-D schemas. `source` is unioned with `(string & {})` so a future server-side source value doesn't crash the type.
+- **New — wrapper** (`src/lib/api/`)
+  - `processor-status.ts` — `getLatestProcessorStatus({ accountId, cameraId, streamSessionId? })`. Mirrors `perception.ts`: imports `"server-only"`, wraps `serverFetch`, catches `processor_status_not_found` 404 and returns `null` so the page never has to try/catch the no-status case.
+- **New — helper + tests** (`src/lib/perception/`)
+  - `applied-geometry-format.ts` — pure tagged-variant `formatAppliedGeometryStatus(status)` (the verdict-resolution logic above). No React.
+  - `applied-geometry-format.test.ts` — **+10 tests** covering every variant + the resolution priority (geometry_invalid overrides applied_geometry; non-geometry error_code is ignored).
+- **New — component + tests** (`src/components/dashboard-next/`)
+  - `applied-geometry-panel.tsx` — Server Component, `.dn-tile` shape, header-with-status row (matches `SessionPanel`), per-variant body rendered via a `PanelBody` switch on `display.kind`. Uses the existing `StatusDot` + the now-exported `Row` from `camera-panels.tsx`.
+  - `applied-geometry-panel.test.tsx` — **+8 tests**, `renderToStaticMarkup` per variant. One test pins the no-internal-terms invariant across all seven variants.
+- **Modified — Monitor page**
+  - `src/app/dashboard-next/(app)/cameras/[cameraId]/monitor/page.tsx` — added `getLatestProcessorStatus` to a new second-phase parallel block alongside `listValidations` (both depend on `currentSession`), passing `streamSessionId` when active. Added `<AppliedGeometryPanel status={processorStatus} />` as the fourth tile in the meta-panel grid.
+- **Modified — shared helpers**
+  - `src/components/dashboard-next/camera-panels.tsx` — exported `Row` and `PanelHeader` so the new panel can reuse the existing row + label styling instead of duplicating.
+
+**Files NOT touched:**
+
+- api-server / processor / observation schema — endpoint and lineage block already exist from P6-D.
+- Geometry editor — no editor behavior changes.
+- Legacy `/dashboard` — chip only lives in `/dashboard-next` per the standing route policy.
+
+**Verification:**
+
+- `npm run lint` clean.
+- `npx tsc --noEmit` clean.
+- `npm test` — **+18 new tests (10 helper + 8 component)**, full suite passing.
+- `npm run build` — known limitation: page-data step fails locally without `NEXT_PUBLIC_*` env vars; compile + typecheck pass.
+- Manual (post-deploy): visit Monitor tab for the P6-D test camera (`7b8313e5-…`) — chip should show `Applied geometry · Operator-saved · Revision r9 · Lines 2 · ROIs 1` (green dot). Stop the session — chip shows the latest historical row. Force `source=default` (or clear saved geometry + restart) — chip switches to warning copy.
+
+**Docs updated:** this commit-log entry; `docs/dashboard-next.md` adds an Applied Geometry chip section.
+
+**Follow-ups:**
+
+1. **First reliability finding** — emit an alert when `source = default` shows up on an actively-running production session. The chip surfaces this visually; the alert turns it into an actionable notification.
+2. **Polling variant** — if operators report needing live updates without a tab reload, switch the chip to a Client Component using `useUpstreamList` (10–15 s cadence). Server-only is the deliberate default for now.
+3. **Rename `payload.debug.geometry_source = "probe_default"`** on observations — cosmetic. The authoritative `payload.source.geometry_source` is correct; the debug field is misleading because the in-container pyds app doesn't know the supervisor stamped operator geometry over its head.
+4. **Re-run P6-D** with a more line-crossing-friendly walk to escalate the verdict from PARTIAL to PASS.
+
+---
+
 ## 2026-05-27 — P6-B3 hotfix: polygons never actually rendered (percentages aren't valid in `<polygon points>`)
 
 **Subject:** P6-B2 introduced ROI polygon rendering using percentage strings in the SVG `<polygon>` `points` attribute (`"10%,10% 90%,10% 50%,90%"`). The SVG spec defines `points` as a list of `<number>` coordinates — percentages are **not** valid syntax there, unlike `<line>` `x1`/`y1` or `<circle>` `cx`/`cy`. Browsers silently parsed only the numeric prefix, so every ROI polygon rendered at near-origin device pixels (~10×10 px), invisible at typical canvas sizes. That's why none of the P6-B3 polish landed visually: no rendered polygon means no border to see, no fill to read, no hover events to fire, no interior to grab for whole-shape drag. Lines and handles always worked because their attributes accept percentages.
