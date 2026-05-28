@@ -15,6 +15,7 @@ import { getAgent } from "@/lib/api/agents";
 import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { getLatestPerception } from "@/lib/api/perception";
+import { getProcessingConfig } from "@/lib/api/processing-config";
 import { getLatestProcessorStatus } from "@/lib/api/processor-status";
 import { getReliabilitySummary } from "@/lib/api/reliability";
 import { getLatestFrame } from "@/lib/api/snapshots";
@@ -56,8 +57,14 @@ export default async function CameraMonitorPage({
     throw err;
   }
 
-  const [agent, sessions, latestFrame, latestPerception, reliabilitySummary] =
-    await Promise.all([
+  const [
+    agent,
+    sessions,
+    latestFrame,
+    latestPerception,
+    reliabilitySummary,
+    processingConfig,
+  ] = await Promise.all([
       // 404 = agent removed; other errors bubble to the segment error boundary.
       getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
         (err) => {
@@ -81,7 +88,16 @@ export default async function CameraMonitorPage({
         accountId: activeAccountId,
         cameraId: camera.id,
       }),
+      // M3 master switch -> the live perception overlay shows a dedicated
+      // "Enable processing in Settings" empty state when this is off. Fail
+      // open (treat as enabled) on any error so an outage of this endpoint
+      // doesn't disable the overlay surface.
+      getProcessingConfig({ accountId: activeAccountId }).catch((err) => {
+        if (err instanceof UpstreamApiError) return null;
+        throw err;
+      }),
     ]);
+  const processingEnabled = processingConfig?.processing_enabled ?? true;
   // Local rebinding so the panel prop type stays narrow.
   const reliability: ReliabilitySummary | null = reliabilitySummary;
 
@@ -126,6 +142,7 @@ export default async function CameraMonitorPage({
                 cameraId={session.camera_id}
                 approved={session.approved}
                 initialPerception={latestPerception}
+                processingEnabled={processingEnabled}
               />
             )}
           />
