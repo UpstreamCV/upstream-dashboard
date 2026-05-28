@@ -193,3 +193,14 @@ Netlify's Next.js Runtime auto-detects this project — middleware (`proxy.ts`) 
 ## Commit / doc policy
 
 Every meaningful commit updates `docs/commit-log.md` in the same commit, plus any affected docs (README, AGENTS, architecture). See `AGENTS.md` for the full policy.
+
+## Project Tracking
+
+We use GitHub Issues as a lightweight tracker for meaningful bugs,
+features, follow-ups, and milestone work. Issues should include clear
+context and acceptance criteria, but should not become heavy process.
+Small fast-moving implementation details can stay in PRs, commit logs,
+or working notes. New product surfaces should land under
+`/dashboard-next` per `AGENTS.md`.
+
+The cross-repo plan lives in `../docs/github-issues-plan.md`.
