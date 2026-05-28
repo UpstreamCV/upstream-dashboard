@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Boxes, RefreshCw, Spline, Tag } from "lucide-react";
 import clsx from "clsx";
-import { RelativeTime } from "@/components/data/relative-time";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { useUpstreamList } from "@/lib/api/use-list";
 import type {
@@ -14,8 +13,10 @@ import type {
 import {
   CONFIDENCE_THRESHOLDS,
   buildLatestPerceptionPath,
+  formatOverlayAge,
   hasFrameDimensions,
   normalizeSnapshot,
+  observedAtAgeSeconds,
   selectOverlayObjects,
 } from "@/lib/perception/overlay-helpers";
 import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
@@ -26,6 +27,12 @@ import { LiveStreamPlayerNext } from "./live-stream-player-next";
 // The overlay still lags the live video by up to this interval plus network
 // latency: it shows the latest snapshot, NOT frame-synchronized metadata.
 const LIVE_OVERLAY_POLL_MS = 1_000;
+
+// Default age after which the snapshot is considered stale. The processor
+// emits at ~1 FPS, and one poll tick is 1s, so anything older than ~10s
+// almost certainly means the processor is silent or the camera stopped --
+// the overlay is no longer telling the truth about the current scene.
+const DEFAULT_STALE_AFTER_SECONDS = 10;
 
 const SELECT_CLASS =
   "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
@@ -51,11 +58,26 @@ export function LivePerceptionOverlayNext({
   cameraId,
   approved,
   initialPerception,
+  // M5 polish: M3 master switch threaded down from the Monitor page. When
+  // false, the overlay shows a dedicated "enable processing in Settings"
+  // empty state instead of the generic "no snapshot yet" copy.
+  processingEnabled = true,
+  // Snapshots older than this look like the processor is silent or the
+  // camera stopped streaming. The overlay surfaces a stale warning above
+  // the empty-state line; boxes still render with reduced visual weight
+  // is out of scope -- v1 just calls it out in copy.
+  staleAfterSeconds = DEFAULT_STALE_AFTER_SECONDS,
+  // Injectable so tests can pin a deterministic "now". Production uses
+  // Date.now() implicitly via the default.
+  now = Date.now,
 }: {
   sessionId: string;
   cameraId: string;
   approved: StreamParams;
   initialPerception: LatestPerceptionRecord | null;
+  processingEnabled?: boolean;
+  staleAfterSeconds?: number;
+  now?: () => number;
 }) {
   const [showBoxes, setShowBoxes] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
@@ -110,6 +132,15 @@ export function LivePerceptionOverlayNext({
     ? snapshot.rois.length + snapshot.lines.length
     : 0;
 
+  // Age + stale gate. Computed against the injected ``now`` so tests can pin a
+  // deterministic clock. ``ageSeconds`` is null when there's no observation to
+  // age (no snapshot yet) -- the empty-state branch handles that case.
+  const ageSeconds = record
+    ? observedAtAgeSeconds(record.observed_at, now())
+    : null;
+  const ageLabel = record ? formatOverlayAge(record.observed_at, now()) : null;
+  const isStale = ageSeconds !== null && ageSeconds > staleAfterSeconds;
+
   return (
     <>
       <LiveStreamPlayerNext
@@ -128,11 +159,11 @@ export function LivePerceptionOverlayNext({
             <p className="mt-1 text-sm text-[var(--dn-text-50)]">
               {record && snapshot ? (
                 <>
-                  snapshot{" "}
-                  <RelativeTime
-                    value={record.observed_at}
-                    className="text-black"
-                  />
+                  {ageLabel ? (
+                    <span className="text-black">{ageLabel}</span>
+                  ) : (
+                    "live"
+                  )}
                   {" · "}
                   {snapshot.objects.length} object
                   {snapshot.objects.length === 1 ? "" : "s"} · {geometryCount}{" "}
@@ -207,6 +238,8 @@ export function LivePerceptionOverlayNext({
           dimsOk={dimsOk}
           objectCount={snapshot?.objects.length ?? 0}
           drawnCount={overlayObjects.length}
+          processingEnabled={processingEnabled}
+          isStale={isStale}
         />
       </div>
     </>
@@ -224,6 +257,8 @@ function OverlayMessage({
   dimsOk,
   objectCount,
   drawnCount,
+  processingEnabled,
+  isStale,
 }: {
   missing: boolean;
   errored: boolean;
@@ -231,6 +266,8 @@ function OverlayMessage({
   dimsOk: boolean;
   objectCount: number;
   drawnCount: number;
+  processingEnabled: boolean;
+  isStale: boolean;
 }) {
   if (errored && !hasRecord) {
     return (
@@ -247,10 +284,31 @@ function OverlayMessage({
       </p>
     );
   }
+  // Processing-disabled gets priority over generic empty state -- the
+  // operator chose this, so we tell them where to undo it. Sits above
+  // missing/!hasRecord so they see "enable processing" instead of
+  // "no perception snapshot yet" the first time they look after toggling.
+  if (!processingEnabled && (missing || !hasRecord)) {
+    return (
+      <p className="mt-2 text-sm text-[var(--dn-text-50)]">
+        Processing is disabled. Enable processing in Settings to see detections.
+      </p>
+    );
+  }
   if (missing || !hasRecord) {
     return (
       <p className="mt-2 text-sm text-[var(--dn-text-50)]">
-        No perception snapshot yet.
+        No perception data yet. Start processing to see detections.
+      </p>
+    );
+  }
+  // Stale check sits above dims/empty so the operator hears the bigger story
+  // ("this isn't current") before the smaller one ("no objects in this
+  // particular snapshot").
+  if (isStale) {
+    return (
+      <p className="mt-2 text-sm text-[#8a6d1f]">
+        Processor output is stale. Overlay may not reflect the current scene.
       </p>
     );
   }
@@ -265,7 +323,7 @@ function OverlayMessage({
   if (objectCount === 0) {
     return (
       <p className="mt-2 text-sm text-[var(--dn-text-50)]">
-        No objects in latest snapshot. Showing geometry only.
+        No detections in latest perception snapshot.
       </p>
     );
   }

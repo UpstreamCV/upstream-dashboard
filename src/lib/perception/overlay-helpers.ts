@@ -256,6 +256,44 @@ export function formatObjectLabel(
   return parts.join(" · ");
 }
 
+// --- age / staleness ---------------------------------------------------------
+
+/** Seconds between ``observedAt`` and ``now``. ``null`` when the input is
+ * unparseable. Positive when ``observedAt`` is in the past (the normal case);
+ * negative when somehow ahead of ``now``. */
+export function observedAtAgeSeconds(
+  observedAt: string | null | undefined,
+  now: number,
+): number | null {
+  if (typeof observedAt !== "string" || observedAt.length === 0) return null;
+  const ms = Date.parse(observedAt);
+  if (!Number.isFinite(ms)) return null;
+  return (now - ms) / 1000;
+}
+
+/**
+ * Honest one-line age label for the live overlay.
+ *
+ *   age < 60s   -> "overlay 0.8s old"   (single decimal, matches polling cadence)
+ *   age >= 60s  -> "overlay 5 min old"  (rounded; we hand off to coarser units)
+ *
+ * Returning ``null`` lets the caller fall back to RelativeTime or omit the
+ * line entirely when there's no observation to age.
+ */
+export function formatOverlayAge(
+  observedAt: string | null | undefined,
+  now: number,
+): string | null {
+  const age = observedAtAgeSeconds(observedAt, now);
+  if (age === null) return null;
+  // Future-clock or sub-second precision; clamp to 0 so we don't print
+  // "overlay -0.2s old" if the local clock is briefly ahead of the server.
+  const clamped = Math.max(0, age);
+  if (clamped < 60) return `overlay ${clamped.toFixed(1)}s old`;
+  if (clamped < 3600) return `overlay ${Math.round(clamped / 60)} min old`;
+  return `overlay ${Math.round(clamped / 3600)} h old`;
+}
+
 // --- geometry rendering helpers ---------------------------------------------
 
 /** SVG `points` attribute string for a polygon/polyline. */

@@ -261,3 +261,65 @@ describe("normalizeSnapshot", () => {
     expect(s.objects[0].label).toBe("person");
   });
 });
+
+import {
+  formatOverlayAge,
+  observedAtAgeSeconds,
+} from "./overlay-helpers";
+
+describe("observedAtAgeSeconds", () => {
+  test("returns positive seconds for an observation in the past", () => {
+    const now = Date.parse("2026-05-28T12:00:30Z");
+    expect(observedAtAgeSeconds("2026-05-28T12:00:00Z", now)).toBeCloseTo(30, 3);
+  });
+
+  test("returns null for missing / malformed timestamps", () => {
+    expect(observedAtAgeSeconds(null, Date.now())).toBeNull();
+    expect(observedAtAgeSeconds(undefined, Date.now())).toBeNull();
+    expect(observedAtAgeSeconds("", Date.now())).toBeNull();
+    expect(observedAtAgeSeconds("not-a-date", Date.now())).toBeNull();
+  });
+});
+
+describe("formatOverlayAge", () => {
+  test("sub-minute age renders with one decimal", () => {
+    const now = Date.parse("2026-05-28T12:00:00.800Z");
+    expect(formatOverlayAge("2026-05-28T12:00:00.000Z", now)).toBe(
+      "overlay 0.8s old",
+    );
+  });
+
+  test("ages near 1 second round to one decimal, no surprises", () => {
+    const now = Date.parse("2026-05-28T12:00:01.000Z");
+    expect(formatOverlayAge("2026-05-28T12:00:00.000Z", now)).toBe(
+      "overlay 1.0s old",
+    );
+  });
+
+  test("ages between 1 and 60 minutes use rounded minutes", () => {
+    const now = Date.parse("2026-05-28T12:05:30Z");
+    expect(formatOverlayAge("2026-05-28T12:00:00Z", now)).toBe(
+      "overlay 6 min old",
+    );
+  });
+
+  test("ages over an hour use rounded hours", () => {
+    const now = Date.parse("2026-05-28T14:30:00Z");
+    expect(formatOverlayAge("2026-05-28T12:00:00Z", now)).toBe(
+      "overlay 3 h old",
+    );
+  });
+
+  test("future-clock skew clamps to 0 rather than emitting negative ages", () => {
+    const now = Date.parse("2026-05-28T11:59:59.800Z");
+    expect(formatOverlayAge("2026-05-28T12:00:00.000Z", now)).toBe(
+      "overlay 0.0s old",
+    );
+  });
+
+  test("null for missing / unparseable observedAt", () => {
+    expect(formatOverlayAge(null, Date.now())).toBeNull();
+    expect(formatOverlayAge(undefined, Date.now())).toBeNull();
+    expect(formatOverlayAge("not-a-date", Date.now())).toBeNull();
+  });
+});
