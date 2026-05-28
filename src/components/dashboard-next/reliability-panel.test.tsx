@@ -109,9 +109,9 @@ describe("ReliabilityPanel", () => {
     const f = finding({
       severity: "critical",
       finding_type: "stream_valid_processor_silent",
-      title: "Stream is live but processor is not producing observations",
+      title: "Camera is sending frames but processor is silent",
       message:
-        "The camera stream appears live, but the processor is not producing recent observations. This workflow should not be trusted until processor output resumes.",
+        "The camera is uploading frames, but the processor is not producing recent observations. This workflow should not be trusted until processor output resumes.",
       likely_cause: "processor_runtime_or_observation_write_issue",
       recommended_action:
         "Check processor worker health, observation writes, and package eligibility for this session.",
