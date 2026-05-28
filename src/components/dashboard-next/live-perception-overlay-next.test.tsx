@@ -22,6 +22,19 @@ vi.mock("./live-stream-player-next", () => ({
   ),
 }));
 
+// The Realtime subscription effect never runs under renderToStaticMarkup
+// (effects don't fire on the server), but importing the supabase client pulls
+// in @/lib/env, which throws when NEXT_PUBLIC_* are absent in the test env.
+// Stub the module so the import is inert.
+vi.mock("@/lib/supabase/client", () => ({
+  createSupabaseBrowserClient: () => ({
+    channel: () => ({
+      on: () => ({ subscribe: () => ({}) }),
+    }),
+    removeChannel: () => {},
+  }),
+}));
+
 const { LivePerceptionOverlayNext } = await import("./live-perception-overlay-next");
 
 const APPROVED: StreamParams = {

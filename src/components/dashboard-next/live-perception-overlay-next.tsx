@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Boxes, RefreshCw, Spline, Tag } from "lucide-react";
 import clsx from "clsx";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { useUpstreamList } from "@/lib/api/use-list";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type {
   LatestPerceptionRecord,
   LatestPerceptionResponse,
@@ -22,11 +23,14 @@ import {
 import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
 import { LiveStreamPlayerNext } from "./live-stream-player-next";
 
-// Polled snapshot cadence while the overlay is live. Matched to the processor's
-// ~1 FPS perception publish rate — polling faster wouldn't surface newer data.
-// The overlay still lags the live video by up to this interval plus network
-// latency: it shows the latest snapshot, NOT frame-synchronized metadata.
-const LIVE_OVERLAY_POLL_MS = 1_000;
+// Fallback poll cadence while the overlay is live. Realtime push (Supabase
+// postgres_changes on latest_perception_snapshots) is the primary update
+// path now — it refetches the instant the processor upserts a snapshot,
+// removing the up-to-1s poll latency that made detections visibly lag the
+// video. This slow poll is just insurance: it recovers if the realtime
+// socket drops or an event is missed, and covers the very first load. Much
+// gentler than the previous 1s poll.
+const LIVE_OVERLAY_FALLBACK_POLL_MS = 10_000;
 
 // Default age after which the snapshot is considered stale. The processor
 // emits at ~1 FPS, and one poll tick is 1s, so anything older than ~10s
@@ -89,12 +93,54 @@ export function LivePerceptionOverlayNext({
     useUpstreamList<LatestPerceptionResponse>(
       buildLatestPerceptionPath(cameraId),
       {
-        refreshInterval: live ? LIVE_OVERLAY_POLL_MS : 0,
+        refreshInterval: live ? LIVE_OVERLAY_FALLBACK_POLL_MS : 0,
         fallbackData: initialPerception
           ? { snapshot: initialPerception }
           : undefined,
       },
     );
+
+  // Realtime push: subscribe to row changes on latest_perception_snapshots
+  // for this camera and refetch the moment the processor upserts a new
+  // snapshot. Same sanctioned Supabase Realtime pattern as
+  // CameraDetailRealtimeNext (which watches stream_sessions) — broadcasts
+  // respect the table's member-select RLS, so this adds no new auth surface
+  // and the api-server pushes nothing. We use the event purely as a trigger
+  // to revalidate the existing SWR key (AGENTS.md: "only for change
+  // notifications that trigger ... local state updates"), keeping one safe,
+  // secret-filtered data path through /perception/latest.
+  //
+  // Push removes the poll-latency component of the lag. It does NOT change
+  // the once-per-second motion of the boxes — that's the processor's ~1 FPS
+  // publish cadence (perception_snapshot_interval_seconds). Bumping that env
+  // is the follow-up for smoother motion.
+  useEffect(() => {
+    if (!live) return;
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`dn-camera:${cameraId}:perception`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "latest_perception_snapshots",
+          filter: `camera_id=eq.${cameraId}`,
+        },
+        () => {
+          // New (or updated) snapshot row exists — pull the fresh one. The
+          // bound mutate() forces a revalidation; SWR's polling already
+          // bypasses dedupingInterval, and so does an explicit mutate, so
+          // each upsert yields one refetch.
+          void mutate();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [live, cameraId, mutate]);
 
   const missing =
     error instanceof UpstreamApiError &&
