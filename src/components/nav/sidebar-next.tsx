@@ -70,7 +70,12 @@ const NAV: {
     match: /^\/dashboard-next\/api-tokens/,
     icon: KeyRound,
   },
-  { label: "Settings", href: null, icon: Settings },
+  {
+    label: "Settings",
+    href: "/dashboard-next/settings",
+    match: /^\/dashboard-next\/settings/,
+    icon: Settings,
+  },
 ];
 
 const ICON_SIZE = { width: "clamp(18px,1.6vw,22px)", height: "clamp(18px,1.6vw,22px)" };
