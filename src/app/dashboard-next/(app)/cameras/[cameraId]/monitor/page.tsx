@@ -1,3 +1,4 @@
+import { AppliedGeometryPanel } from "@/components/dashboard-next/applied-geometry-panel";
 import {
   AgentPanel,
   CameraMetaPanel,
@@ -13,12 +14,14 @@ import { getAgent } from "@/lib/api/agents";
 import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { getLatestPerception } from "@/lib/api/perception";
+import { getLatestProcessorStatus } from "@/lib/api/processor-status";
 import { getLatestFrame } from "@/lib/api/snapshots";
 import { listStreamSessions } from "@/lib/api/stream-sessions";
 import { listValidations } from "@/lib/api/validations";
 import { notFound } from "next/navigation";
 import type {
   Camera,
+  ProcessorStatusRecord,
   StreamSession,
   StreamValidation,
 } from "@/lib/api/types";
@@ -71,15 +74,32 @@ export default async function CameraMonitorPage({
   ]);
 
   const currentSession: StreamSession | null = sessions[0] ?? null;
-  const validations: StreamValidation[] = currentSession
-    ? await listValidations({
-        accountId: activeAccountId,
-        sessionId: currentSession.id,
-      }).catch((err) => {
-        if (err instanceof UpstreamApiError && err.status === 404) return [];
-        throw err;
-      })
-    : [];
+
+  // Second-phase fetches that depend on `currentSession`. Run in parallel
+  // among themselves so the per-page latency stays bounded by the slower
+  // of the two.
+  const [validations, processorStatus]: [
+    StreamValidation[],
+    ProcessorStatusRecord | null,
+  ] = await Promise.all([
+    currentSession
+      ? listValidations({
+          accountId: activeAccountId,
+          sessionId: currentSession.id,
+        }).catch((err) => {
+          if (err instanceof UpstreamApiError && err.status === 404) return [];
+          throw err;
+        })
+      : Promise.resolve([]),
+    // P6-D Applied Geometry chip — narrow to the current session when one is
+    // active so the chip reflects the running runtime, not the latest-ever
+    // historical row. Wrapper returns null on processor_status_not_found.
+    getLatestProcessorStatus({
+      accountId: activeAccountId,
+      cameraId: camera.id,
+      streamSessionId: currentSession?.id,
+    }),
+  ]);
   const latestValidation = validations[0] ?? null;
 
   return (
@@ -113,10 +133,11 @@ export default async function CameraMonitorPage({
         initialPerception={latestPerception}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
         <CameraMetaPanel camera={camera} />
         <AgentPanel agent={agent} />
         <ValidationPanel validation={latestValidation} />
+        <AppliedGeometryPanel status={processorStatus} />
       </div>
     </div>
   );

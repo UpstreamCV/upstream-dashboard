@@ -145,7 +145,7 @@ The camera detail page is a **tabbed workflow** under `(app)/cameras/[cameraId]/
 
 Per-tab fetches live in each tab's `page.tsx`. Layout/page fetch duplication for `getCamera` + `listStreamSessions` is accepted today (`serverFetch` uses `cache: "no-store"` per `AGENTS.md`); revisit with React `cache()` or a layout-only loader if it becomes a hot spot.
 
-### Monitor tab — five data sources, four client islands
+### Monitor tab — six data sources, four client islands
 
 1. **`getCamera`** — primary subject. 404 → `notFound()`.
 2. **`getAgent`** — gracefully `null` on 404 (agent may have been deleted while the camera row persists).
@@ -153,6 +153,7 @@ Per-tab fetches live in each tab's `page.tsx`. Layout/page fetch duplication for
 4. **`getLatestFrame`** — returns `null` on `snapshot_not_found`; the latest-frame card polls this endpoint on its own.
 5. **`getLatestPerception`** — returns `null` on `perception_snapshot_not_found`; the two perception overlay cards consume this.
 6. **`listValidations({ sessionId })`** — only if there's a current session.
+7. **`getLatestProcessorStatus({ cameraId, streamSessionId? })`** — returns `null` on `processor_status_not_found`; the Applied Geometry chip consumes this. Narrows by `streamSessionId` when a current session exists so the chip reflects the running runtime rather than the latest-ever historical row.
 
 Client islands inside the Monitor tab:
 
@@ -218,6 +219,32 @@ Today the dashboard only sees the **current** `revision`. The number is exposed 
 
 - **P6-C** — the processor begins consuming `geometry_config` on its next session. The plumbing is already in place: `/v1/internal/processor/eligible-sessions` wire-carries the camera's current geometry config so the processor doesn't need a separate fetch (see `../upstream-api-server/docs/api-contracts.md` ~line 978).
 - **P6-D** — end-to-end verification: an operator saves geometry, the next session starts, observations re-emit against the new revision within seconds. The Monitor tab's perception overlay should reflect the change.
+
+## Applied Geometry chip — Monitor-tab read of P6-C lineage
+
+The Monitor tab carries a small read-only panel that surfaces the lineage block the P6-C analytics worker stamps onto every processor status post (`processor_statuses.payload.applied_geometry`). First visible reliability surface — the same data future findings will alert on.
+
+**Endpoint:** `GET /v1/cameras/{id}/processor-status/latest` (P6-D). Caller-authed. Accepts `?stream_session_id=` to narrow to a specific run when multiple processor restarts have stamped overlapping rows.
+
+**Wrapper:** `getLatestProcessorStatus({ accountId, cameraId, streamSessionId? })` in `src/lib/api/processor-status.ts`. Returns `null` on `processor_status_not_found` (mirrors `getLatestPerception` / `getLatestFrame`) so the page never has to try/catch the no-status case.
+
+**Component:** `<AppliedGeometryPanel status={...} />` (`src/components/dashboard-next/applied-geometry-panel.tsx`). Server Component. Same `.dn-tile` shape as `CameraMetaPanel` / `AgentPanel` / `ValidationPanel`; slots into the Monitor tab's meta-panel grid as the fourth tile (grid widens from `md:grid-cols-3` to `md:grid-cols-2 xl:grid-cols-4`).
+
+**Display helper:** `formatAppliedGeometryStatus(status)` in `src/lib/perception/applied-geometry-format.ts` — pure tagged-variant union, no React. Resolution priority (first match wins):
+
+1. `null` → `no_status` (neutral)
+2. `error_code === "geometry_invalid"` → `geometry_invalid` (danger; P6-C stamps the error code at the row level alongside `source=fallback_default_on_error` — surfacing it first gives the chip the strongest signal)
+3. `payload.applied_geometry` missing → `missing_applied_geometry` (muted)
+4. `source === "operator_saved"` → `operator_saved` (positive; shows revision, line/ROI counts)
+5. `source === "default"` → `default` (warning; "configure and restart")
+6. `source === "fallback_default_on_error"` → `fallback` (warning; shows optional saved revision + error_reason)
+7. anything else → `unknown_source` (warning; renders the source label verbatim — forward-compat for future api-server source values)
+
+**Why no polling:** processor status changes on session restarts and lifecycle transitions, not per frame. Operators inspect the chip once after a save+restart; a tab reload gives them the fresh state. Keeps the surface tiny and avoids `useUpstreamList` complexity. If operators report needing live updates without a reload, the chip can switch to a Client Component using `useUpstreamList` on a 10–15 s cadence later.
+
+**Copy guarantee:** the panel never mentions DeepStream / nvdsanalytics / GStreamer / pyds — operator-facing, not a runtime debug surface. Pinned by a test.
+
+**Not in scope here:** reliability findings (no DB writes, no notifications), replay/shadow testing, geometry editor changes. The chip is read-only; saved geometry continues to flow through the existing `PUT /v1/cameras/{id}/geometry-config` editor path unchanged.
 
 ## P6-B1 — Latest-Frame Geometry Editor Foundation
 
