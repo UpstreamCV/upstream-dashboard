@@ -1,11 +1,19 @@
-import { StatusDot, type DotStatus } from "./status-dot";
+import Link from "next/link";
+import { StatusDot } from "./status-dot";
+import {
+  SUMMARY_DOT,
+  SUMMARY_LABEL,
+  SUMMARY_TEXT,
+  variantOfSummary,
+  type SummaryVariant,
+} from "@/lib/perception/reliability-status";
 import type {
   ReliabilityFinding,
   ReliabilitySummary,
-  ReliabilitySummaryStatus,
 } from "@/lib/api/types";
 
-// Monitor-tab Reliability card (Reliability M0/M1-A).
+// Monitor-tab Reliability card (Reliability M0/M1-A; M4 adds the "View
+// reliability details" link).
 //
 // Backed by GET /v1/cameras/{id}/reliability/summary. The api-server runs the
 // rule set on read and returns one categorical verdict; this card surfaces it
@@ -18,42 +26,6 @@ import type {
 // Copy is operator-facing. No runtime-internal terms (DeepStream, GStreamer)
 // and no model-accuracy claims; the language is "may reduce" / "should not be
 // trusted until …", which matches the heuristic-warning posture of the slice.
-
-// summary === null = api-server returned 404 (camera_not_found or the
-// reliability endpoint itself unavailable). We render a muted Unavailable
-// state instead of crashing the surrounding tab.
-type Variant = ReliabilitySummaryStatus | "unavailable";
-
-function variantOf(summary: ReliabilitySummary | null): Variant {
-  return summary === null ? "unavailable" : summary.status;
-}
-
-const HEADER_DOT: Record<Variant, DotStatus> = {
-  healthy: "green",
-  info: "yellow",
-  needs_review: "yellow",
-  critical: "red",
-  unknown: "neutral",
-  unavailable: "neutral",
-};
-
-const HEADER_TEXT: Record<Variant, string> = {
-  healthy: "#3f7d4e",
-  info: "#8a6d1f",
-  needs_review: "#8a6d1f",
-  critical: "#c0473b",
-  unknown: "var(--dn-text-50)",
-  unavailable: "var(--dn-text-50)",
-};
-
-const HEADER_LABEL: Record<Variant, string> = {
-  healthy: "Healthy",
-  info: "Info",
-  needs_review: "Needs review",
-  critical: "Critical",
-  unknown: "Unknown",
-  unavailable: "Unavailable",
-};
 
 function Warning({ children }: { children: React.ReactNode }) {
   return (
@@ -84,7 +56,7 @@ function FindingBody({
   variant,
 }: {
   finding: ReliabilityFinding;
-  variant: Variant;
+  variant: SummaryVariant;
 }) {
   // Recommended-action block is colored by severity so a critical jumps
   // visually without needing extra chrome on the card.
@@ -114,7 +86,7 @@ function PanelBody({
   variant,
 }: {
   summary: ReliabilitySummary | null;
-  variant: Variant;
+  variant: SummaryVariant;
 }) {
   if (variant === "unavailable") {
     return (
@@ -146,10 +118,15 @@ function PanelBody({
 
 export function ReliabilityPanel({
   summary,
+  cameraId,
 }: {
   summary: ReliabilitySummary | null;
+  // Optional so the M0 callsite doesn't break if it forgets to thread it
+  // through; the "View details" link only renders when cameraId is present.
+  // Practically the Monitor page does pass it, so the link always shows.
+  cameraId?: string;
 }) {
-  const variant = variantOf(summary);
+  const variant = variantOfSummary(summary);
   return (
     <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -157,16 +134,24 @@ export function ReliabilityPanel({
           reliability
         </p>
         <span className="inline-flex items-center gap-1.5">
-          <StatusDot status={HEADER_DOT[variant]} />
+          <StatusDot status={SUMMARY_DOT[variant]} />
           <span
             className="font-bold"
-            style={{ color: HEADER_TEXT[variant] }}
+            style={{ color: SUMMARY_TEXT[variant] }}
           >
-            {HEADER_LABEL[variant]}
+            {SUMMARY_LABEL[variant]}
           </span>
         </span>
       </div>
       <PanelBody summary={summary} variant={variant} />
+      {cameraId ? (
+        <Link
+          href={`/dashboard-next/cameras/${cameraId}/reliability`}
+          className="mt-4 inline-block text-[clamp(0.78rem,0.9vw,0.85rem)] font-bold text-[var(--dn-creek-mid)] hover:underline"
+        >
+          View reliability details →
+        </Link>
+      ) : null}
     </div>
   );
 }
