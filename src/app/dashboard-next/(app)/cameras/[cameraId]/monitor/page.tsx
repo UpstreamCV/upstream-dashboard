@@ -148,7 +148,7 @@ export default async function CameraMonitorPage({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
         {/* Reliability is the operator-facing roll-up; lead the meta-panel
             grid with it so the verdict is the first thing on the row. */}
-        <ReliabilityPanel summary={reliability} />
+        <ReliabilityPanel summary={reliability} cameraId={camera.id} />
         <CameraMetaPanel camera={camera} />
         <AgentPanel agent={agent} />
         <ValidationPanel validation={latestValidation} />

@@ -198,3 +198,33 @@ describe("ReliabilityPanel", () => {
     }
   });
 });
+
+describe("ReliabilityPanel — View details link (M4)", () => {
+  test("emits link when cameraId is provided AND there's something to look at", () => {
+    const f = finding();
+    const html = renderToStaticMarkup(
+      <ReliabilityPanel
+        summary={summary("needs_review", { top_findings: [f] })}
+        cameraId="cam-123"
+      />,
+    );
+    expect(html).toContain("View reliability details");
+    expect(html).toContain("/dashboard-next/cameras/cam-123/reliability");
+  });
+
+  test("link renders on healthy and unknown variants too (so operators can always drill in)", () => {
+    for (const s of [summary("healthy"), summary("unknown")]) {
+      const html = renderToStaticMarkup(
+        <ReliabilityPanel summary={s} cameraId="cam-7" />,
+      );
+      expect(html).toContain("View reliability details");
+    }
+  });
+
+  test("link suppressed when cameraId is omitted (M0 callsite compat)", () => {
+    const html = renderToStaticMarkup(
+      <ReliabilityPanel summary={summary("healthy")} />,
+    );
+    expect(html).not.toContain("View reliability details");
+  });
+});

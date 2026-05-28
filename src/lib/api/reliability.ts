@@ -5,6 +5,7 @@ import { UpstreamApiError } from "./errors";
 import type {
   ReliabilityFinding,
   ReliabilityFindingsResponse,
+  ReliabilityStatus,
   ReliabilitySummary,
 } from "./types";
 
@@ -52,10 +53,16 @@ export async function getReliabilityFindings(opts: {
   accountId: string;
   cameraId: string;
   limit?: number;
+  // M4: server defaults to "open" so omitting this preserves M0 behavior.
+  // "resolved" drives the Reliability tab's Recently resolved section.
+  status?: ReliabilityStatus;
 }): Promise<ReliabilityFinding[]> {
   const query: Record<string, string> = {};
   if (opts.limit !== undefined) {
     query.limit = String(opts.limit);
+  }
+  if (opts.status !== undefined) {
+    query.status = opts.status;
   }
   try {
     const res = await serverFetch<ReliabilityFindingsResponse>(
