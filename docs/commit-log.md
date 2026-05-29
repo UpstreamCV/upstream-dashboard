@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Fix: authorize the Realtime socket BEFORE subscribing (Error 401 on every event)
+
+**Subject:** With `REPLICA IDENTITY FULL` applied, UPDATE events now flow — but the diagnostics showed every event arriving as `keys=[] errors=['Error 401: Unauthorized']`, with the channel churning `SUBSCRIBED → CLOSED → SUBSCRIBED`. The per-record RLS authorization was failing because the **Realtime socket wasn't presenting the user JWT** — relying on the memoized client's eager/background `setAuth` raced the overlay's `subscribe()`, so the channel authorized record reads as `anon` → 401 → stripped payload → reconnect loop.
+
+**Fix:** in the overlay's Realtime effect, **await `supabase.auth.getSession()` + `supabase.realtime.setAuth(token)` BEFORE `.subscribe()`**, so the postgres_changes record reads authorize as the signed-in user. The effect is now an async IIFE with a `cancelled` guard and a channel-null-checked cleanup. Handler unchanged (direct cache-write when the row is usable, refetch otherwise).
+
+**Tests:** mock gained `realtime.setAuth`; the subscribe-dependent tests are now `async` and `await flushRealtime()` (a small helper that drains the effect's getSession→setAuth→subscribe microtasks) before asserting subscribe/status/handler behavior. 310 tests pass; lint + tsc clean. Temporary `[perception-realtime]` diagnostics retained until the chip is confirmed "Realtime connected" with no 401s.
+
 ## 2026-05-29 — Fix: consume Realtime events even when the broadcast row arrives stripped
 
 **Subject:** The api-server `REPLICA IDENTITY FULL` migration worked — the console diagnostics confirmed `socket auth: user-jwt`, `status: SUBSCRIBED`, and `event: UPDATE` firing 100+×, so UPDATE events now flow at full rate. **But** the broadcast row came through with `camera_id` (and other fields) `undefined`, so `perceptionRecordFromRealtimeRow` mapped it to `null` and the handler dropped every event → still "Fallback polling". Fixed the handler to not depend on the row contents: when the row is usable, direct-write it to the SWR cache (true real-time, scoped to this camera); when it arrives **stripped** (`rec` is null), use the event purely as a **refetch signal** (`mutate()` — RLS scopes delivery to the account, and `/perception/latest` returns the full snapshot the broadcast didn't carry). Either way `lastRealtimeEventAt` is set so the chip honestly reads "Realtime connected". Kept the temporary `[perception-realtime]` diagnostics (now logging `keys=`/`errors=`) to pin down *why* the row is stripped before removing them. 310 tests pass (added a stripped-row refetch test); lint + tsc clean.

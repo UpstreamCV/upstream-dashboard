@@ -264,83 +264,84 @@ export function LivePerceptionOverlayNext({
   // the SWR cache (revalidate:false) so the overlay renders at the processor's
   // publish rate rather than the dedupe-throttled refetch rate.
   useEffect(() => {
-    // Not eligible: hold no channel. The previous run's cleanup already reset
-    // the status to null, and deriveOverlayConnectionState ignores the status
-    // while the gate is closed, so there's nothing to set here.
     if (!shouldUseRealtime) return;
     const supabase = createSupabaseBrowserClient();
-    // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed. Tells us whether
-    // the Realtime socket is authenticated (user JWT) or anon (RLS would drop
-    // everything). Read in the browser console.
-    void supabase.auth.getSession().then(({ data }) =>
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
+    void (async () => {
+      // Authorize the Realtime socket with the user's JWT BEFORE subscribing.
+      // postgres_changes on an RLS table authorizes each record read against
+      // this token; if it isn't set, the payload comes back "Error 401:
+      // Unauthorized" (the socket authorizes as anon) and the channel churns
+      // SUBSCRIBED -> CLOSED. Relying on the client's eager/background setAuth
+      // races the subscribe, so set it explicitly and await it here.
+      const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
+      await supabase.realtime.setAuth(data.session?.access_token ?? null);
+      if (cancelled) return;
+      // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
       console.info(
-        "[perception-realtime] socket auth:",
-        data.session ? "user-jwt" : "anon",
-      ),
-    );
-    const channel = supabase
-      .channel(`dn-camera:${cameraId}:perception`)
-      .on(
-        "postgres_changes",
-        // NO server-side `filter` here. Supabase can only apply a
-        // postgres_changes filter on UPDATE/DELETE events against columns in the
-        // table's REPLICA IDENTITY, which for latest_perception_snapshots is
-        // just the primary key `id` (camera_id is a unique index, not the PK,
-        // and the table is not REPLICA IDENTITY FULL). The snapshot is UPSERTed
-        // per camera, so after the first INSERT every write is an UPDATE — a
-        // `camera_id=eq.` filter would silently drop them all (the bug behind
-        // "subscribed but no events"). RLS (member_select) still scopes delivery
-        // to the account; we narrow to this camera in the handler.
-        {
-          event: "*",
-          schema: "public",
-          table: "latest_perception_snapshots",
-        },
-        (payload) => {
-          // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed. Shows
-          // exactly what the broadcast row carries (in prod camera_id has come
-          // through `undefined`, i.e. the row arrives stripped).
-          console.info(
-            "[perception-realtime] event:",
-            payload.eventType,
-            "keys=",
-            Object.keys((payload.new as Record<string, unknown> | null) ?? {}),
-            "errors=",
-            payload.errors ?? "",
-          );
-          const rec = perceptionRecordFromRealtimeRow(payload.new);
-          if (rec) {
-            // Usable broadcast row: drop other cameras, else write it straight
-            // into the SWR cache — true real-time, no refetch.
-            if (rec.camera_id !== cameraId) return;
-            setLastRealtimeEventAt(now());
-            void mutate({ snapshot: rec }, { revalidate: false });
-          } else {
-            // The row arrived without usable fields (observed in prod: camera_id
-            // undefined). Use the event purely as a "refetch" signal — RLS
-            // already scopes delivery to this account, and SWR's dedupe bounds
-            // the refetch rate. The /perception/latest fetch returns the full
-            // snapshot the broadcast didn't carry.
-            setLastRealtimeEventAt(now());
-            void mutate();
+        "[perception-realtime] setAuth:",
+        data.session ? "user-jwt" : "missing",
+      );
+
+      channel = supabase
+        .channel(`dn-camera:${cameraId}:perception`)
+        .on(
+          "postgres_changes",
+          // No server-side `filter`: Supabase only applies a postgres_changes
+          // filter on UPDATEs against columns in the table's REPLICA IDENTITY,
+          // so a `camera_id=eq.` filter drops the (UPSERT-driven) UPDATE events.
+          // RLS (member_select) scopes delivery to the account; we narrow to
+          // this camera in the handler.
+          {
+            event: "*",
+            schema: "public",
+            table: "latest_perception_snapshots",
+          },
+          (payload) => {
+            // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
+            console.info(
+              "[perception-realtime] event:",
+              payload.eventType,
+              "keys=",
+              Object.keys(
+                (payload.new as Record<string, unknown> | null) ?? {},
+              ),
+              "errors=",
+              payload.errors ?? "",
+            );
+            const rec = perceptionRecordFromRealtimeRow(payload.new);
+            if (rec) {
+              // Usable broadcast row: drop other cameras, else write it straight
+              // into the SWR cache — true real-time, no refetch.
+              if (rec.camera_id !== cameraId) return;
+              setLastRealtimeEventAt(now());
+              void mutate({ snapshot: rec }, { revalidate: false });
+            } else {
+              // Row arrived without usable fields: use the event as a refetch
+              // signal; /perception/latest returns the full snapshot.
+              setLastRealtimeEventAt(now());
+              void mutate();
+            }
+          },
+        )
+        .subscribe((status, err) => {
+          setRealtimeStatus(status as RealtimeStatus);
+          // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
+          console.info("[perception-realtime] status:", status, err ?? "");
+          if (err) {
+            reportError(err, { area: "live-perception-overlay:realtime" });
           }
-        },
-      )
-      .subscribe((status, err) => {
-        setRealtimeStatus(status as RealtimeStatus);
-        // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
-        console.info("[perception-realtime] status:", status, err ?? "");
-        // Surface channel-level errors instead of discarding them (a silent
-        // CHANNEL_ERROR otherwise just reads as "Reconnecting" with no cause).
-        if (err) {
-          reportError(err, { area: "live-perception-overlay:realtime" });
-        }
-      });
+        });
+    })();
 
     return () => {
+      cancelled = true;
       setRealtimeStatus(null);
       setLastRealtimeEventAt(null);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [shouldUseRealtime, cameraId, mutate, now]);
 
