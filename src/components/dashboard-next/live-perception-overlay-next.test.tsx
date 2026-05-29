@@ -407,6 +407,17 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
     expect(h.mutateSpy).not.toHaveBeenCalled();
   });
 
+  test("stripped broadcast row (no usable fields) falls back to a refetch", () => {
+    // In prod the row can arrive without camera_id/id (perceptionRecordFromRealtimeRow
+    // -> null). We can't direct-write it, so we refetch the authoritative latest.
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    h.mutateSpy.mockClear();
+    act(() => h.realtime.changeHandler?.({ new: {} }));
+    expect(h.mutateSpy).toHaveBeenCalledWith();
+  });
+
   test("boxes + labels + object count render when on", () => {
     setHookData({ snapshot: record({ snapshot: snap([PERSON]) }) });
     const view = renderOverlay();
