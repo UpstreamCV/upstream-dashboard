@@ -23,19 +23,21 @@ import {
 import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
 import { LiveStreamPlayerNext } from "./live-stream-player-next";
 
-// Fallback poll cadence while the overlay is live. Realtime push (Supabase
-// postgres_changes on latest_perception_snapshots) is the primary update
-// path now — it refetches the instant the processor upserts a snapshot,
-// removing the up-to-1s poll latency that made detections visibly lag the
-// video. This slow poll is just insurance: it recovers if the realtime
-// socket drops or an event is missed, and covers the very first load. Much
-// gentler than the previous 1s poll.
-const LIVE_OVERLAY_FALLBACK_POLL_MS = 10_000;
+// Poll cadence while the overlay is live. This is the SELF-SUFFICIENT
+// baseline — the overlay must feel near-real-time on polling alone, because
+// realtime push depends on the latest_perception_snapshots table being in
+// the supabase_realtime publication (a migration that may not be applied in
+// every environment). If we leaned on realtime as the only fast path and it
+// wasn't delivering, the overlay would silently fall back to a slow poll and
+// look frozen. 500ms ≈ 2 fetches/sec, which tracks the processor's ~3 FPS
+// publish rate closely; realtime push (when the migration is live) makes it
+// snappier still by refetching the instant a snapshot lands.
+const LIVE_OVERLAY_POLL_MS = 500;
 
-// Default age after which the snapshot is considered stale. The processor
-// emits at ~1 FPS, and one poll tick is 1s, so anything older than ~10s
-// almost certainly means the processor is silent or the camera stopped --
-// the overlay is no longer telling the truth about the current scene.
+// Default age after which the snapshot is considered stale. A live processor
+// publishes every ~0.3-1s, so anything older than ~10s almost certainly means
+// the processor is silent or the camera stopped -- the overlay is no longer
+// telling the truth about the current scene.
 const DEFAULT_STALE_AFTER_SECONDS = 10;
 
 const SELECT_CLASS =
@@ -93,7 +95,7 @@ export function LivePerceptionOverlayNext({
     useUpstreamList<LatestPerceptionResponse>(
       buildLatestPerceptionPath(cameraId),
       {
-        refreshInterval: live ? LIVE_OVERLAY_FALLBACK_POLL_MS : 0,
+        refreshInterval: live ? LIVE_OVERLAY_POLL_MS : 0,
         fallbackData: initialPerception
           ? { snapshot: initialPerception }
           : undefined,
