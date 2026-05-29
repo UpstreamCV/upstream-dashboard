@@ -108,6 +108,81 @@ describe("ReliabilityEvidence — unstable_detection_confidence", () => {
     expect(html).toContain(">100%<");
     expect(html).toContain("0.45");
   });
+
+  test("renders M5 baseline drift fields (previous avg, drop %, baseline, reasons)", () => {
+    const html = renderToStaticMarkup(
+      <ReliabilityEvidence
+        finding={finding(
+          "unstable_detection_confidence",
+          {
+            confidence_sample_count: 9,
+            avg_confidence: 0.34,
+            median_confidence: 0.35,
+            min_confidence: 0.22,
+            max_confidence: 0.49,
+            low_confidence_ratio: 0.4,
+            confidence_stddev: 0.08,
+            previous_avg_confidence: 0.68,
+            drop_ratio: 0.5,
+            baseline_window_seconds: 1800,
+            baseline_confidence_sample_count: 54,
+            baseline_metric_count: 7,
+            trigger_reasons: ["drop_vs_recent_baseline"],
+            thresholds: { low_confidence_threshold: 0.45 },
+            source: "latest_perception_snapshot_with_history",
+          },
+          "detection",
+        )}
+      />,
+    );
+    expect(html).toContain("Previous avg confidence");
+    expect(html).toContain(">0.68<");
+    expect(html).toContain("Confidence drop");
+    expect(html).toContain(">50%<");
+    expect(html).toContain("Baseline samples");
+    expect(html).toContain(">54<");
+    expect(html).toContain("Baseline window");
+    expect(html).toMatch(/30\s*min/);
+    expect(html).toContain("Why flagged");
+    expect(html).toContain("dropped vs recent baseline");
+  });
+
+  test("omits baseline rows when no history is present (no crash)", () => {
+    const html = renderToStaticMarkup(
+      <ReliabilityEvidence
+        finding={finding(
+          "unstable_detection_confidence",
+          {
+            confidence_sample_count: 6,
+            avg_confidence: 0.3,
+            median_confidence: 0.3,
+            min_confidence: 0.25,
+            max_confidence: 0.4,
+            low_confidence_ratio: 0.6,
+            confidence_stddev: 0.05,
+            previous_avg_confidence: null,
+            drop_ratio: null,
+            baseline_window_seconds: null,
+            baseline_confidence_sample_count: null,
+            baseline_metric_count: null,
+            trigger_reasons: ["low_average_confidence"],
+            thresholds: { low_confidence_threshold: 0.45 },
+            source: "latest_perception_snapshot",
+          },
+          "detection",
+        )}
+      />,
+    );
+    // The static stats still render.
+    expect(html).toContain("Average confidence");
+    // Baseline rows are absent (null values -> Row returns null).
+    expect(html).not.toContain("Previous avg confidence");
+    expect(html).not.toContain("Confidence drop");
+    expect(html).not.toContain("Baseline window");
+    // trigger_reasons still explains the static trigger.
+    expect(html).toContain("Why flagged");
+    expect(html).toContain("low average");
+  });
 });
 
 describe("ReliabilityEvidence — stream_valid_processor_silent", () => {
