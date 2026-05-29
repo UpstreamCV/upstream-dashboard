@@ -323,3 +323,78 @@ describe("formatOverlayAge", () => {
     expect(formatOverlayAge("not-a-date", Date.now())).toBeNull();
   });
 });
+
+import { perceptionRecordFromRealtimeRow } from "./overlay-helpers";
+
+describe("perceptionRecordFromRealtimeRow", () => {
+  const fullRow = {
+    id: "11111111-1111-1111-1111-111111111111",
+    account_id: "secret-account-uuid",
+    camera_id: "22222222-2222-2222-2222-222222222222",
+    stream_session_id: "33333333-3333-3333-3333-333333333333",
+    processor_id: "proc-1",
+    package_id: "pkg-1",
+    observed_at: "2026-05-28T18:09:00Z",
+    updated_at: "2026-05-28T18:09:00Z",
+    snapshot: {
+      frame: { width: 1280, height: 720 },
+      objects: [{ label: "person", confidence: 0.8 }],
+      geometry: { rois: [], lines: [] },
+    },
+  };
+
+  test("maps a full realtime row to a LatestPerceptionRecord", () => {
+    const rec = perceptionRecordFromRealtimeRow(fullRow);
+    expect(rec).not.toBeNull();
+    expect(rec!.id).toBe(fullRow.id);
+    expect(rec!.camera_id).toBe(fullRow.camera_id);
+    expect(rec!.observed_at).toBe(fullRow.observed_at);
+    expect(rec!.snapshot).toEqual(fullRow.snapshot);
+  });
+
+  test("drops account_id (never surfaced to the overlay record)", () => {
+    const rec = perceptionRecordFromRealtimeRow(fullRow);
+    expect(JSON.stringify(rec)).not.toContain("secret-account-uuid");
+    expect(rec as unknown as Record<string, unknown>).not.toHaveProperty(
+      "account_id",
+    );
+  });
+
+  test("returns null when identity/timestamp fields are missing", () => {
+    expect(perceptionRecordFromRealtimeRow(null)).toBeNull();
+    expect(perceptionRecordFromRealtimeRow({})).toBeNull();
+    expect(
+      perceptionRecordFromRealtimeRow({ id: "x", camera_id: "y" }),
+    ).toBeNull(); // no observed_at
+    expect(
+      perceptionRecordFromRealtimeRow({
+        camera_id: "y",
+        observed_at: "2026-05-28T18:09:00Z",
+      }),
+    ).toBeNull(); // no id
+  });
+
+  test("tolerates a missing/garbage snapshot (coerced downstream)", () => {
+    const rec = perceptionRecordFromRealtimeRow({
+      id: "a",
+      camera_id: "b",
+      observed_at: "2026-05-28T18:09:00Z",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.snapshot).toEqual({});
+    // updated_at falls back to observed_at when absent.
+    expect(rec!.updated_at).toBe("2026-05-28T18:09:00Z");
+  });
+
+  test("nullable processor/package fields map to null", () => {
+    const rec = perceptionRecordFromRealtimeRow({
+      id: "a",
+      camera_id: "b",
+      observed_at: "2026-05-28T18:09:00Z",
+      snapshot: {},
+    });
+    expect(rec!.processor_id).toBeNull();
+    expect(rec!.package_id).toBeNull();
+    expect(rec!.stream_session_id).toBe("");
+  });
+});
