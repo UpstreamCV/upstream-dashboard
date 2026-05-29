@@ -43,6 +43,7 @@ vi.mock("@/lib/supabase/client", () => ({
     auth: {
       getSession: async () => ({ data: { session: { access_token: "t" } } }),
     },
+    realtime: { setAuth: async () => {} },
     channel: () => ({
       on: (
         _event: string,
@@ -152,6 +153,17 @@ function connectPlayer(kind = "connected", cameraId = "cam-1"): void {
   });
 }
 
+// The realtime effect is async (getSession -> setAuth -> subscribe). Flush its
+// microtasks so the channel is subscribed / status + change handlers are wired
+// before asserting on them.
+async function flushRealtime(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 function setVisibility(state: "visible" | "hidden"): void {
   act(() => {
     Object.defineProperty(document, "visibilityState", {
@@ -196,30 +208,34 @@ describe("LivePerceptionOverlayNext — default OFF + subscription gating", () =
     ).toBeTruthy();
   });
 
-  test("subscribes only after enabling AND the stream connects", () => {
+  test("subscribes only after enabling AND the stream connects", async () => {
     renderOverlay();
     turnOn();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(0); // session on, but stream not connected
     connectPlayer();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(1);
   });
 
-  test("does not subscribe when processing is disabled", () => {
+  test("does not subscribe when processing is disabled", async () => {
     const view = renderOverlay({ processingEnabled: false });
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(0);
     expect(view.container.textContent).toContain("Processing is disabled");
   });
 
-  test("does not subscribe when the stream is inactive", () => {
+  test("does not subscribe when the stream is inactive", async () => {
     const view = renderOverlay();
     turnOn();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(0);
     expect(view.container.textContent).toContain("Stream is not active");
   });
 
-  test("does not subscribe when processor output is stale", () => {
+  test("does not subscribe when processor output is stale", async () => {
     setHookData({
       snapshot: record({
         observedAt: new Date(NOW - 60_000).toISOString(),
@@ -229,25 +245,28 @@ describe("LivePerceptionOverlayNext — default OFF + subscription gating", () =
     const view = renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(0);
     expect(view.container.textContent).toContain("Processor output is stale");
   });
 });
 
 describe("LivePerceptionOverlayNext — auto-unsubscribe", () => {
-  test("unsubscribes on unmount", () => {
+  test("unsubscribes on unmount", async () => {
     const view = renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(1);
     view.unmount();
     expect(h.realtime.removeCalls).toBeGreaterThanOrEqual(1);
   });
 
-  test("unsubscribes when processing is turned off", () => {
+  test("unsubscribes when processing is turned off", async () => {
     const view = renderOverlay({ processingEnabled: true });
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(1);
     view.rerender(
       <LivePerceptionOverlayNext
@@ -261,21 +280,24 @@ describe("LivePerceptionOverlayNext — auto-unsubscribe", () => {
     expect(h.realtime.removeCalls).toBeGreaterThanOrEqual(1);
   });
 
-  test("unsubscribes when the tab is hidden, reconnects when visible again", () => {
+  test("unsubscribes when the tab is hidden, reconnects when visible again", async () => {
     renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(1);
     setVisibility("hidden");
     expect(h.realtime.removeCalls).toBeGreaterThanOrEqual(1);
     setVisibility("visible");
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(2); // session still valid -> resubscribe
   });
 
-  test("unsubscribes on expiry and does not reconnect afterwards", () => {
+  test("unsubscribes on expiry and does not reconnect afterwards", async () => {
     const view = renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(1);
     act(() => {
       vi.advanceTimersByTime(15 * 60 * 1000 + 1000);
@@ -285,6 +307,7 @@ describe("LivePerceptionOverlayNext — auto-unsubscribe", () => {
     // A visibility round-trip must NOT resurrect an expired session.
     setVisibility("hidden");
     setVisibility("visible");
+    await flushRealtime();
     expect(h.realtime.subscribeCalls).toBe(1);
   });
 });
@@ -303,10 +326,11 @@ function emitRealtimeRow(id = "evt-1"): void {
 }
 
 describe("LivePerceptionOverlayNext — connection chip", () => {
-  test("connecting -> fallback (subscribed but silent) -> connected (events flow)", () => {
+  test("connecting -> fallback (subscribed but silent) -> connected (events flow)", async () => {
     const view = renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(view.container.textContent).toContain("Connecting");
     // Subscribed but no events yet: the poll fallback is doing the work, so we
     // must NOT claim "Realtime connected".
@@ -317,10 +341,11 @@ describe("LivePerceptionOverlayNext — connection chip", () => {
     expect(view.container.textContent).toContain("Realtime connected");
   });
 
-  test("falls back to polling on a CLOSED channel", () => {
+  test("falls back to polling on a CLOSED channel", async () => {
     const view = renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     act(() => h.realtime.statusCb?.("SUBSCRIBED"));
     emitRealtimeRow();
     expect(view.container.textContent).toContain("Realtime connected");
@@ -334,10 +359,11 @@ describe("LivePerceptionOverlayNext — connection chip", () => {
     expect(view.container.textContent).toContain("Processing disabled");
   });
 
-  test("polls fast while active and is NOT slowed by a SUBSCRIBED channel", () => {
+  test("polls fast while active and is NOT slowed by a SUBSCRIBED channel", async () => {
     renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     act(() => h.realtime.statusCb?.("SUBSCRIBED"));
     const calls = h.useUpstreamListMock.mock.calls;
     const lastOpts = calls[calls.length - 1][1] as { refreshInterval: number };
@@ -364,10 +390,11 @@ describe("LivePerceptionOverlayNext — disclaimer", () => {
 });
 
 describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
-  test("a postgres_changes event writes the row into the SWR cache", () => {
+  test("a postgres_changes event writes the row into the SWR cache", async () => {
     renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     act(() =>
       h.realtime.changeHandler?.({
         new: {
@@ -386,13 +413,14 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
     );
   });
 
-  test("ignores realtime events for a different camera (client-side filter)", () => {
+  test("ignores realtime events for a different camera (client-side filter)", async () => {
     // The subscription has no server-side camera_id filter (it can't, on
     // UPDATEs), so account-scoped rows for other cameras arrive and must be
     // dropped in the handler.
     renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     h.mutateSpy.mockClear();
     act(() =>
       h.realtime.changeHandler?.({
@@ -407,12 +435,13 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
     expect(h.mutateSpy).not.toHaveBeenCalled();
   });
 
-  test("stripped broadcast row (no usable fields) falls back to a refetch", () => {
+  test("stripped broadcast row (no usable fields) falls back to a refetch", async () => {
     // In prod the row can arrive without camera_id/id (perceptionRecordFromRealtimeRow
     // -> null). We can't direct-write it, so we refetch the authoritative latest.
     renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     h.mutateSpy.mockClear();
     act(() => h.realtime.changeHandler?.({ new: {} }));
     expect(h.mutateSpy).toHaveBeenCalledWith();
@@ -429,13 +458,14 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
     expect(view.container.textContent).toContain("person");
   });
 
-  test("minimum confidence filter drops low-confidence objects", () => {
+  test("minimum confidence filter drops low-confidence objects", async () => {
     setHookData({
       snapshot: record({ snapshot: snap([{ ...PERSON, confidence: 0.5 }]) }),
     });
     const view = renderOverlay();
     turnOn();
     connectPlayer(); // stream active so the message reaches the filter branch
+    await flushRealtime();
     fireEvent.change(screen.getByLabelText("Minimum object confidence"), {
       target: { value: "0.75" },
     });
@@ -451,11 +481,12 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
     expect(h.mutateSpy).toHaveBeenCalled();
   });
 
-  test("empty state when on, stream connected, but no snapshot", () => {
+  test("empty state when on, stream connected, but no snapshot", async () => {
     setHookData(undefined);
     const view = renderOverlay();
     turnOn();
     connectPlayer();
+    await flushRealtime();
     expect(view.container.textContent).toContain("No perception data yet");
   });
 
