@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Fix: Realtime delivered no events (browser socket was anon → RLS filtered everything)
+
+**Subject:** With the poll-cadence fix deployed, the overlay chip honestly showed **"Fallback polling"**: the channel reported `SUBSCRIBED` but **zero** `postgres_changes` events arrived — even though the `supabase_realtime` publication migration was applied (verified) and the processor was actively upserting rows (polling saw them change). Cause: `createSupabaseBrowserClient` minted a **fresh client per call** and never set the user's JWT on the Realtime socket, so it connected as **anon**. The `latest_perception_snapshots_member_select` RLS policy keys off `auth.uid()`, so with an anon socket every member-scoped row broadcast was filtered out. Polling reads were unaffected because they go through `/api/upstream` with a server-minted user JWT.
+
+**Fix:** memoize a single browser client per tab and mirror the cookie session's access token onto the Realtime socket — eagerly via `getSession()` and again on every `onAuthStateChange` (token refreshes). The socket now authenticates as the signed-in user, RLS matches the member's rows, and `postgres_changes` deliver. This also fixes the `stream_sessions` realtime (`camera-detail-realtime-next`) which shared the same anon-socket gap. Kept an inner `makeBrowserClient` factory so the memoized client keeps the precise `createBrowserClient` instantiation type (annotating the singleton as `ReturnType<typeof createBrowserClient>` degraded `.on`/`.subscribe` callback inference to `any`).
+
+**Scope:** dashboard-only (`src/lib/supabase/client.ts`); no API/migration change — the publication migration was already applied. lint + tsc clean; 308 tests pass. After deploy the chip should flip to **"Realtime connected"** and detections update via push.
+
 ## 2026-05-29 — Fix: live overlay updated only every 10s when realtime was silent
 
 **Subject:** M5 slowed the SWR poll to a 10s "safety re-sync" once the Supabase channel reported `SUBSCRIBED`, assuming realtime push was then carrying updates. But `SUBSCRIBED` only means the *channel* connected — if `latest_perception_snapshots` isn't in the `supabase_realtime` publication for that environment, the channel subscribes yet delivers **zero** row events. Result: the chip said "Realtime connected" while the overlay refreshed only every 10s — worse than the pre-M5 250ms poll.
