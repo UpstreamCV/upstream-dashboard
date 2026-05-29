@@ -38,14 +38,23 @@ export function CameraDetailRealtimeNext({
       .channel(`dn-camera:${cameraId}:sessions`)
       .on(
         "postgres_changes",
+        // NO server-side `filter`: Supabase only applies postgres_changes
+        // filters on UPDATE events against columns in the table's REPLICA
+        // IDENTITY (the PK `id`), so a `camera_id=eq.` filter silently drops
+        // every state-transition UPDATE (approved -> streaming -> ended) and
+        // only new-session INSERTs would arrive. RLS (member_select) scopes
+        // delivery to the account; we narrow to this camera in the handler.
         {
           event: "*",
           schema: "public",
           table: "stream_sessions",
-          filter: `camera_id=eq.${cameraId}`,
         },
         (payload) => {
-          const next = (payload.new as { state?: string } | null)?.state;
+          const row = payload.new as
+            | { state?: string; camera_id?: string }
+            | null;
+          if (!row || row.camera_id !== cameraId) return;
+          const next = row.state;
           // Skip DELETE events and no-op writes that don't change `state`.
           if (next && next !== lastStateRef.current) {
             lastStateRef.current = next;

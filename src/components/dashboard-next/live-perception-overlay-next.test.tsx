@@ -383,6 +383,27 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
     );
   });
 
+  test("ignores realtime events for a different camera (client-side filter)", () => {
+    // The subscription has no server-side camera_id filter (it can't, on
+    // UPDATEs), so account-scoped rows for other cameras arrive and must be
+    // dropped in the handler.
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    h.mutateSpy.mockClear();
+    act(() =>
+      h.realtime.changeHandler?.({
+        new: {
+          id: "other",
+          camera_id: "cam-2",
+          observed_at: new Date(NOW).toISOString(),
+          snapshot: snap([PERSON]),
+        },
+      }),
+    );
+    expect(h.mutateSpy).not.toHaveBeenCalled();
+  });
+
   test("boxes + labels + object count render when on", () => {
     setHookData({ snapshot: record({ snapshot: snap([PERSON]) }) });
     const view = renderOverlay();

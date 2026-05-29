@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Boxes, RefreshCw, Radio, Spline, Tag } from "lucide-react";
 import clsx from "clsx";
 import { UpstreamApiError } from "@/lib/api/errors";
+import { reportError } from "@/lib/error";
 import { useUpstreamList } from "@/lib/api/use-list";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type {
@@ -272,24 +273,36 @@ export function LivePerceptionOverlayNext({
       .channel(`dn-camera:${cameraId}:perception`)
       .on(
         "postgres_changes",
+        // NO server-side `filter` here. Supabase can only apply a
+        // postgres_changes filter on UPDATE/DELETE events against columns in the
+        // table's REPLICA IDENTITY, which for latest_perception_snapshots is
+        // just the primary key `id` (camera_id is a unique index, not the PK,
+        // and the table is not REPLICA IDENTITY FULL). The snapshot is UPSERTed
+        // per camera, so after the first INSERT every write is an UPDATE — a
+        // `camera_id=eq.` filter would silently drop them all (the bug behind
+        // "subscribed but no events"). RLS (member_select) still scopes delivery
+        // to the account; we narrow to this camera in the handler.
         {
           event: "*",
           schema: "public",
           table: "latest_perception_snapshots",
-          filter: `camera_id=eq.${cameraId}`,
         },
         (payload) => {
-          // A row event arrived: the push path is genuinely delivering.
-          setLastRealtimeEventAt(now());
           const rec = perceptionRecordFromRealtimeRow(payload.new);
-          if (rec) {
-            void mutate({ snapshot: rec }, { revalidate: false });
-          } else {
-            void mutate();
-          }
+          if (!rec || rec.camera_id !== cameraId) return;
+          // A row event for THIS camera arrived: the push path is delivering.
+          setLastRealtimeEventAt(now());
+          void mutate({ snapshot: rec }, { revalidate: false });
         },
       )
-      .subscribe((status) => setRealtimeStatus(status as RealtimeStatus));
+      .subscribe((status, err) => {
+        setRealtimeStatus(status as RealtimeStatus);
+        // Surface channel-level errors instead of discarding them (a silent
+        // CHANNEL_ERROR otherwise just reads as "Reconnecting" with no cause).
+        if (err) {
+          reportError(err, { area: "live-perception-overlay:realtime" });
+        }
+      });
 
     return () => {
       setRealtimeStatus(null);
