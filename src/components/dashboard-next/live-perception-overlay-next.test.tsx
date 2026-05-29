@@ -286,13 +286,31 @@ describe("LivePerceptionOverlayNext — auto-unsubscribe", () => {
   });
 });
 
+function emitRealtimeRow(id = "evt-1"): void {
+  act(() =>
+    h.realtime.changeHandler?.({
+      new: {
+        id,
+        camera_id: "cam-1",
+        observed_at: new Date(NOW).toISOString(),
+        snapshot: snap([PERSON]),
+      },
+    }),
+  );
+}
+
 describe("LivePerceptionOverlayNext — connection chip", () => {
-  test("connecting before a status, connected after SUBSCRIBED", () => {
+  test("connecting -> fallback (subscribed but silent) -> connected (events flow)", () => {
     const view = renderOverlay();
     turnOn();
     connectPlayer();
     expect(view.container.textContent).toContain("Connecting");
+    // Subscribed but no events yet: the poll fallback is doing the work, so we
+    // must NOT claim "Realtime connected".
     act(() => h.realtime.statusCb?.("SUBSCRIBED"));
+    expect(view.container.textContent).toContain("Fallback polling");
+    // Once an actual row event arrives, it's genuinely live.
+    emitRealtimeRow();
     expect(view.container.textContent).toContain("Realtime connected");
   });
 
@@ -301,6 +319,8 @@ describe("LivePerceptionOverlayNext — connection chip", () => {
     turnOn();
     connectPlayer();
     act(() => h.realtime.statusCb?.("SUBSCRIBED"));
+    emitRealtimeRow();
+    expect(view.container.textContent).toContain("Realtime connected");
     act(() => h.realtime.statusCb?.("CLOSED"));
     expect(view.container.textContent).toContain("Fallback polling");
   });
@@ -309,6 +329,16 @@ describe("LivePerceptionOverlayNext — connection chip", () => {
     const view = renderOverlay({ processingEnabled: false });
     turnOn();
     expect(view.container.textContent).toContain("Processing disabled");
+  });
+
+  test("polls fast while active and is NOT slowed by a SUBSCRIBED channel", () => {
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    act(() => h.realtime.statusCb?.("SUBSCRIBED"));
+    const calls = h.useUpstreamListMock.mock.calls;
+    const lastOpts = calls[calls.length - 1][1] as { refreshInterval: number };
+    expect(lastOpts.refreshInterval).toBe(250);
   });
 });
 

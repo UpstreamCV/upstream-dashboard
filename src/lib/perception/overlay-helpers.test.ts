@@ -468,13 +468,23 @@ describe("deriveOverlayConnectionState", () => {
     isStale: false,
     shouldUseRealtime: true,
     realtimeStatus: "SUBSCRIBED" as const,
+    realtimeDelivering: true,
   };
 
-  test("connected when the gate is open and subscribed", () => {
+  test("connected when the gate is open, subscribed, AND delivering events", () => {
     expect(deriveOverlayConnectionState(CONNECTED)).toEqual({
       mode: "connected",
       label: "Realtime connected",
     });
+  });
+
+  test("subscribed but silent (no events) -> fallback polling", () => {
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        realtimeDelivering: false,
+      }),
+    ).toEqual({ mode: "fallback_polling", label: "Fallback polling" });
   });
 
   test("expired ranks first (user session state)", () => {

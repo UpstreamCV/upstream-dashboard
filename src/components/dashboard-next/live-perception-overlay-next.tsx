@@ -41,15 +41,20 @@ import {
   type LiveSessionStatus,
 } from "./use-live-detection-session";
 
-// Poll cadences. Polling is the FALLBACK path (Supabase Realtime is primary).
-// When realtime is connected we drop to a slow safety re-sync; when it's not,
-// we poll fast so the overlay still feels live on polling alone (realtime push
-// depends on the latest_perception_snapshots table being in the
-// supabase_realtime publication, a migration that may not be applied in every
-// environment). Polling only runs at all while a live-detections session is
-// active (see `shouldPoll`), so an off/hidden overlay makes no requests.
+// Poll cadence. Polling is gated to an active live-detections session (see
+// `shouldPoll`), so an off/hidden overlay makes no requests — but while a
+// session IS active we always poll fast. Polling hits OUR API, not Supabase,
+// so it costs nothing against the Supabase Free plan; the free-plan safety of
+// M5 comes entirely from gating the realtime SUBSCRIPTION, not from slowing the
+// poll. Realtime push is purely additive on top (sub-poll latency when it's
+// actually delivering). We do NOT slow the poll just because the channel is
+// SUBSCRIBED: a channel can report SUBSCRIBED yet deliver no events (e.g. the
+// table isn't in the supabase_realtime publication in this environment), and
+// slowing the poll there would make the overlay LESS live, not more.
 const LIVE_OVERLAY_POLL_MS = 250;
-const LIVE_OVERLAY_RESYNC_MS = 10_000;
+// A realtime row event seen within this window means the push path is actually
+// delivering (not merely SUBSCRIBED) -> the chip can honestly say "connected".
+const REALTIME_DELIVERING_WINDOW_MS = 8_000;
 
 // Default age after which the snapshot is considered stale. A live processor
 // publishes every ~0.3-1s, so anything older than ~10s almost certainly means
@@ -163,23 +168,23 @@ export function LivePerceptionOverlayNext({
   const streamActive = playerKind === "connected";
 
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(null);
-  const realtimeConnected = realtimeStatus === "SUBSCRIBED";
+  // When the last realtime row event arrived (epoch ms), or null. Used to tell
+  // "subscribed and actually receiving" from "subscribed but silent".
+  const [lastRealtimeEventAt, setLastRealtimeEventAt] = useState<number | null>(
+    null,
+  );
 
-  // Polling is gated to an active session (free-plan + API friendly): no boxes
-  // wanted ⇒ no requests. Cadence is the slow safety re-sync when realtime is
-  // carrying updates, otherwise the fast fallback. (Not gated by freshness —
-  // polling is exactly how a stale overlay recovers.)
+  // Polling is gated to an active session (no boxes wanted ⇒ no requests), but
+  // runs fast whenever active. NOT slowed by realtime status — see the cadence
+  // note above. (Not gated by freshness either — polling is how a stale overlay
+  // recovers.)
   const shouldPoll =
     liveDetectionsEnabled &&
     !isExpired &&
     processingEnabled &&
     streamActive &&
     pageVisible;
-  const refreshInterval = shouldPoll
-    ? realtimeConnected
-      ? LIVE_OVERLAY_RESYNC_MS
-      : LIVE_OVERLAY_POLL_MS
-    : 0;
+  const refreshInterval = shouldPoll ? LIVE_OVERLAY_POLL_MS : 0;
 
   const { data, error, isValidating, mutate } =
     useUpstreamList<LatestPerceptionResponse>(
@@ -274,6 +279,8 @@ export function LivePerceptionOverlayNext({
           filter: `camera_id=eq.${cameraId}`,
         },
         (payload) => {
+          // A row event arrived: the push path is genuinely delivering.
+          setLastRealtimeEventAt(now());
           const rec = perceptionRecordFromRealtimeRow(payload.new);
           if (rec) {
             void mutate({ snapshot: rec }, { revalidate: false });
@@ -286,9 +293,14 @@ export function LivePerceptionOverlayNext({
 
     return () => {
       setRealtimeStatus(null);
+      setLastRealtimeEventAt(null);
       void supabase.removeChannel(channel);
     };
-  }, [shouldUseRealtime, cameraId, mutate]);
+  }, [shouldUseRealtime, cameraId, mutate, now]);
+
+  const realtimeDelivering =
+    lastRealtimeEventAt !== null &&
+    now() - lastRealtimeEventAt < REALTIME_DELIVERING_WINDOW_MS;
 
   const connection = deriveOverlayConnectionState({
     processingEnabled,
@@ -298,6 +310,7 @@ export function LivePerceptionOverlayNext({
     isStale,
     shouldUseRealtime,
     realtimeStatus,
+    realtimeDelivering,
   });
 
   return (
