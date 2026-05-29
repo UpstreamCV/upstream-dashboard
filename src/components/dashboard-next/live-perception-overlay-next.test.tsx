@@ -1,41 +1,73 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test, vi } from "vitest";
-import type {
-  LatestPerceptionRecord,
-  StreamParams,
-} from "@/lib/api/types";
+// @vitest-environment jsdom
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { ReactNode } from "react";
+import type { LatestPerceptionRecord, StreamParams } from "@/lib/api/types";
+import { PLAYER_STATE_EVENT } from "@/components/stream/player-state-event";
 
-// SWR + WebRTC + Server Action stubs. Same pattern as the legacy overlay's
-// vitest setup: mock @/lib/api/use-list so the hook returns deterministic
-// data; mock the player so the overlay SVG slot is observable.
-
-const { useUpstreamListMock } = vi.hoisted(() => ({
+// --- hoisted controllers shared with the vi.mock factories ------------------
+const h = vi.hoisted(() => ({
+  realtime: {
+    subscribeCalls: 0,
+    removeCalls: 0,
+    statusCb: null as ((s: string) => void) | null,
+    changeHandler: null as ((payload: { new: unknown }) => void) | null,
+  },
   useUpstreamListMock: vi.fn(),
-}));
-vi.mock("@/lib/api/use-list", () => ({
-  useUpstreamList: useUpstreamListMock,
+  mutateSpy: vi.fn(),
 }));
 
+vi.mock("@/lib/api/use-list", () => ({
+  useUpstreamList: h.useUpstreamListMock,
+}));
+
+// Mock the WebRTC player so its `overlay` slot is observable and no real
+// connection is attempted. We drive the player-connected signal ourselves via
+// PLAYER_STATE_EVENT (the same channel the real player dispatches on).
 vi.mock("./live-stream-player-next", () => ({
-  LiveStreamPlayerNext: ({ overlay }: { overlay?: React.ReactNode }) => (
-    <div data-mock-player="">{overlay}</div>
+  LiveStreamPlayerNext: ({ overlay }: { overlay?: ReactNode }) => (
+    <div data-testid="player">{overlay}</div>
   ),
 }));
 
-// The Realtime subscription effect never runs under renderToStaticMarkup
-// (effects don't fire on the server), but importing the supabase client pulls
-// in @/lib/env, which throws when NEXT_PUBLIC_* are absent in the test env.
-// Stub the module so the import is inert.
+// Controllable Supabase Realtime: records subscribe/remove calls and exposes
+// the status callback + the postgres_changes handler so tests can drive them.
 vi.mock("@/lib/supabase/client", () => ({
   createSupabaseBrowserClient: () => ({
     channel: () => ({
-      on: () => ({ subscribe: () => ({}) }),
+      on: (
+        _event: string,
+        _filter: unknown,
+        handler: (payload: { new: unknown }) => void,
+      ) => {
+        h.realtime.changeHandler = handler;
+        return {
+          subscribe: (cb?: (s: string) => void) => {
+            h.realtime.subscribeCalls += 1;
+            h.realtime.statusCb = cb ?? null;
+            return {};
+          },
+        };
+      },
     }),
-    removeChannel: () => {},
+    removeChannel: () => {
+      h.realtime.removeCalls += 1;
+    },
   }),
 }));
 
-const { LivePerceptionOverlayNext } = await import("./live-perception-overlay-next");
+const { LivePerceptionOverlayNext } = await import(
+  "./live-perception-overlay-next"
+);
+
+const FIXED = new Date("2026-05-29T12:00:00.000Z");
+const NOW = FIXED.getTime();
 
 const APPROVED: StreamParams = {
   width: 1280,
@@ -45,151 +77,337 @@ const APPROVED: StreamParams = {
   bitrate_kbps: 2000,
   latency_mode: "balanced",
 };
+const FRAME = { width: 1280, height: 720, frame_num: 1, fps: 30 };
+const PERSON = {
+  track_id: "17",
+  class_id: 2,
+  label: "person",
+  confidence: 0.82,
+  bbox: { x: 10, y: 10, w: 100, h: 200 },
+  bbox_normalized: null,
+  roi_labels: [],
+};
+
+function snap(objects: unknown[] = []) {
+  return { frame: FRAME, objects, geometry: { rois: [], lines: [] } };
+}
 
 function record(
-  snapshot: LatestPerceptionRecord["snapshot"],
-  observedAt = "2026-05-28T12:00:00Z",
+  opts: { id?: string; observedAt?: string; snapshot?: unknown } = {},
 ): LatestPerceptionRecord {
+  const observedAt = opts.observedAt ?? new Date(NOW).toISOString();
   return {
-    id: "perception-1",
+    id: opts.id ?? "perc-1",
     camera_id: "cam-1",
     stream_session_id: "ssn-1",
     processor_id: "proc-1",
     package_id: "pkg-1",
     observed_at: observedAt,
     updated_at: observedAt,
-    snapshot,
+    snapshot: (opts.snapshot ?? snap()) as LatestPerceptionRecord["snapshot"],
   };
 }
 
-const FRAME = { width: 1280, height: 720, frame_num: 1, fps: 1 };
-
-beforeEach(() => {
-  useUpstreamListMock.mockReset();
-});
-
-function setHookData(data: unknown, error: unknown = null): void {
-  useUpstreamListMock.mockReturnValue({
+function setHookData(
+  data: { snapshot: LatestPerceptionRecord } | undefined,
+  opts: { error?: unknown; isValidating?: boolean } = {},
+): void {
+  h.useUpstreamListMock.mockReturnValue({
     data,
-    error,
-    isValidating: false,
-    mutate: vi.fn(),
+    error: opts.error ?? null,
+    isValidating: opts.isValidating ?? false,
+    mutate: h.mutateSpy,
   });
 }
 
-function render(opts: {
-  initialPerception?: LatestPerceptionRecord | null;
-  processingEnabled?: boolean;
-  staleAfterSeconds?: number;
-  now?: number;
-}): string {
-  return renderToStaticMarkup(
+function renderOverlay(
+  opts: {
+    processingEnabled?: boolean;
+    initialPerception?: LatestPerceptionRecord | null;
+  } = {},
+) {
+  return render(
     <LivePerceptionOverlayNext
       sessionId="ssn-1"
       cameraId="cam-1"
       approved={APPROVED}
       initialPerception={opts.initialPerception ?? null}
       processingEnabled={opts.processingEnabled}
-      staleAfterSeconds={opts.staleAfterSeconds}
-      now={opts.now !== undefined ? () => opts.now! : undefined}
     />,
   );
 }
 
-import { beforeEach } from "vitest";
+function turnOn(): void {
+  fireEvent.click(screen.getByRole("button", { name: /turn on/i }));
+}
 
-describe("LivePerceptionOverlayNext — happy path", () => {
-  test("renders 'overlay 0.8s old' style age + object/geometry count", () => {
-    const snap = {
-      frame: FRAME,
-      objects: [
-        { label: "person", confidence: 0.82, track_id: "17", bbox: { x: 10, y: 10, w: 100, h: 200 } },
-        { label: "person", confidence: 0.55, track_id: "18", bbox: { x: 200, y: 10, w: 80, h: 200 } },
-      ],
-      geometry: { rois: [], lines: [] },
-    };
-    const observedAt = "2026-05-28T12:00:00.000Z";
-    const now = Date.parse("2026-05-28T12:00:00.800Z");
-    setHookData({ snapshot: record(snap, observedAt) });
-    const html = render({ now });
-    expect(html).toContain("overlay 0.8s old");
-    expect(html).toContain("2 objects");
-    expect(html).toContain("0 geometry");
+function connectPlayer(kind = "connected", cameraId = "cam-1"): void {
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent(PLAYER_STATE_EVENT, { detail: { cameraId, kind } }),
+    );
   });
+}
 
-  test("renders track id + confidence on box label via formatObjectLabel", () => {
-    const snap = {
-      frame: FRAME,
-      objects: [
-        { label: "person", confidence: 0.82, track_id: "17", bbox: { x: 10, y: 10, w: 100, h: 200 } },
-      ],
-      geometry: { rois: [], lines: [] },
-    };
-    setHookData({ snapshot: record(snap) });
-    const html = render({ now: Date.parse("2026-05-28T12:00:01Z") });
-    expect(html).toContain("person #17");
-    expect(html).toContain("82%");
+function setVisibility(state: "visible" | "hidden"): void {
+  act(() => {
+    Object.defineProperty(document, "visibilityState", {
+      value: state,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(FIXED);
+  h.realtime.subscribeCalls = 0;
+  h.realtime.removeCalls = 0;
+  h.realtime.statusCb = null;
+  h.realtime.changeHandler = null;
+  h.useUpstreamListMock.mockReset();
+  h.mutateSpy.mockReset();
+  setHookData(undefined);
+  Object.defineProperty(document, "visibilityState", {
+    value: "visible",
+    configurable: true,
   });
 });
 
-describe("LivePerceptionOverlayNext — gap-polish empty states", () => {
-  test("processing disabled + no snapshot -> 'Enable processing in Settings'", () => {
-    setHookData(undefined);
-    const html = render({ processingEnabled: false });
-    expect(html).toContain(
-      "Processing is disabled. Enable processing in Settings to see detections.",
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+describe("LivePerceptionOverlayNext — default OFF + subscription gating", () => {
+  test("does not subscribe on initial render; shows off copy", () => {
+    const view = renderOverlay();
+    expect(h.realtime.subscribeCalls).toBe(0);
+    expect(view.container.textContent).toContain("Live detections off");
+    expect(view.container.textContent).toContain(
+      "Live detections are off. Turn on for 15 minutes to see detection boxes",
     );
-    // Must NOT fall back to the generic empty-state copy on this branch.
-    expect(html).not.toContain("No perception data yet. Start processing");
+    expect(
+      screen.getByRole("button", { name: /turn on live detections/i }),
+    ).toBeTruthy();
   });
 
-  test("processing enabled + no snapshot -> 'Start processing to see detections'", () => {
-    setHookData(undefined);
-    const html = render({ processingEnabled: true });
-    expect(html).toContain(
-      "No perception data yet. Start processing to see detections.",
-    );
+  test("subscribes only after enabling AND the stream connects", () => {
+    renderOverlay();
+    turnOn();
+    expect(h.realtime.subscribeCalls).toBe(0); // session on, but stream not connected
+    connectPlayer();
+    expect(h.realtime.subscribeCalls).toBe(1);
   });
 
-  test("snapshot age > staleAfterSeconds -> stale warning", () => {
-    const observedAt = "2026-05-28T12:00:00Z";
-    const now = Date.parse("2026-05-28T12:00:30Z"); // 30s ago
-    setHookData({ snapshot: record({ frame: FRAME, objects: [], geometry: {} }, observedAt) });
-    const html = render({ now, staleAfterSeconds: 10 });
-    expect(html).toContain(
-      "Processor output is stale. Overlay may not reflect the current scene.",
-    );
+  test("does not subscribe when processing is disabled", () => {
+    const view = renderOverlay({ processingEnabled: false });
+    turnOn();
+    connectPlayer();
+    expect(h.realtime.subscribeCalls).toBe(0);
+    expect(view.container.textContent).toContain("Processing is disabled");
   });
 
-  test("snapshot age <= staleAfterSeconds -> no stale warning", () => {
-    const observedAt = "2026-05-28T12:00:00Z";
-    const now = Date.parse("2026-05-28T12:00:08Z"); // 8s ago
-    setHookData({ snapshot: record({ frame: FRAME, objects: [], geometry: {} }, observedAt) });
-    const html = render({ now, staleAfterSeconds: 10 });
-    expect(html).not.toContain("Processor output is stale");
+  test("does not subscribe when the stream is inactive", () => {
+    const view = renderOverlay();
+    turnOn();
+    expect(h.realtime.subscribeCalls).toBe(0);
+    expect(view.container.textContent).toContain("Stream is not active");
   });
 
-  test("recent snapshot with no objects -> 'No detections in latest perception snapshot.'", () => {
-    setHookData({ snapshot: record({ frame: FRAME, objects: [], geometry: {} }) });
-    const html = render({ now: Date.parse("2026-05-28T12:00:01Z") });
-    expect(html).toContain("No detections in latest perception snapshot.");
-  });
-
-  test("processing-disabled gate beats stale gate when no snapshot exists", () => {
-    setHookData(undefined);
-    const html = render({ processingEnabled: false });
-    expect(html).toContain("Enable processing in Settings");
-    expect(html).not.toContain("Processor output is stale");
+  test("does not subscribe when processor output is stale", () => {
+    setHookData({
+      snapshot: record({
+        observedAt: new Date(NOW - 60_000).toISOString(),
+        snapshot: snap([PERSON]),
+      }),
+    });
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    expect(h.realtime.subscribeCalls).toBe(0);
+    expect(view.container.textContent).toContain("Processor output is stale");
   });
 });
 
-describe("LivePerceptionOverlayNext — operator copy guard", () => {
-  test("no runtime jargon leaks", () => {
+describe("LivePerceptionOverlayNext — auto-unsubscribe", () => {
+  test("unsubscribes on unmount", () => {
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    expect(h.realtime.subscribeCalls).toBe(1);
+    view.unmount();
+    expect(h.realtime.removeCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  test("unsubscribes when processing is turned off", () => {
+    const view = renderOverlay({ processingEnabled: true });
+    turnOn();
+    connectPlayer();
+    expect(h.realtime.subscribeCalls).toBe(1);
+    view.rerender(
+      <LivePerceptionOverlayNext
+        sessionId="ssn-1"
+        cameraId="cam-1"
+        approved={APPROVED}
+        initialPerception={null}
+        processingEnabled={false}
+      />,
+    );
+    expect(h.realtime.removeCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  test("unsubscribes when the tab is hidden, reconnects when visible again", () => {
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    expect(h.realtime.subscribeCalls).toBe(1);
+    setVisibility("hidden");
+    expect(h.realtime.removeCalls).toBeGreaterThanOrEqual(1);
+    setVisibility("visible");
+    expect(h.realtime.subscribeCalls).toBe(2); // session still valid -> resubscribe
+  });
+
+  test("unsubscribes on expiry and does not reconnect afterwards", () => {
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    expect(h.realtime.subscribeCalls).toBe(1);
+    act(() => {
+      vi.advanceTimersByTime(15 * 60 * 1000 + 1000);
+    });
+    expect(h.realtime.removeCalls).toBeGreaterThanOrEqual(1);
+    expect(view.container.textContent).toContain("Live detections expired");
+    // A visibility round-trip must NOT resurrect an expired session.
+    setVisibility("hidden");
+    setVisibility("visible");
+    expect(h.realtime.subscribeCalls).toBe(1);
+  });
+});
+
+describe("LivePerceptionOverlayNext — connection chip", () => {
+  test("connecting before a status, connected after SUBSCRIBED", () => {
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    expect(view.container.textContent).toContain("Connecting");
+    act(() => h.realtime.statusCb?.("SUBSCRIBED"));
+    expect(view.container.textContent).toContain("Realtime connected");
+  });
+
+  test("falls back to polling on a CLOSED channel", () => {
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    act(() => h.realtime.statusCb?.("SUBSCRIBED"));
+    act(() => h.realtime.statusCb?.("CLOSED"));
+    expect(view.container.textContent).toContain("Fallback polling");
+  });
+
+  test("shows Processing disabled in the chip when enabled but blocked", () => {
+    const view = renderOverlay({ processingEnabled: false });
+    turnOn();
+    expect(view.container.textContent).toContain("Processing disabled");
+  });
+});
+
+describe("LivePerceptionOverlayNext — disclaimer", () => {
+  test("renders the exact reassurance wording and no path jargon", () => {
+    const view = renderOverlay();
+    const text = view.container.textContent ?? "";
+    expect(text).toContain(
+      "Live detections show what UpStream is seeing from the camera.",
+    );
+    expect(text).toContain(
+      "This does not mean the processor is delayed or out of sync",
+    );
+    expect(text).toContain(
+      "detections and events are still created from the actual camera stream",
+    );
+    // Must not leak the overly-technical framing the spec forbids.
+    expect(text).not.toContain("WebRTC and metadata paths are separate");
+  });
+});
+
+describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
+  test("a postgres_changes event writes the row into the SWR cache", () => {
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    act(() =>
+      h.realtime.changeHandler?.({
+        new: {
+          id: "p2",
+          camera_id: "cam-1",
+          observed_at: new Date(NOW).toISOString(),
+          snapshot: snap([PERSON]),
+        },
+      }),
+    );
+    expect(h.mutateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        snapshot: expect.objectContaining({ id: "p2" }),
+      }),
+      { revalidate: false },
+    );
+  });
+
+  test("boxes + labels + object count render when on", () => {
+    setHookData({ snapshot: record({ snapshot: snap([PERSON]) }) });
+    const view = renderOverlay();
+    turnOn();
+    expect(
+      view.container.querySelector('[data-testid="player"] svg'),
+    ).toBeTruthy();
+    expect(view.container.textContent).toContain("1 object");
+    expect(view.container.textContent).toContain("person");
+  });
+
+  test("minimum confidence filter drops low-confidence objects", () => {
+    setHookData({
+      snapshot: record({ snapshot: snap([{ ...PERSON, confidence: 0.5 }]) }),
+    });
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer(); // stream active so the message reaches the filter branch
+    fireEvent.change(screen.getByLabelText("Minimum object confidence"), {
+      target: { value: "0.75" },
+    });
+    expect(view.container.textContent).toContain("No objects to draw");
+  });
+
+  test("manual refresh triggers a revalidation", () => {
+    setHookData({ snapshot: record({ snapshot: snap([PERSON]) }) });
+    renderOverlay();
+    turnOn();
+    h.mutateSpy.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    expect(h.mutateSpy).toHaveBeenCalled();
+  });
+
+  test("empty state when on, stream connected, but no snapshot", () => {
     setHookData(undefined);
-    const html = render({ processingEnabled: false }).toLowerCase();
-    expect(html).not.toContain("deepstream");
-    expect(html).not.toContain("nvdsanalytics");
-    expect(html).not.toContain("gstreamer");
-    expect(html).not.toContain("pyds");
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    expect(view.container.textContent).toContain("No perception data yet");
+  });
+
+  test("no secrets leak into the DOM", () => {
+    setHookData({ snapshot: record({ snapshot: snap([PERSON]) }) });
+    const view = renderOverlay();
+    turnOn();
+    const html = view.container.innerHTML;
+    for (const secret of [
+      "storage_key",
+      "signed_url",
+      "service_role",
+      "rtsp://",
+      "srt://",
+      "Authorization",
+    ]) {
+      expect(html).not.toContain(secret);
+    }
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Boxes, RefreshCw, Spline, Tag } from "lucide-react";
+import { Boxes, RefreshCw, Radio, Spline, Tag } from "lucide-react";
 import clsx from "clsx";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { useUpstreamList } from "@/lib/api/use-list";
@@ -14,33 +14,47 @@ import type {
 import {
   CONFIDENCE_THRESHOLDS,
   buildLatestPerceptionPath,
+  computeRealtimeGate,
+  deriveOverlayConnectionState,
+  formatCountdown,
   formatOverlayAge,
   hasFrameDimensions,
   normalizeSnapshot,
   observedAtAgeSeconds,
   perceptionRecordFromRealtimeRow,
   selectOverlayObjects,
+  type OverlayConnectionMode,
+  type RealtimeStatus,
 } from "@/lib/perception/overlay-helpers";
 import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
+import {
+  PLAYER_STATE_EVENT,
+  type PlayerStateEventDetail,
+  type PlayerStateKind,
+} from "@/components/stream/player-state-event";
 import { LiveStreamPlayerNext } from "./live-stream-player-next";
+import { StatusDot, type DotStatus } from "./status-dot";
+import { usePageVisible } from "./use-page-visible";
+import {
+  useLiveDetectionSession,
+  type LiveDetectionSession,
+  type LiveSessionStatus,
+} from "./use-live-detection-session";
 
-// Poll cadence while the overlay is live. This is the SELF-SUFFICIENT
-// baseline — the overlay must feel near-real-time on polling alone, because
-// realtime push depends on the latest_perception_snapshots table being in
-// the supabase_realtime publication (a migration that may not be applied in
-// every environment). If we leaned on realtime as the only fast path and it
-// wasn't delivering, the overlay would silently fall back to a slow poll and
-// look frozen. The realtime path (below) writes every upsert straight into the
-// SWR cache, so the overlay already renders at the processor's full emit rate
-// when realtime is live. This poll is the fallback ceiling: 250ms ≈ 4
-// fetches/sec, matched to the dedupe window so the fallback comfortably
-// exceeds the ~3 FPS publish rate instead of capping it.
+// Poll cadences. Polling is the FALLBACK path (Supabase Realtime is primary).
+// When realtime is connected we drop to a slow safety re-sync; when it's not,
+// we poll fast so the overlay still feels live on polling alone (realtime push
+// depends on the latest_perception_snapshots table being in the
+// supabase_realtime publication, a migration that may not be applied in every
+// environment). Polling only runs at all while a live-detections session is
+// active (see `shouldPoll`), so an off/hidden overlay makes no requests.
 const LIVE_OVERLAY_POLL_MS = 250;
+const LIVE_OVERLAY_RESYNC_MS = 10_000;
 
 // Default age after which the snapshot is considered stale. A live processor
 // publishes every ~0.3-1s, so anything older than ~10s almost certainly means
 // the processor is silent or the camera stopped -- the overlay is no longer
-// telling the truth about the current scene.
+// telling the truth about the current scene (and we stop opening Realtime).
 const DEFAULT_STALE_AFTER_SECONDS = 10;
 
 const SELECT_CLASS =
@@ -50,34 +64,65 @@ const CHIP_ACTIVE =
   "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]";
 const CHIP_INACTIVE =
   "border-black/10 bg-white text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.04]";
+const PILL_BTN =
+  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50";
+const PRIMARY_BTN =
+  "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-deep)] px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90";
+
+// Connection chip presentation. The backend owns facts; the frontend owns hue.
+const MODE_DOT: Record<OverlayConnectionMode, DotStatus> = {
+  expired: "neutral",
+  off: "neutral",
+  processing_disabled: "neutral",
+  stream_inactive: "yellow",
+  processor_stale: "yellow",
+  connecting: "yellow",
+  connected: "green",
+  reconnecting: "yellow",
+  fallback_polling: "yellow",
+};
+const TEXT_GREEN = "#3f7d4e";
+const TEXT_WARN = "#8a6d1f";
+const TEXT_MUTED = "var(--dn-text-50)";
+const MODE_TEXT: Record<OverlayConnectionMode, string> = {
+  expired: TEXT_MUTED,
+  off: TEXT_MUTED,
+  processing_disabled: TEXT_MUTED,
+  stream_inactive: TEXT_WARN,
+  processor_stale: TEXT_WARN,
+  connecting: TEXT_WARN,
+  connected: TEXT_GREEN,
+  reconnecting: TEXT_WARN,
+  fallback_polling: TEXT_WARN,
+};
 
 /**
- * Dashboard-next port of the live perception overlay (P5-E). Draws the latest
- * P5-C perception snapshot over the live WebRTC video by reusing the shared
- * <PerceptionOverlaySvg /> renderer and helpers. Wraps <LiveStreamPlayerNext />
- * and feeds the SVG into the player's `overlay` slot — exactly one WebRTC
- * connection per session.
+ * Dashboard-next live perception overlay (P5-E + M5). Draws the latest P5-C
+ * perception snapshot over the live WebRTC video by reusing the shared
+ * <PerceptionOverlaySvg /> renderer + helpers, wrapping <LiveStreamPlayerNext />
+ * and feeding the SVG into the player's `overlay` slot — one WebRTC connection
+ * per session.
  *
- * The overlay polls the snapshot endpoint; it does not stream frame-synced
- * metadata. The latest-frame overlay (LatestFramePerceptionOverlayNext) is a
- * sibling — same data source, different presentation.
+ * M5 — Free-Plan-Safe Realtime Sessions: live detections are OFF by default.
+ * The user opts into a 15-minute viewing session; only then (and only while the
+ * stream is connected, processing is on, output is fresh, and the tab is
+ * visible) do we open a Supabase Realtime subscription. Everything else falls
+ * back to gated polling. The video preview always plays regardless.
+ *
+ * The overlay does NOT stream frame-synced metadata — see the disclaimer: the
+ * in-browser boxes are a preview that may lag the video, while the processor's
+ * detections/events are created from the actual camera stream.
  */
 export function LivePerceptionOverlayNext({
   sessionId,
   cameraId,
   approved,
   initialPerception,
-  // M5 polish: M3 master switch threaded down from the Monitor page. When
-  // false, the overlay shows a dedicated "enable processing in Settings"
-  // empty state instead of the generic "no snapshot yet" copy.
+  // M3 master switch threaded down from the Monitor page. When false we never
+  // open Realtime and the body shows "enable processing in Settings".
   processingEnabled = true,
-  // Snapshots older than this look like the processor is silent or the
-  // camera stopped streaming. The overlay surfaces a stale warning above
-  // the empty-state line; boxes still render with reduced visual weight
-  // is out of scope -- v1 just calls it out in copy.
   staleAfterSeconds = DEFAULT_STALE_AFTER_SECONDS,
-  // Injectable so tests can pin a deterministic "now". Production uses
-  // Date.now() implicitly via the default.
+  // Injectable so tests can pin a deterministic "now". Production uses Date.now.
   now = Date.now,
 }: {
   sessionId: string;
@@ -92,65 +137,63 @@ export function LivePerceptionOverlayNext({
   const [showLabels, setShowLabels] = useState(true);
   const [showGeometry, setShowGeometry] = useState(true);
   const [minConfidence, setMinConfidence] = useState(0);
-  const [live, setLive] = useState(true);
+
+  // M5: the opt-in 15-minute live-detections session (defaults OFF).
+  const session = useLiveDetectionSession(now);
+  const liveDetectionsEnabled = session.status === "on";
+  const isExpired = session.status === "expired";
+  // Boxes are only drawn while a session is actively on.
+  const detectionsActive = liveDetectionsEnabled;
+
+  const pageVisible = usePageVisible();
+
+  // Stream-active signal: the WebRTC player dispatches PLAYER_STATE_EVENT (the
+  // same channel the status badge consumes). "connected" means the video is
+  // actually playing in this browser — the truest "stream is live here" signal.
+  const [playerKind, setPlayerKind] = useState<PlayerStateKind | null>(null);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<PlayerStateEventDetail>).detail;
+      if (detail.cameraId !== cameraId) return;
+      setPlayerKind(detail.kind);
+    };
+    window.addEventListener(PLAYER_STATE_EVENT, handler);
+    return () => window.removeEventListener(PLAYER_STATE_EVENT, handler);
+  }, [cameraId]);
+  const streamActive = playerKind === "connected";
+
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(null);
+  const realtimeConnected = realtimeStatus === "SUBSCRIBED";
+
+  // Polling is gated to an active session (free-plan + API friendly): no boxes
+  // wanted ⇒ no requests. Cadence is the slow safety re-sync when realtime is
+  // carrying updates, otherwise the fast fallback. (Not gated by freshness —
+  // polling is exactly how a stale overlay recovers.)
+  const shouldPoll =
+    liveDetectionsEnabled &&
+    !isExpired &&
+    processingEnabled &&
+    streamActive &&
+    pageVisible;
+  const refreshInterval = shouldPoll
+    ? realtimeConnected
+      ? LIVE_OVERLAY_RESYNC_MS
+      : LIVE_OVERLAY_POLL_MS
+    : 0;
 
   const { data, error, isValidating, mutate } =
     useUpstreamList<LatestPerceptionResponse>(
       buildLatestPerceptionPath(cameraId),
       {
-        refreshInterval: live ? LIVE_OVERLAY_POLL_MS : 0,
+        refreshInterval,
         fallbackData: initialPerception
           ? { snapshot: initialPerception }
           : undefined,
-        // Opt down from the shared 3s dedupe so the 500ms fallback poll
-        // actually fires at 500ms instead of being coalesced. The realtime
-        // path below doesn't refetch at all, so it's unaffected either way.
+        // Opt down from the shared 3s dedupe so the realtime cache writes and
+        // the fast fallback poll aren't coalesced.
         dedupingInterval: 250,
       },
     );
-
-  // Realtime push: subscribe to row changes on latest_perception_snapshots
-  // for this camera. Same sanctioned Supabase Realtime pattern as
-  // CameraDetailRealtimeNext (which watches stream_sessions) — broadcasts
-  // respect the table's member-select RLS, so this adds no new auth surface
-  // and the api-server pushes nothing.
-  //
-  // We write the broadcast row STRAIGHT INTO the SWR cache (revalidate:false)
-  // rather than triggering a refetch. AGENTS.md sanctions "local state updates
-  // derived from the broadcast row", and it matters here: a refetch goes
-  // through SWR's dedupingInterval and coalesces the processor's ~3/s upserts
-  // down to ~1/s, so detections looked capped at 1 FPS even though the source
-  // runs at 3. A direct cache write applies every event immediately, so the
-  // overlay updates at the processor's publish rate. If a row can't be mapped
-  // (missing ids) we fall back to a refetch.
-  useEffect(() => {
-    if (!live) return;
-    const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`dn-camera:${cameraId}:perception`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "latest_perception_snapshots",
-          filter: `camera_id=eq.${cameraId}`,
-        },
-        (payload) => {
-          const record = perceptionRecordFromRealtimeRow(payload.new);
-          if (record) {
-            void mutate({ snapshot: record }, { revalidate: false });
-          } else {
-            void mutate();
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [live, cameraId, mutate]);
 
   const missing =
     error instanceof UpstreamApiError &&
@@ -173,8 +216,9 @@ export function LivePerceptionOverlayNext({
         )
       : [];
 
+  // Only draw boxes while a live-detections session is active.
   const svg =
-    snapshot && dimsOk ? (
+    detectionsActive && snapshot && dimsOk ? (
       <PerceptionOverlaySvg
         snapshot={snapshot}
         showBoxes={showBoxes}
@@ -188,14 +232,73 @@ export function LivePerceptionOverlayNext({
     ? snapshot.rois.length + snapshot.lines.length
     : 0;
 
-  // Age + stale gate. Computed against the injected ``now`` so tests can pin a
-  // deterministic clock. ``ageSeconds`` is null when there's no observation to
-  // age (no snapshot yet) -- the empty-state branch handles that case.
+  // Age + stale gate against the injected ``now``. ``ageSeconds`` is null with
+  // no snapshot yet -- treated as fresh so the first realtime event can arrive.
   const ageSeconds = record
     ? observedAtAgeSeconds(record.observed_at, now())
     : null;
   const ageLabel = record ? formatOverlayAge(record.observed_at, now()) : null;
   const isStale = ageSeconds !== null && ageSeconds > staleAfterSeconds;
+  const processorOutputFresh = !isStale;
+
+  // The single gate for holding a Supabase Realtime subscription open.
+  const shouldUseRealtime = computeRealtimeGate({
+    liveDetectionsEnabled,
+    isExpired,
+    streamActive,
+    processingEnabled,
+    processorOutputFresh,
+    pageVisible,
+  });
+
+  // Realtime push, gated. Subscribe ONLY while `shouldUseRealtime`; any gate
+  // closing (session off/expired, processing off, stream drop, stale, tab
+  // hidden) or an unmount tears the channel down. We capture the subscribe
+  // status for the connection chip, and write each broadcast row straight into
+  // the SWR cache (revalidate:false) so the overlay renders at the processor's
+  // publish rate rather than the dedupe-throttled refetch rate.
+  useEffect(() => {
+    // Not eligible: hold no channel. The previous run's cleanup already reset
+    // the status to null, and deriveOverlayConnectionState ignores the status
+    // while the gate is closed, so there's nothing to set here.
+    if (!shouldUseRealtime) return;
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`dn-camera:${cameraId}:perception`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "latest_perception_snapshots",
+          filter: `camera_id=eq.${cameraId}`,
+        },
+        (payload) => {
+          const rec = perceptionRecordFromRealtimeRow(payload.new);
+          if (rec) {
+            void mutate({ snapshot: rec }, { revalidate: false });
+          } else {
+            void mutate();
+          }
+        },
+      )
+      .subscribe((status) => setRealtimeStatus(status as RealtimeStatus));
+
+    return () => {
+      setRealtimeStatus(null);
+      void supabase.removeChannel(channel);
+    };
+  }, [shouldUseRealtime, cameraId, mutate]);
+
+  const connection = deriveOverlayConnectionState({
+    processingEnabled,
+    liveDetectionsEnabled,
+    isExpired,
+    streamActive,
+    isStale,
+    shouldUseRealtime,
+    realtimeStatus,
+  });
 
   return (
     <>
@@ -212,99 +315,183 @@ export function LivePerceptionOverlayNext({
             <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
               live perception overlay
             </p>
-            <p className="mt-1 text-sm text-[var(--dn-text-50)]">
-              {record && snapshot ? (
-                <>
-                  {ageLabel ? (
-                    <span className="text-black">{ageLabel}</span>
-                  ) : (
-                    "live"
-                  )}
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-[var(--dn-text-50)]">
+              <span className="inline-flex items-center gap-1.5">
+                <StatusDot status={MODE_DOT[connection.mode]} />
+                <span style={{ color: MODE_TEXT[connection.mode] }}>
+                  {connection.label}
+                </span>
+              </span>
+              {detectionsActive && record && snapshot ? (
+                <span>
                   {" · "}
-                  {snapshot.objects.length} object
+                  {ageLabel ?? "live"} · {snapshot.objects.length} object
                   {snapshot.objects.length === 1 ? "" : "s"} · {geometryCount}{" "}
                   geometry
-                </>
-              ) : (
-                "Latest perception snapshot, drawn over the live video"
-              )}
-              {isValidating ? " · refreshing…" : ""}
+                  {isValidating ? " · refreshing…" : ""}
+                </span>
+              ) : null}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ToggleChip
-              label="Boxes"
-              icon={Boxes}
-              active={showBoxes}
-              onClick={() => setShowBoxes((v) => !v)}
-            />
-            <ToggleChip
-              label="Labels"
-              icon={Tag}
-              active={showLabels}
-              onClick={() => setShowLabels((v) => !v)}
-            />
-            <ToggleChip
-              label="Geometry"
-              icon={Spline}
-              active={showGeometry}
-              onClick={() => setShowGeometry((v) => !v)}
-            />
-            <select
-              aria-label="Minimum object confidence"
-              value={minConfidence}
-              onChange={(e) => setMinConfidence(Number(e.target.value))}
-              className={SELECT_CLASS}
-            >
-              {CONFIDENCE_THRESHOLDS.map((t) => (
-                <option key={t} value={t}>
-                  {t === 0 ? "All confidence" : `≥ ${Math.round(t * 100)}%`}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setLive((p) => !p)}
-              aria-pressed={live}
-              className={clsx(
-                "rounded-full border px-2.5 py-1.5 text-sm transition",
-                live ? CHIP_ACTIVE : CHIP_INACTIVE,
-              )}
-            >
-              {live ? "Live: on" : "Live: off"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void mutate()}
-              disabled={isValidating}
-              className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <RefreshCw
-                className={clsx("h-3.5 w-3.5", isValidating && "animate-spin")}
-              />
-              Refresh
-            </button>
+            {detectionsActive ? (
+              <>
+                <ToggleChip
+                  label="Boxes"
+                  icon={Boxes}
+                  active={showBoxes}
+                  onClick={() => setShowBoxes((v) => !v)}
+                />
+                <ToggleChip
+                  label="Labels"
+                  icon={Tag}
+                  active={showLabels}
+                  onClick={() => setShowLabels((v) => !v)}
+                />
+                <ToggleChip
+                  label="Geometry"
+                  icon={Spline}
+                  active={showGeometry}
+                  onClick={() => setShowGeometry((v) => !v)}
+                />
+                <select
+                  aria-label="Minimum object confidence"
+                  value={minConfidence}
+                  onChange={(e) => setMinConfidence(Number(e.target.value))}
+                  className={SELECT_CLASS}
+                >
+                  {CONFIDENCE_THRESHOLDS.map((t) => (
+                    <option key={t} value={t}>
+                      {t === 0 ? "All confidence" : `≥ ${Math.round(t * 100)}%`}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void mutate()}
+                  disabled={isValidating}
+                  className={PILL_BTN}
+                >
+                  <RefreshCw
+                    className={clsx(
+                      "h-3.5 w-3.5",
+                      isValidating && "animate-spin",
+                    )}
+                  />
+                  Refresh
+                </button>
+              </>
+            ) : null}
+            <LiveDetectionsControl session={session} />
           </div>
         </div>
 
-        <OverlayMessage
-          missing={missing}
-          errored={errored}
-          hasRecord={record != null}
-          dimsOk={dimsOk}
-          objectCount={snapshot?.objects.length ?? 0}
-          drawnCount={overlayObjects.length}
-          processingEnabled={processingEnabled}
-          isStale={isStale}
-        />
+        {detectionsActive ? (
+          <OverlayMessage
+            missing={missing}
+            errored={errored}
+            hasRecord={record != null}
+            dimsOk={dimsOk}
+            objectCount={snapshot?.objects.length ?? 0}
+            drawnCount={overlayObjects.length}
+            processingEnabled={processingEnabled}
+            streamActive={streamActive}
+            isStale={isStale}
+          />
+        ) : (
+          <SessionOffMessage status={session.status} />
+        )}
+
+        <DetectionDisclaimer />
       </div>
     </>
   );
 }
 
 /**
- * Single contextual line under the controls. The live video keeps playing in
- * every branch — these only describe the overlay layer.
+ * The live-detections session toggle. Off/expired: a single CTA that starts a
+ * 15-minute session. On: the countdown plus extend / turn-off.
+ */
+function LiveDetectionsControl({ session }: { session: LiveDetectionSession }) {
+  if (session.status === "on") {
+    return (
+      <div className="inline-flex flex-wrap items-center gap-2">
+        <span className="text-sm text-black">
+          Live detections on · expires in {formatCountdown(session.remainingMs)}
+        </span>
+        <button
+          type="button"
+          onClick={session.extend}
+          className={clsx(
+            "rounded-full border px-2.5 py-1.5 text-sm transition",
+            CHIP_INACTIVE,
+          )}
+        >
+          Extend 15 min
+        </button>
+        <button
+          type="button"
+          onClick={session.disable}
+          className={clsx(
+            "rounded-full border px-2.5 py-1.5 text-sm transition",
+            CHIP_ACTIVE,
+          )}
+        >
+          Turn off
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button type="button" onClick={session.enable} className={PRIMARY_BTN}>
+      <Radio className="h-3.5 w-3.5" />
+      {session.status === "expired"
+        ? "Turn on for 15 minutes"
+        : "Turn on live detections"}
+    </button>
+  );
+}
+
+/** Off / expired body copy shown when no live-detections session is active. */
+function SessionOffMessage({ status }: { status: LiveSessionStatus }) {
+  if (status === "expired") {
+    return (
+      <p className="mt-2 text-sm text-[var(--dn-text-50)]">
+        Live detections expired. Turn them back on when you want to view live
+        boxes again.
+      </p>
+    );
+  }
+  return (
+    <p className="mt-2 text-sm text-[var(--dn-text-50)]">
+      Live detections are off. Turn on for 15 minutes to see detection boxes on
+      the video preview.
+    </p>
+  );
+}
+
+/**
+ * Always-visible, plain-language disclaimer (M5). The wording is deliberate: it
+ * must make clear the processor analyzes the REAL stream and only the browser
+ * box preview may lag — never that the processor is delayed or out of sync.
+ */
+function DetectionDisclaimer() {
+  return (
+    <div className="mt-3 border-t border-black/5 pt-3 text-[clamp(0.78rem,0.9vw,0.85rem)] text-[var(--dn-text-50)]">
+      <p>Live detections show what UpStream is seeing from the camera.</p>
+      <p className="mt-2">
+        The boxes are drawn in your browser as a preview, so they may be
+        slightly delayed compared with the video. This does not mean the
+        processor is delayed or out of sync — detections and events are still
+        created from the actual camera stream.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Single contextual line under the controls while a session is active. The live
+ * video keeps playing in every branch — these only describe the overlay layer.
  */
 function OverlayMessage({
   missing,
@@ -314,6 +501,7 @@ function OverlayMessage({
   objectCount,
   drawnCount,
   processingEnabled,
+  streamActive,
   isStale,
 }: {
   missing: boolean;
@@ -323,6 +511,7 @@ function OverlayMessage({
   objectCount: number;
   drawnCount: number;
   processingEnabled: boolean;
+  streamActive: boolean;
   isStale: boolean;
 }) {
   if (errored && !hasRecord) {
@@ -340,14 +529,18 @@ function OverlayMessage({
       </p>
     );
   }
-  // Processing-disabled gets priority over generic empty state -- the
-  // operator chose this, so we tell them where to undo it. Sits above
-  // missing/!hasRecord so they see "enable processing" instead of
-  // "no perception snapshot yet" the first time they look after toggling.
-  if (!processingEnabled && (missing || !hasRecord)) {
+  // Processing disabled is the most fundamental blocker once detections are on.
+  if (!processingEnabled) {
     return (
       <p className="mt-2 text-sm text-[var(--dn-text-50)]">
         Processing is disabled. Enable processing in Settings to see detections.
+      </p>
+    );
+  }
+  if (!streamActive) {
+    return (
+      <p className="mt-2 text-sm text-[var(--dn-text-50)]">
+        Stream is not active. Start the stream to see live detections.
       </p>
     );
   }
@@ -358,9 +551,8 @@ function OverlayMessage({
       </p>
     );
   }
-  // Stale check sits above dims/empty so the operator hears the bigger story
-  // ("this isn't current") before the smaller one ("no objects in this
-  // particular snapshot").
+  // Stale sits above dims/empty so the operator hears the bigger story
+  // ("this isn't current") before the smaller one ("no objects here").
   if (isStale) {
     return (
       <p className="mt-2 text-sm text-[#8a6d1f]">

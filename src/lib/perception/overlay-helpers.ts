@@ -355,3 +355,141 @@ export function centroid(points: PerceptionPoint[]): PerceptionPoint | null {
   }
   return { x: sx / points.length, y: sy / points.length };
 }
+
+// --- M5: free-plan-safe live-detections session + realtime gating -----------
+//
+// On the Supabase Free plan a Realtime subscription held open by every Monitor
+// tab is wasteful. M5 makes the subscription intentional: detections are OFF by
+// default, the user opts into a time-boxed viewing session, and the gate below
+// keeps the subscription open ONLY while it's useful. These helpers are pure so
+// the gating + countdown logic is exhaustively unit-testable without React.
+
+/** A live-detections viewing session lasts 15 minutes (see M5). */
+export const LIVE_SESSION_DURATION_MS = 15 * 60 * 1000;
+
+/**
+ * True once a live-detections session has passed its expiry. Computed from the
+ * absolute ``expiresAt`` timestamp (not a ticking counter) so a throttled or
+ * backgrounded tab reports the correct state the instant it wakes. A ``null``
+ * expiry (never enabled / manually turned off) is never expired.
+ */
+export function isSessionExpired(
+  expiresAt: number | null,
+  now: number,
+): boolean {
+  return expiresAt !== null && now >= expiresAt;
+}
+
+/** ``mm:ss`` for a remaining-milliseconds value; clamps negatives to ``00:00``. */
+export function formatCountdown(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
+ * Inputs deciding whether the live overlay holds a Supabase Realtime
+ * subscription open. We subscribe only while ALL hold, so an idle / hidden /
+ * disabled / stale / unenabled overlay consumes no realtime connection.
+ * ``processorOutputFresh`` is ``!isStale`` — "no snapshot yet" counts as fresh
+ * so the very first event can still arrive.
+ */
+export interface RealtimeGateInput {
+  liveDetectionsEnabled: boolean;
+  isExpired: boolean;
+  streamActive: boolean;
+  processingEnabled: boolean;
+  processorOutputFresh: boolean;
+  pageVisible: boolean;
+}
+
+export function computeRealtimeGate(input: RealtimeGateInput): boolean {
+  return (
+    input.liveDetectionsEnabled &&
+    !input.isExpired &&
+    input.streamActive &&
+    input.processingEnabled &&
+    input.processorOutputFresh &&
+    input.pageVisible
+  );
+}
+
+/** Supabase channel ``.subscribe()`` status values we care about (``null`` =
+ * subscribe requested, no status yet). */
+export type RealtimeStatus =
+  | "SUBSCRIBED"
+  | "CHANNEL_ERROR"
+  | "TIMED_OUT"
+  | "CLOSED"
+  | null;
+
+/** The single user-facing mode shown in the overlay connection chip. */
+export type OverlayConnectionMode =
+  | "expired"
+  | "off"
+  | "processing_disabled"
+  | "stream_inactive"
+  | "processor_stale"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "fallback_polling";
+
+const OVERLAY_CONNECTION_LABELS: Record<OverlayConnectionMode, string> = {
+  expired: "Live detections expired",
+  off: "Live detections off",
+  processing_disabled: "Processing disabled",
+  stream_inactive: "Stream inactive",
+  processor_stale: "Processor stale",
+  connecting: "Connecting",
+  connected: "Realtime connected",
+  reconnecting: "Reconnecting",
+  fallback_polling: "Fallback polling",
+};
+
+export interface ConnectionStateInput {
+  processingEnabled: boolean;
+  liveDetectionsEnabled: boolean;
+  isExpired: boolean;
+  streamActive: boolean;
+  isStale: boolean;
+  shouldUseRealtime: boolean;
+  realtimeStatus: RealtimeStatus;
+}
+
+/**
+ * Derive the overlay connection chip's ``{ mode, label }``. Priority reflects
+ * the user's intent first (off / expired session) and then, once they've opted
+ * in, the biggest blocker (processing → stream → freshness) before surfacing
+ * the live realtime status. ``page hidden`` is intentionally NOT a mode — the
+ * user can't see the chip then anyway.
+ */
+export function deriveOverlayConnectionState(input: ConnectionStateInput): {
+  mode: OverlayConnectionMode;
+  label: string;
+} {
+  const mode = pickConnectionMode(input);
+  return { mode, label: OVERLAY_CONNECTION_LABELS[mode] };
+}
+
+function pickConnectionMode(i: ConnectionStateInput): OverlayConnectionMode {
+  if (i.isExpired) return "expired";
+  if (!i.liveDetectionsEnabled) return "off";
+  if (!i.processingEnabled) return "processing_disabled";
+  if (!i.streamActive) return "stream_inactive";
+  if (i.isStale) return "processor_stale";
+  if (i.shouldUseRealtime) {
+    if (i.realtimeStatus === "SUBSCRIBED") return "connected";
+    if (
+      i.realtimeStatus === "CHANNEL_ERROR" ||
+      i.realtimeStatus === "TIMED_OUT"
+    ) {
+      return "reconnecting";
+    }
+    if (i.realtimeStatus === null) return "connecting";
+    // CLOSED — the channel is gone; the poll fallback carries the overlay.
+    return "fallback_polling";
+  }
+  return "fallback_polling";
+}
