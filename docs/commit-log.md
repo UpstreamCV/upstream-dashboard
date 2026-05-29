@@ -4,6 +4,16 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Fix (ACTUAL root cause): Realtime dropped every event — postgres_changes filter on a non-replica-identity column
+
+**Subject:** The overlay chip stayed **"Fallback polling"** (channel `SUBSCRIBED`, zero events) even after the publication was applied and the browser socket was authenticated. The real cause: `latest_perception_snapshots` has primary key `id`, with `camera_id` only a UNIQUE index, and no table is `REPLICA IDENTITY FULL` — so the replica identity is `id`. The overlay subscribed with a **server-side `filter: camera_id=eq.<id>`**. Supabase only evaluates a `postgres_changes` filter on **UPDATE** events against columns in the table's replica identity, so a `camera_id` filter drops every UPDATE. Because the snapshot is **UPSERTed (one row per camera)**, all writes after the first are UPDATEs → **everything dropped**. This was never working; the 250 ms poll always masked it. (The two prior fixes — poll cadence and socket auth — were real but did not touch this; I should not have called them "the fix.")
+
+**Fix (dashboard-only, no migration dependency):** remove the server-side filter and filter **client-side**. RLS (`member_select`) still scopes delivered rows to the account; the handler ignores any row whose `camera_id` ≠ the viewed camera. Applied the same fix to `camera-detail-realtime-next.tsx` — its `stream_sessions` subscription filtered on `camera_id` too, so session-state UPDATEs (approved→streaming→ended) were being dropped identically (only new-session INSERTs delivered). Also captured the previously-discarded `.subscribe((status, err))` error via `reportError`.
+
+**Tradeoff:** the client now receives account-scoped perception rows for all the account's cameras (filtered to the viewed one in JS) — bounded, and only while a live session is active. Optional later efficiency: `ALTER TABLE latest_perception_snapshots REPLICA IDENTITY FULL` (+ `stream_sessions`) would let a server-side `camera_id` filter work on UPDATEs.
+
+**Status:** lint + tsc clean; 309 tests pass (added a cross-camera-ignore test). Confirmed fixed only once the live chip reads **"Realtime connected"** after deploy.
+
 ## 2026-05-29 — Fix: Realtime delivered no events (browser socket was anon → RLS filtered everything)
 
 **Subject:** With the poll-cadence fix deployed, the overlay chip honestly showed **"Fallback polling"**: the channel reported `SUBSCRIBED` but **zero** `postgres_changes` events arrived — even though the `supabase_realtime` publication migration was applied (verified) and the processor was actively upserting rows (polling saw them change). Cause: `createSupabaseBrowserClient` minted a **fresh client per call** and never set the user's JWT on the Realtime socket, so it connected as **anon**. The `latest_perception_snapshots_member_select` RLS policy keys off `auth.uid()`, so with an anon socket every member-scoped row broadcast was filtered out. Polling reads were unaffected because they go through `/api/upstream` with a server-minted user JWT.
