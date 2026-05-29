@@ -9,6 +9,7 @@
 // and never throws on a malformed shape.
 
 import type {
+  LatestPerceptionRecord,
   PerceptionBBox,
   PerceptionGeometryLine,
   PerceptionGeometryRoi,
@@ -254,6 +255,48 @@ export function formatObjectLabel(
   const pct = confidencePercent(obj.confidence);
   if (pct) parts.push(pct);
   return parts.join(" · ");
+}
+
+// --- realtime row mapping ----------------------------------------------------
+
+/**
+ * Build a ``LatestPerceptionRecord`` from a Supabase Realtime ``postgres_changes``
+ * row (the ``new`` payload for an INSERT/UPDATE on latest_perception_snapshots).
+ *
+ * Lets the live overlay update its SWR cache directly from the broadcast row —
+ * sanctioned by AGENTS.md as a "local state update derived from the broadcast
+ * row" — instead of triggering a refetch. A refetch goes through SWR's
+ * dedupingInterval and coalesces rapid updates down to ~1/s; a direct cache
+ * write does not, so detections render at the rate the processor publishes
+ * (~3/s) rather than the dedupe-throttled rate.
+ *
+ * Returns ``null`` when the row lacks the identity/timestamp fields the overlay
+ * needs — the caller then falls back to a normal refetch. The snapshot JSONB
+ * arrives already parsed from the realtime client. No secrets live in this row
+ * (ids + perception objects + geometry only); ``account_id`` is intentionally
+ * dropped.
+ */
+export function perceptionRecordFromRealtimeRow(
+  row: unknown,
+): LatestPerceptionRecord | null {
+  if (!isRecord(row)) return null;
+  const id = nonEmptyStr(row.id);
+  const cameraId = nonEmptyStr(row.camera_id);
+  const observedAt = nonEmptyStr(row.observed_at);
+  if (id === null || cameraId === null || observedAt === null) return null;
+  // The snapshot JSONB is opaque/untrusted; normalizeSnapshot() coerces it
+  // downstream, so an unknown shape here is fine. Cast through unknown.
+  const snapshot = isRecord(row.snapshot) ? row.snapshot : {};
+  return {
+    id,
+    camera_id: cameraId,
+    stream_session_id: nonEmptyStr(row.stream_session_id) ?? "",
+    processor_id: nonEmptyStr(row.processor_id),
+    package_id: nonEmptyStr(row.package_id),
+    observed_at: observedAt,
+    updated_at: nonEmptyStr(row.updated_at) ?? observedAt,
+    snapshot: snapshot as unknown as LatestPerceptionRecord["snapshot"],
+  };
 }
 
 // --- age / staleness ---------------------------------------------------------

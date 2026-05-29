@@ -18,6 +18,7 @@ import {
   hasFrameDimensions,
   normalizeSnapshot,
   observedAtAgeSeconds,
+  perceptionRecordFromRealtimeRow,
   selectOverlayObjects,
 } from "@/lib/perception/overlay-helpers";
 import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
@@ -99,23 +100,27 @@ export function LivePerceptionOverlayNext({
         fallbackData: initialPerception
           ? { snapshot: initialPerception }
           : undefined,
+        // Opt down from the shared 3s dedupe so the 500ms fallback poll
+        // actually fires at 500ms instead of being coalesced. The realtime
+        // path below doesn't refetch at all, so it's unaffected either way.
+        dedupingInterval: 250,
       },
     );
 
   // Realtime push: subscribe to row changes on latest_perception_snapshots
-  // for this camera and refetch the moment the processor upserts a new
-  // snapshot. Same sanctioned Supabase Realtime pattern as
+  // for this camera. Same sanctioned Supabase Realtime pattern as
   // CameraDetailRealtimeNext (which watches stream_sessions) — broadcasts
   // respect the table's member-select RLS, so this adds no new auth surface
-  // and the api-server pushes nothing. We use the event purely as a trigger
-  // to revalidate the existing SWR key (AGENTS.md: "only for change
-  // notifications that trigger ... local state updates"), keeping one safe,
-  // secret-filtered data path through /perception/latest.
+  // and the api-server pushes nothing.
   //
-  // Push removes the poll-latency component of the lag. It does NOT change
-  // the once-per-second motion of the boxes — that's the processor's ~1 FPS
-  // publish cadence (perception_snapshot_interval_seconds). Bumping that env
-  // is the follow-up for smoother motion.
+  // We write the broadcast row STRAIGHT INTO the SWR cache (revalidate:false)
+  // rather than triggering a refetch. AGENTS.md sanctions "local state updates
+  // derived from the broadcast row", and it matters here: a refetch goes
+  // through SWR's dedupingInterval and coalesces the processor's ~3/s upserts
+  // down to ~1/s, so detections looked capped at 1 FPS even though the source
+  // runs at 3. A direct cache write applies every event immediately, so the
+  // overlay updates at the processor's publish rate. If a row can't be mapped
+  // (missing ids) we fall back to a refetch.
   useEffect(() => {
     if (!live) return;
     const supabase = createSupabaseBrowserClient();
@@ -129,12 +134,13 @@ export function LivePerceptionOverlayNext({
           table: "latest_perception_snapshots",
           filter: `camera_id=eq.${cameraId}`,
         },
-        () => {
-          // New (or updated) snapshot row exists — pull the fresh one. The
-          // bound mutate() forces a revalidation; SWR's polling already
-          // bypasses dedupingInterval, and so does an explicit mutate, so
-          // each upsert yields one refetch.
-          void mutate();
+        (payload) => {
+          const record = perceptionRecordFromRealtimeRow(payload.new);
+          if (record) {
+            void mutate({ snapshot: record }, { revalidate: false });
+          } else {
+            void mutate();
+          }
         },
       )
       .subscribe();
