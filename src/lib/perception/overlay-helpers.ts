@@ -456,6 +456,11 @@ export interface ConnectionStateInput {
   isStale: boolean;
   shouldUseRealtime: boolean;
   realtimeStatus: RealtimeStatus;
+  // Whether a realtime row event has actually arrived recently. A channel can
+  // report SUBSCRIBED yet deliver nothing (e.g. the table isn't in the
+  // supabase_realtime publication in this environment); in that case the poll
+  // fallback is what's really driving the overlay, so we say so.
+  realtimeDelivering: boolean;
 }
 
 /**
@@ -480,7 +485,11 @@ function pickConnectionMode(i: ConnectionStateInput): OverlayConnectionMode {
   if (!i.streamActive) return "stream_inactive";
   if (i.isStale) return "processor_stale";
   if (i.shouldUseRealtime) {
-    if (i.realtimeStatus === "SUBSCRIBED") return "connected";
+    if (i.realtimeStatus === "SUBSCRIBED") {
+      // Subscribed AND actually receiving events -> truly live. Subscribed but
+      // silent -> the poll fallback is doing the work; don't claim "connected".
+      return i.realtimeDelivering ? "connected" : "fallback_polling";
+    }
     if (
       i.realtimeStatus === "CHANNEL_ERROR" ||
       i.realtimeStatus === "TIMED_OUT"

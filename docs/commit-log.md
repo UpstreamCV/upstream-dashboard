@@ -4,6 +4,18 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Fix: live overlay updated only every 10s when realtime was silent
+
+**Subject:** M5 slowed the SWR poll to a 10s "safety re-sync" once the Supabase channel reported `SUBSCRIBED`, assuming realtime push was then carrying updates. But `SUBSCRIBED` only means the *channel* connected — if `latest_perception_snapshots` isn't in the `supabase_realtime` publication for that environment, the channel subscribes yet delivers **zero** row events. Result: the chip said "Realtime connected" while the overlay refreshed only every 10s — worse than the pre-M5 250ms poll.
+
+**Fix:**
+- Poll at `LIVE_OVERLAY_POLL_MS = 250` whenever a session is active; **never** slow it based on realtime status. Removed `LIVE_OVERLAY_RESYNC_MS`. Rationale: polling hits our own API (not Supabase), so it's free against the Supabase plan; M5's free-plan safety comes from gating the *subscription* + gating polling to active sessions, not from slowing the poll. Realtime is purely additive on top.
+- Honest chip: track `lastRealtimeEventAt` and only show "Realtime connected" when a row event arrived within `REALTIME_DELIVERING_WINDOW_MS = 8_000`; a subscribed-but-silent channel now reads **"Fallback polling"** — which is also the visible tell that the publication migration isn't applied in prod.
+
+**Tests:** updated `deriveOverlayConnectionState` (new `realtimeDelivering` input) + its truth-table tests; component tests now assert connecting → fallback-polling (subscribed-but-silent) → connected (events flowing), and that `refreshInterval` stays 250 while active even after `SUBSCRIBED`. lint + tsc clean; full suite green.
+
+**Note:** the proper end-to-end fix for true realtime push is applying the api-server migration `20260528180000_realtime_perception_snapshots.sql` (adds the table to the `supabase_realtime` publication) in the production Supabase project. Until then the overlay runs correctly on the 250ms poll and the chip honestly shows "Fallback polling".
+
 ## 2026-05-29 — Live Detection Overlay M5: free-plan-safe realtime sessions
 
 **Subject:** Live detections are now **OFF by default** in `LivePerceptionOverlayNext`. Previously the overlay opened a Supabase Realtime subscription on mount (`useState(true)`), so every open Monitor tab held a connection — wasteful on the Supabase Free plan. M5 makes it intentional: the user clicks "Turn on live detections" to start a **15-minute client-side viewing session**, and a subscription is held open ONLY while all of: session on + not expired + stream connected + processing enabled + output fresh + tab visible. It auto-unsubscribes on 15-min expiry, processing-off, stream drop, staleness, tab hide, or unmount, and reconnects on re-focus if the session is still valid. The video preview always plays regardless.
