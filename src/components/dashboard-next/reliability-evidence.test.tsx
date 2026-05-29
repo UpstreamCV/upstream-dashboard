@@ -109,19 +109,17 @@ describe("ReliabilityEvidence — unstable_detection_confidence", () => {
     expect(html).toContain("0.45");
   });
 
-  test("renders M5 baseline drift fields (previous avg, drop %, baseline, reasons)", () => {
+  test("renders M5 windowed drift fields (recent/previous avg, drop %, baseline, reasons)", () => {
     const html = renderToStaticMarkup(
       <ReliabilityEvidence
         finding={finding(
           "unstable_detection_confidence",
           {
-            confidence_sample_count: 9,
-            avg_confidence: 0.34,
-            median_confidence: 0.35,
-            min_confidence: 0.22,
-            max_confidence: 0.49,
-            low_confidence_ratio: 0.4,
-            confidence_stddev: 0.08,
+            // Low-object scene: per-frame stats are null; drift drove it.
+            confidence_sample_count: null,
+            avg_confidence: null,
+            current_avg_confidence: 0.34,
+            current_confidence_sample_count: 40,
             previous_avg_confidence: 0.68,
             drop_ratio: 0.5,
             baseline_window_seconds: 1800,
@@ -129,12 +127,14 @@ describe("ReliabilityEvidence — unstable_detection_confidence", () => {
             baseline_metric_count: 7,
             trigger_reasons: ["drop_vs_recent_baseline"],
             thresholds: { low_confidence_threshold: 0.45 },
-            source: "latest_perception_snapshot_with_history",
+            source: "recent_window_history",
           },
           "detection",
         )}
       />,
     );
+    expect(html).toContain("Recent avg confidence");
+    expect(html).toContain(">0.34<");
     expect(html).toContain("Previous avg confidence");
     expect(html).toContain(">0.68<");
     expect(html).toContain("Confidence drop");
@@ -145,6 +145,8 @@ describe("ReliabilityEvidence — unstable_detection_confidence", () => {
     expect(html).toMatch(/30\s*min/);
     expect(html).toContain("Why flagged");
     expect(html).toContain("dropped vs recent baseline");
+    // Per-frame "Average confidence" row is absent (null at low object count).
+    expect(html).not.toContain("Average confidence");
   });
 
   test("omits baseline rows when no history is present (no crash)", () => {

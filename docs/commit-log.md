@@ -4,6 +4,20 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Reliability M5: render windowed "Recent avg confidence" in drift evidence
+
+**Subject:** Follow-up to the api-server M5 window-aggregate fix (drift now
+compares rolling time windows instead of a single frame). The
+`UnstableConfidenceEvidence` formatter
+(`src/components/dashboard-next/reliability-evidence.tsx`) now also renders
+**Recent avg confidence** (`current_avg_confidence`) next to the existing
+**Previous avg confidence**, so the drift comparison reads current-vs-previous
+even when the latest frame has too few detections for the per-frame
+"Average confidence" row to populate. Still text only, no charts; all rows
+self-hide when their value is absent. Updated the vitest drift case to the
+windowed evidence shape (per-frame stats null, windowed current/previous set).
+`tsc` / `eslint` / vitest clean.
+
 ## 2026-05-29 — Reliability M5: render detection-confidence drift evidence
 
 **Subject:** The Reliability tab's `UnstableConfidenceEvidence` formatter
