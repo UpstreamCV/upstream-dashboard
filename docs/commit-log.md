@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Temp diagnostics for Realtime delivery (paired with the api-server REPLICA IDENTITY FULL migration)
+
+**Subject:** After removing the server-side `camera_id` filter the overlay was *still* "Fallback polling". The remaining, independent cause is a DB-level one (Supabase won't deliver `UPDATE` events on an RLS table without `REPLICA IDENTITY FULL`), fixed by an api-server migration. Since three prior fixes missed, this dashboard commit adds **temporary** `console.info("[perception-realtime] …")` diagnostics to the overlay's Realtime effect so we confirm the cause end-to-end this round instead of guessing again: (1) socket auth (`user-jwt` vs `anon`), (2) subscribe status + err, (3) every raw row event received *before* the client-side camera filter. Also updated the test's Supabase mock to provide `auth.getSession`.
+
+**Decision tree (read in the browser console after deploy):** chip → "Realtime connected" + `event` logs ⇒ the migration fixed it (remove diagnostics next). Still fallback + `socket auth: anon` ⇒ socket-auth fix didn't take effect (explicit `setAuth` before subscribe). Still fallback + `user-jwt` + zero `event` logs ⇒ migration didn't apply / deeper publication issue.
+
+**Status:** log-only, no behavior change; lint + tsc clean, 309 tests pass. Diagnostics get removed once Realtime is confirmed working.
+
 ## 2026-05-29 — Fix (ACTUAL root cause): Realtime dropped every event — postgres_changes filter on a non-replica-identity column
 
 **Subject:** The overlay chip stayed **"Fallback polling"** (channel `SUBSCRIBED`, zero events) even after the publication was applied and the browser socket was authenticated. The real cause: `latest_perception_snapshots` has primary key `id`, with `camera_id` only a UNIQUE index, and no table is `REPLICA IDENTITY FULL` — so the replica identity is `id`. The overlay subscribed with a **server-side `filter: camera_id=eq.<id>`**. Supabase only evaluates a `postgres_changes` filter on **UPDATE** events against columns in the table's replica identity, so a `camera_id` filter drops every UPDATE. Because the snapshot is **UPSERTed (one row per camera)**, all writes after the first are UPDATEs → **everything dropped**. This was never working; the 250 ms poll always masked it. (The two prior fixes — poll cadence and socket auth — were real but did not touch this; I should not have called them "the fix.")
