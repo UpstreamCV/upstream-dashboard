@@ -297,21 +297,33 @@ export function LivePerceptionOverlayNext({
           table: "latest_perception_snapshots",
         },
         (payload) => {
-          // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed. Logs ANY
-          // row event the socket receives, BEFORE the client-side camera
-          // filter, so we can tell "no events at all" from "events for other
-          // cameras only".
+          // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed. Shows
+          // exactly what the broadcast row carries (in prod camera_id has come
+          // through `undefined`, i.e. the row arrives stripped).
           console.info(
             "[perception-realtime] event:",
             payload.eventType,
-            "camera_id=",
-            (payload.new as { camera_id?: string } | null)?.camera_id,
+            "keys=",
+            Object.keys((payload.new as Record<string, unknown> | null) ?? {}),
+            "errors=",
+            payload.errors ?? "",
           );
           const rec = perceptionRecordFromRealtimeRow(payload.new);
-          if (!rec || rec.camera_id !== cameraId) return;
-          // A row event for THIS camera arrived: the push path is delivering.
-          setLastRealtimeEventAt(now());
-          void mutate({ snapshot: rec }, { revalidate: false });
+          if (rec) {
+            // Usable broadcast row: drop other cameras, else write it straight
+            // into the SWR cache — true real-time, no refetch.
+            if (rec.camera_id !== cameraId) return;
+            setLastRealtimeEventAt(now());
+            void mutate({ snapshot: rec }, { revalidate: false });
+          } else {
+            // The row arrived without usable fields (observed in prod: camera_id
+            // undefined). Use the event purely as a "refetch" signal — RLS
+            // already scopes delivery to this account, and SWR's dedupe bounds
+            // the refetch rate. The /perception/latest fetch returns the full
+            // snapshot the broadcast didn't carry.
+            setLastRealtimeEventAt(now());
+            void mutate();
+          }
         },
       )
       .subscribe((status, err) => {

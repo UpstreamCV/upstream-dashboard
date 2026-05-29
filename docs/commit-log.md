@@ -4,6 +4,10 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Fix: consume Realtime events even when the broadcast row arrives stripped
+
+**Subject:** The api-server `REPLICA IDENTITY FULL` migration worked — the console diagnostics confirmed `socket auth: user-jwt`, `status: SUBSCRIBED`, and `event: UPDATE` firing 100+×, so UPDATE events now flow at full rate. **But** the broadcast row came through with `camera_id` (and other fields) `undefined`, so `perceptionRecordFromRealtimeRow` mapped it to `null` and the handler dropped every event → still "Fallback polling". Fixed the handler to not depend on the row contents: when the row is usable, direct-write it to the SWR cache (true real-time, scoped to this camera); when it arrives **stripped** (`rec` is null), use the event purely as a **refetch signal** (`mutate()` — RLS scopes delivery to the account, and `/perception/latest` returns the full snapshot the broadcast didn't carry). Either way `lastRealtimeEventAt` is set so the chip honestly reads "Realtime connected". Kept the temporary `[perception-realtime]` diagnostics (now logging `keys=`/`errors=`) to pin down *why* the row is stripped before removing them. 310 tests pass (added a stripped-row refetch test); lint + tsc clean.
+
 ## 2026-05-29 — Temp diagnostics for Realtime delivery (paired with the api-server REPLICA IDENTITY FULL migration)
 
 **Subject:** After removing the server-side `camera_id` filter the overlay was *still* "Fallback polling". The remaining, independent cause is a DB-level one (Supabase won't deliver `UPDATE` events on an RLS table without `REPLICA IDENTITY FULL`), fixed by an api-server migration. Since three prior fixes missed, this dashboard commit adds **temporary** `console.info("[perception-realtime] …")` diagnostics to the overlay's Realtime effect so we confirm the cause end-to-end this round instead of guessing again: (1) socket auth (`user-jwt` vs `anon`), (2) subscribe status + err, (3) every raw row event received *before* the client-side camera filter. Also updated the test's Supabase mock to provide `auth.getSession`.
