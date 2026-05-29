@@ -4,6 +4,21 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Live Detection Overlay M5: free-plan-safe realtime sessions
+
+**Subject:** Live detections are now **OFF by default** in `LivePerceptionOverlayNext`. Previously the overlay opened a Supabase Realtime subscription on mount (`useState(true)`), so every open Monitor tab held a connection — wasteful on the Supabase Free plan. M5 makes it intentional: the user clicks "Turn on live detections" to start a **15-minute client-side viewing session**, and a subscription is held open ONLY while all of: session on + not expired + stream connected + processing enabled + output fresh + tab visible. It auto-unsubscribes on 15-min expiry, processing-off, stream drop, staleness, tab hide, or unmount, and reconnects on re-focus if the session is still valid. The video preview always plays regardless.
+
+**Why:** free-plan safety — no Realtime connection unless someone is actively watching detections. Also surfaces honest connection state and corrects the mental model that the processor (not just the browser preview) is real-time.
+
+**How:**
+- New pure helpers in `src/lib/perception/overlay-helpers.ts`: `LIVE_SESSION_DURATION_MS`, `isSessionExpired`, `formatCountdown`, `computeRealtimeGate` (the six-condition AND), `deriveOverlayConnectionState` + `OverlayConnectionMode`/`RealtimeStatus`. Pure ⇒ exhaustively unit-tested.
+- New client hooks `use-page-visible.ts` (SSR-safe `visibilitychange`) and `use-live-detection-session.ts` (15-min session: off/on/expired, countdown, enable/disable/extend; expiry derived from the absolute timestamp so a throttled/hidden tab is correct on wake).
+- `live-perception-overlay-next.tsx`: composes the gates; `streamActive` from the WebRTC player's `PLAYER_STATE_EVENT` (`kind === "connected"`); captures the previously-discarded `.subscribe()` status for the chip; adaptive polling (`LIVE_OVERLAY_POLL_MS=250` fallback, `LIVE_OVERLAY_RESYNC_MS=10_000` safety re-sync when connected, `0` when no session); `StatusDot` connection chip on the metadata line; always-visible disclaimer (exact M5 copy); off/expired/stream-inactive states added to the message body. Boxes only draw while a session is active.
+
+**Disclaimer (exact copy):** "Live detections show what UpStream is seeing from the camera. The boxes are drawn in your browser as a preview, so they may be slightly delayed compared with the video. This does not mean the processor is delayed or out of sync — detections and events are still created from the actual camera stream."
+
+**Tests / infra:** added `@testing-library/react` + `jsdom` devDeps; opt-in per file via `// @vitest-environment jsdom` (global env stays `node`, existing tests untouched). New: pure-helper truth-table tests, `use-live-detection-session` timer tests (fake timers), and a component integration suite (subscribe-gating across every gate, expiry/visibility/unmount unsubscribe + reconnect, connection-chip copy, realtime event → cache write, disclaimer wording, and box/label/min-confidence/refresh/empty/no-secret regressions). `npm run lint` + `tsc --noEmit` clean; **306 tests pass** (20 files). No backend / API / processor changes; no SSE/WebSocket; session not persisted.
+
 ## 2026-05-28 — Live overlay poll fallback 500ms → 250ms
 
 **Subject:** Lowered `LIVE_OVERLAY_POLL_MS` in `live-perception-overlay-next.tsx` from 500ms to 250ms.

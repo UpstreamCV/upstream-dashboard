@@ -3,9 +3,14 @@ import type { PerceptionObject } from "@/lib/api/types";
 import {
   buildLatestPerceptionPath,
   centroid,
+  computeRealtimeGate,
   confidencePercent,
+  deriveOverlayConnectionState,
+  formatCountdown,
   formatObjectLabel,
   hasFrameDimensions,
+  isSessionExpired,
+  LIVE_SESSION_DURATION_MS,
   normalizeSnapshot,
   objectName,
   pointsToAttr,
@@ -396,5 +401,155 @@ describe("perceptionRecordFromRealtimeRow", () => {
     expect(rec!.processor_id).toBeNull();
     expect(rec!.package_id).toBeNull();
     expect(rec!.stream_session_id).toBe("");
+  });
+});
+
+// --- M5: session + realtime gating ------------------------------------------
+
+describe("isSessionExpired", () => {
+  test("null expiry is never expired", () => {
+    expect(isSessionExpired(null, 1_000_000)).toBe(false);
+  });
+  test("future expiry is not expired", () => {
+    expect(isSessionExpired(2_000, 1_000)).toBe(false);
+  });
+  test("expiry exactly now, and in the past, is expired", () => {
+    expect(isSessionExpired(1_000, 1_000)).toBe(true);
+    expect(isSessionExpired(1_000, 1_500)).toBe(true);
+  });
+});
+
+describe("formatCountdown", () => {
+  test("15 minutes -> 15:00", () => {
+    expect(formatCountdown(LIVE_SESSION_DURATION_MS)).toBe("15:00");
+  });
+  test("zero and negative clamp to 00:00", () => {
+    expect(formatCountdown(0)).toBe("00:00");
+    expect(formatCountdown(-5_000)).toBe("00:00");
+  });
+  test("pads minutes and seconds, floors sub-second", () => {
+    expect(formatCountdown(62_000)).toBe("01:02");
+    expect(formatCountdown(9_400)).toBe("00:09");
+  });
+});
+
+describe("computeRealtimeGate", () => {
+  const ALL_OPEN = {
+    liveDetectionsEnabled: true,
+    isExpired: false,
+    streamActive: true,
+    processingEnabled: true,
+    processorOutputFresh: true,
+    pageVisible: true,
+  } as const;
+
+  test("subscribes only when every condition holds", () => {
+    expect(computeRealtimeGate(ALL_OPEN)).toBe(true);
+  });
+
+  test.each([
+    ["liveDetectionsEnabled", { liveDetectionsEnabled: false }],
+    ["isExpired", { isExpired: true }],
+    ["streamActive", { streamActive: false }],
+    ["processingEnabled", { processingEnabled: false }],
+    ["processorOutputFresh", { processorOutputFresh: false }],
+    ["pageVisible", { pageVisible: false }],
+  ])("a single closed gate (%s) blocks the subscription", (_name, override) => {
+    expect(computeRealtimeGate({ ...ALL_OPEN, ...override })).toBe(false);
+  });
+});
+
+describe("deriveOverlayConnectionState", () => {
+  const CONNECTED = {
+    processingEnabled: true,
+    liveDetectionsEnabled: true,
+    isExpired: false,
+    streamActive: true,
+    isStale: false,
+    shouldUseRealtime: true,
+    realtimeStatus: "SUBSCRIBED" as const,
+  };
+
+  test("connected when the gate is open and subscribed", () => {
+    expect(deriveOverlayConnectionState(CONNECTED)).toEqual({
+      mode: "connected",
+      label: "Realtime connected",
+    });
+  });
+
+  test("expired ranks first (user session state)", () => {
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        isExpired: true,
+        liveDetectionsEnabled: false,
+        // even with a deeper blocker also set, expired wins
+        processingEnabled: false,
+      }).mode,
+    ).toBe("expired");
+  });
+
+  test("off when no session and not expired", () => {
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        liveDetectionsEnabled: false,
+      }),
+    ).toEqual({ mode: "off", label: "Live detections off" });
+  });
+
+  test("processing disabled ranks above stream/freshness once enabled", () => {
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        processingEnabled: false,
+        streamActive: false,
+      }).mode,
+    ).toBe("processing_disabled");
+  });
+
+  test("stream inactive", () => {
+    expect(
+      deriveOverlayConnectionState({ ...CONNECTED, streamActive: false }),
+    ).toEqual({ mode: "stream_inactive", label: "Stream inactive" });
+  });
+
+  test("processor stale", () => {
+    expect(
+      deriveOverlayConnectionState({ ...CONNECTED, isStale: true }).mode,
+    ).toBe("processor_stale");
+  });
+
+  test("connecting (subscribe requested, no status yet)", () => {
+    expect(
+      deriveOverlayConnectionState({ ...CONNECTED, realtimeStatus: null }).mode,
+    ).toBe("connecting");
+  });
+
+  test.each(["CHANNEL_ERROR", "TIMED_OUT"] as const)(
+    "%s -> reconnecting",
+    (status) => {
+      expect(
+        deriveOverlayConnectionState({ ...CONNECTED, realtimeStatus: status })
+          .mode,
+      ).toBe("reconnecting");
+    },
+  );
+
+  test("CLOSED -> fallback polling", () => {
+    expect(
+      deriveOverlayConnectionState({ ...CONNECTED, realtimeStatus: "CLOSED" })
+        .mode,
+    ).toBe("fallback_polling");
+  });
+
+  test("gate closed but otherwise fine -> fallback polling", () => {
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        shouldUseRealtime: false,
+        realtimeStatus: null,
+      }),
+    ).toEqual({ mode: "fallback_polling", label: "Fallback polling" });
   });
 });
