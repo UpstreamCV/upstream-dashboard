@@ -113,9 +113,17 @@ The actions file is a mirror of `src/app/dashboard/settings/api-tokens/actions.t
 
 ### Pattern 3: Direct Supabase Realtime (sanctioned exception)
 
-`<CameraDetailRealtimeNext />` (`src/components/dashboard-next/camera-detail-realtime-next.tsx`) subscribes to `postgres_changes` on the `stream_sessions` table filtered by `camera_id`. On every state transition it calls `router.refresh()`, which re-runs the page's Server Component fetches and re-renders. This is faster than polling — sub-200 ms vs. the 10 s SWR tick — and is **sanctioned by `AGENTS.md`**:
+`<CameraDetailRealtimeNext />` (`src/components/dashboard-next/camera-detail-realtime-next.tsx`) subscribes to `postgres_changes` on the `stream_sessions` table and refreshes on this camera's state transitions (`router.refresh()`, which re-runs the page's Server Component fetches). This is faster than polling — sub-200 ms vs. the 10 s SWR tick — and is **sanctioned by `AGENTS.md`**:
 
 > when a component needs near-real-time push instead of polling, subscribe to Supabase Realtime via `createSupabaseBrowserClient()` filtered to a single row/column. This is a sanctioned exception to the "all reads through `/api/upstream`" rule because broadcasts are a push channel, not a read — and Realtime respects the same RLS policies the proxy honors.
+
+**Two non-obvious requirements (learned the hard way — see commit-log 2026-05-28/29):**
+
+1. **Authenticate the Realtime socket.** `postgres_changes` on an RLS table authorizes each record read as the `authenticated` role, so the socket must carry the user JWT. `createSupabaseBrowserClient()` (`src/lib/supabase/client.ts`) is a **memoized singleton** that mirrors the cookie session onto the Realtime socket via `realtime.setAuth(token)` (eagerly + on `onAuthStateChange`). For an RLS-protected subscription, also `await getSession()` → `await realtime.setAuth(token)` **before** `.subscribe()` (the overlay does this) — otherwise records come back with `Error 401: Unauthorized` and an empty payload.
+
+2. **Filter client-side, not server-side, for non-PK columns.** A server-side `filter: camera_id=eq.…` silently drops every `UPDATE` event unless the table is `REPLICA IDENTITY FULL` (Supabase can only match a filter on UPDATEs against replica-identity columns; `camera_id` is a unique index, not the PK). Our snapshot/session tables are UPSERTed → all UPDATEs, so both `CameraDetailRealtimeNext` and `LivePerceptionOverlayNext` subscribe **without** a server filter and discard non-matching `camera_id` rows in the handler. RLS still scopes delivery to the account.
+
+The DB-side requirements for a table to be subscribable at all (publication membership, `REPLICA IDENTITY FULL`, and critically `GRANT SELECT … TO authenticated` — whose absence makes Realtime silently deliver nothing while the API still reads fine) live in **`upstream-api-server/docs/architecture.md` → "Supabase Realtime for dashboard push"** and its `troubleshooting.md`. If a channel is `SUBSCRIBED` but silent, start there.
 
 See [Realtime channel naming](#realtime-channel-naming-convention) for the `dn-` prefix.
 
