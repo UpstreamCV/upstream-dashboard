@@ -40,6 +40,9 @@ vi.mock("./live-stream-player-next", () => ({
 // the status callback + the postgres_changes handler so tests can drive them.
 vi.mock("@/lib/supabase/client", () => ({
   createSupabaseBrowserClient: () => ({
+    auth: {
+      getSession: async () => ({ data: { session: { access_token: "t" } } }),
+    },
     channel: () => ({
       on: (
         _event: string,

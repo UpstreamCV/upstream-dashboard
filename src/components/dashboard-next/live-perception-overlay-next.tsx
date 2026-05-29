@@ -269,6 +269,15 @@ export function LivePerceptionOverlayNext({
     // while the gate is closed, so there's nothing to set here.
     if (!shouldUseRealtime) return;
     const supabase = createSupabaseBrowserClient();
+    // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed. Tells us whether
+    // the Realtime socket is authenticated (user JWT) or anon (RLS would drop
+    // everything). Read in the browser console.
+    void supabase.auth.getSession().then(({ data }) =>
+      console.info(
+        "[perception-realtime] socket auth:",
+        data.session ? "user-jwt" : "anon",
+      ),
+    );
     const channel = supabase
       .channel(`dn-camera:${cameraId}:perception`)
       .on(
@@ -288,6 +297,16 @@ export function LivePerceptionOverlayNext({
           table: "latest_perception_snapshots",
         },
         (payload) => {
+          // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed. Logs ANY
+          // row event the socket receives, BEFORE the client-side camera
+          // filter, so we can tell "no events at all" from "events for other
+          // cameras only".
+          console.info(
+            "[perception-realtime] event:",
+            payload.eventType,
+            "camera_id=",
+            (payload.new as { camera_id?: string } | null)?.camera_id,
+          );
           const rec = perceptionRecordFromRealtimeRow(payload.new);
           if (!rec || rec.camera_id !== cameraId) return;
           // A row event for THIS camera arrived: the push path is delivering.
@@ -297,6 +316,8 @@ export function LivePerceptionOverlayNext({
       )
       .subscribe((status, err) => {
         setRealtimeStatus(status as RealtimeStatus);
+        // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
+        console.info("[perception-realtime] status:", status, err ?? "");
         // Surface channel-level errors instead of discarding them (a silent
         // CHANNEL_ERROR otherwise just reads as "Reconnecting" with no cause).
         if (err) {
