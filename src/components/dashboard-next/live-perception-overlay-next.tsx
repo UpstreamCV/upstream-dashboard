@@ -30,10 +30,12 @@ import { LiveStreamPlayerNext } from "./live-stream-player-next";
 // the supabase_realtime publication (a migration that may not be applied in
 // every environment). If we leaned on realtime as the only fast path and it
 // wasn't delivering, the overlay would silently fall back to a slow poll and
-// look frozen. 500ms ≈ 2 fetches/sec, which tracks the processor's ~3 FPS
-// publish rate closely; realtime push (when the migration is live) makes it
-// snappier still by refetching the instant a snapshot lands.
-const LIVE_OVERLAY_POLL_MS = 500;
+// look frozen. The realtime path (below) writes every upsert straight into the
+// SWR cache, so the overlay already renders at the processor's full emit rate
+// when realtime is live. This poll is the fallback ceiling: 250ms ≈ 4
+// fetches/sec, matched to the dedupe window so the fallback comfortably
+// exceeds the ~3 FPS publish rate instead of capping it.
+const LIVE_OVERLAY_POLL_MS = 250;
 
 // Default age after which the snapshot is considered stale. A live processor
 // publishes every ~0.3-1s, so anything older than ~10s almost certainly means

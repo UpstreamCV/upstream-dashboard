@@ -4,7 +4,13 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
-## 2026-05-27 — Applied Geometry chip on the Monitor tab (P6-D follow-up)
+## 2026-05-28 — Live overlay poll fallback 500ms → 250ms
+
+**Subject:** Lowered `LIVE_OVERLAY_POLL_MS` in `live-perception-overlay-next.tsx` from 500ms to 250ms.
+
+**Why:** The overlay already renders every emitted snapshot at the processor's full rate via the Realtime direct-cache-write path (`mutate({ snapshot }, { revalidate: false })` on each `postgres_changes` row). The SWR poll is only the *fallback* for when Realtime isn't connected (e.g. the `supabase_realtime` publication migration isn't applied in an environment). At 500ms that fallback capped at ~2 fetches/sec; alongside a processor change that lifts the detection emit rate, the fallback ceiling shouldn't sit below it. 250ms ≈ 4 fetches/sec, matched to the hook's `dedupingInterval: 250` so the fallback comfortably exceeds the ~3 FPS publish rate instead of throttling it. No behavior change when Realtime is live.
+
+**Scope:** one constant + its explanatory comment. tsc clean; the 9 overlay tests still pass.
 
 **Subject:** P6-C taught the processor to consume operator-saved geometry; P6-D verified the lineage end-to-end via a CLI. Operators still couldn't *see* whether their saved geometry took effect — they had to trust that hitting Save in the editor and restarting a session got picked up by the runtime. This adds a small read-only panel on the camera Monitor tab that reads the `processor_statuses.payload.applied_geometry` block (the P6-C lineage stamp) via the new `GET /v1/cameras/{id}/processor-status/latest` endpoint and renders it in one of seven variants: operator-saved (positive), default (warning), fallback-on-error (warning), geometry-invalid (danger), no-status (muted), missing-applied-geometry (muted), unknown-source (warning, forward-compat).
 
