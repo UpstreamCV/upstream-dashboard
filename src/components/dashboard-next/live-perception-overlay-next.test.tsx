@@ -17,7 +17,9 @@ const h = vi.hoisted(() => ({
     subscribeCalls: 0,
     removeCalls: 0,
     statusCb: null as ((s: string) => void) | null,
-    changeHandler: null as ((payload: { new: unknown }) => void) | null,
+    changeHandler: null as
+      | ((payload: { new: unknown; errors?: unknown }) => void)
+      | null,
   },
   useUpstreamListMock: vi.fn(),
   mutateSpy: vi.fn(),
@@ -48,7 +50,7 @@ vi.mock("@/lib/supabase/client", () => ({
       on: (
         _event: string,
         _filter: unknown,
-        handler: (payload: { new: unknown }) => void,
+        handler: (payload: { new: unknown; errors?: unknown }) => void,
       ) => {
         h.realtime.changeHandler = handler;
         return {
@@ -445,6 +447,31 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
     h.mutateSpy.mockClear();
     act(() => h.realtime.changeHandler?.({ new: {} }));
     expect(h.mutateSpy).toHaveBeenCalledWith();
+  });
+
+  test("ignores errored (401) change events — no refetch, no thrash", async () => {
+    // Realtime emits unauthorized changes as empty rows with `errors`, in
+    // bursts during reconnects. They must be dropped entirely so they can't
+    // thrash the component / starve the poll.
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    await flushRealtime();
+    act(() => h.realtime.statusCb?.("SUBSCRIBED"));
+    h.mutateSpy.mockClear();
+    act(() => {
+      h.realtime.changeHandler?.({
+        new: {},
+        errors: ["Error 401: Unauthorized"],
+      });
+      h.realtime.changeHandler?.({
+        new: {},
+        errors: ["Error 401: Unauthorized"],
+      });
+    });
+    expect(h.mutateSpy).not.toHaveBeenCalled();
+    // Subscribed but no *usable* events -> honestly still polling.
+    expect(view.container.textContent).toContain("Fallback polling");
   });
 
   test("boxes + labels + object count render when on", () => {
