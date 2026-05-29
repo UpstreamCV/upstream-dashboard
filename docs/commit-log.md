@@ -4,6 +4,21 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Reliability M5: render detection-confidence drift evidence
+
+**Subject:** The Reliability tab's `UnstableConfidenceEvidence` formatter
+(`src/components/dashboard-next/reliability-evidence.tsx`) now renders the M5
+drift fields the api-server added to the `unstable_detection_confidence`
+finding's free-form `evidence`: **Previous avg confidence**, **Confidence drop**
+(`drop_ratio` as a %), **Baseline samples**, **Baseline window** (`humanAge`),
+and **Why flagged** (`trigger_reasons` mapped to human labels via
+`TRIGGER_REASON_LABELS`, unknown reasons fall back to the raw key). Each row
+hides itself when its value is absent, so a young camera with no baseline shows
+exactly the M2 layout — no crash, no empty rows. No API-type change needed:
+`ReliabilityFinding.evidence` is already `Record<string, unknown>`. Text only —
+no charts (deferred). Added two vitest cases (baseline-present renders all
+fields; baseline-absent omits them). `tsc`/`eslint`/vitest clean.
+
 ## 2026-05-29 — docs: Realtime client requirements (setAuth-before-subscribe, client-side filtering) in dashboard-next.md
 
 **Subject:** Documented the two non-obvious client-side Realtime requirements learned this session in `docs/dashboard-next.md` (Pattern 3): (1) the browser client is a memoized singleton that puts the user JWT on the Realtime socket via `realtime.setAuth(token)`, and RLS-protected subscriptions must `getSession()` → `setAuth` **before** `.subscribe()` (else per-record `401`); (2) filter `camera_id` **client-side**, not via a server-side `filter:`, which silently drops UPDATE events unless the table is `REPLICA IDENTITY FULL`. Added a cross-reference to the api-server's DB-side requirements (publication / REPLICA IDENTITY / `GRANT SELECT … TO authenticated`) for "SUBSCRIBED but silent" debugging, and corrected the now-stale "filtered by `camera_id`" description of `CameraDetailRealtimeNext` (it filters client-side now). Docs only.

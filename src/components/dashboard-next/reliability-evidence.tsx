@@ -29,6 +29,22 @@ const isNumber = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
 const isString = (v: unknown): v is string => typeof v === "string";
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+const isStringArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === "string");
+
+// M5: human labels for the unstable_detection_confidence trigger_reasons.
+// Unknown reasons fall back to the raw key so a new rule signal still shows.
+const TRIGGER_REASON_LABELS: Record<string, string> = {
+  low_average_confidence: "low average",
+  high_low_confidence_ratio: "many low-confidence",
+  high_variance: "high variance",
+  drop_vs_recent_baseline: "dropped vs recent baseline",
+};
+
+function formatTriggerReasons(reasons: string[] | undefined): string | null {
+  if (reasons === undefined || reasons.length === 0) return null;
+  return reasons.map((r) => TRIGGER_REASON_LABELS[r] ?? r).join(", ");
+}
 
 function humanAge(seconds: number | undefined): string | null {
   if (seconds === undefined) return null;
@@ -115,6 +131,18 @@ function UnstableConfidenceEvidence({
   const stddev = get(evidence, "confidence_stddev", isNumber);
   const captured = get(evidence, "captured_at", isString);
 
+  // M5 drift-vs-recent-baseline fields. Present only once the camera has
+  // enough confidence history; absent for a young camera or first run.
+  const previousAvg = get(evidence, "previous_avg_confidence", isNumber);
+  const dropRatio = get(evidence, "drop_ratio", isNumber);
+  const baselineWindow = get(evidence, "baseline_window_seconds", isNumber);
+  const baselineSamples = get(
+    evidence,
+    "baseline_confidence_sample_count",
+    isNumber,
+  );
+  const triggerReasons = get(evidence, "trigger_reasons", isStringArray);
+
   // Thresholds nest one level down. Tolerate either string-or-object shape.
   const thresholds = evidence["thresholds"];
   const lowThreshold =
@@ -154,6 +182,17 @@ function UnstableConfidenceEvidence({
         label="Low-confidence threshold"
         value={lowThreshold !== undefined ? lowThreshold.toFixed(2) : null}
       />
+      <Row
+        label="Previous avg confidence"
+        value={previousAvg !== undefined ? previousAvg.toFixed(2) : null}
+      />
+      <Row label="Confidence drop" value={percent(dropRatio)} />
+      <Row
+        label="Baseline samples"
+        value={baselineSamples !== undefined ? baselineSamples : null}
+      />
+      <Row label="Baseline window" value={humanAge(baselineWindow)} />
+      <Row label="Why flagged" value={formatTriggerReasons(triggerReasons)} />
       <Row label="Captured" value={captured ? <RelativeTime value={captured} /> : null} />
     </EvidenceCard>
   );
