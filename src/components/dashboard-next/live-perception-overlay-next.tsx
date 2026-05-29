@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Boxes, RefreshCw, Radio, Spline, Tag } from "lucide-react";
 import clsx from "clsx";
 import { UpstreamApiError } from "@/lib/api/errors";
-import { reportError } from "@/lib/error";
 import { useUpstreamList } from "@/lib/api/use-list";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type {
@@ -280,11 +279,6 @@ export function LivePerceptionOverlayNext({
       if (cancelled) return;
       await supabase.realtime.setAuth(data.session?.access_token ?? null);
       if (cancelled) return;
-      // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
-      console.info(
-        "[perception-realtime] setAuth:",
-        data.session ? "user-jwt" : "missing",
-      );
 
       channel = supabase
         .channel(`dn-camera:${cameraId}:perception`)
@@ -301,17 +295,16 @@ export function LivePerceptionOverlayNext({
             table: "latest_perception_snapshots",
           },
           (payload) => {
-            // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
-            console.info(
-              "[perception-realtime] event:",
-              payload.eventType,
-              "keys=",
-              Object.keys(
-                (payload.new as Record<string, unknown> | null) ?? {},
-              ),
-              "errors=",
-              payload.errors ?? "",
-            );
+            // CRITICAL: ignore errored change events. When Realtime can't
+            // authorize the record read it still emits the change, but with an
+            // empty row + errors (e.g. "Error 401: Unauthorized"), and these
+            // arrive in BURSTS during the reconnect churn an auth failure
+            // causes. Acting on each (setState + refetch) thrashes React and
+            // starves the 250ms poll — which is why the overlay went from ~4fps
+            // to barely updating. Drop them entirely; the poll carries the
+            // overlay. Real (authorized) events arrive WITHOUT errors and drive
+            // the direct cache write below.
+            if (payload.errors?.length) return;
             const rec = perceptionRecordFromRealtimeRow(payload.new);
             if (rec) {
               // Usable broadcast row: drop other cameras, else write it straight
@@ -320,20 +313,15 @@ export function LivePerceptionOverlayNext({
               setLastRealtimeEventAt(now());
               void mutate({ snapshot: rec }, { revalidate: false });
             } else {
-              // Row arrived without usable fields: use the event as a refetch
-              // signal; /perception/latest returns the full snapshot.
+              // Usable-but-unmappable row (no error): refetch the authoritative
+              // snapshot; /perception/latest returns what the broadcast lacked.
               setLastRealtimeEventAt(now());
               void mutate();
             }
           },
         )
-        .subscribe((status, err) => {
+        .subscribe((status) => {
           setRealtimeStatus(status as RealtimeStatus);
-          // TEMP DIAGNOSTIC (realtime debug) — remove once confirmed.
-          console.info("[perception-realtime] status:", status, err ?? "");
-          if (err) {
-            reportError(err, { area: "live-perception-overlay:realtime" });
-          }
         });
     })();
 

@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Fix: drop errored (401) Realtime events that were thrashing the overlay; rely on the 250ms poll
+
+**Subject:** Detection boxes regressed to "barely updating" even though the chip said "Realtime connected". Cause: the unauthorized (401) change events arrive in **bursts** during the reconnect churn an auth failure causes, and the handler ran `setState` + `mutate()` on **every one** — hundreds/sec — thrashing React and starving the 250ms poll that actually updates the overlay. Fix: **ignore any change event carrying `errors`** (e.g. `Error 401: Unauthorized`) — they have no usable row and must not drive the overlay. The 250ms poll (which has always worked) now updates detections at ~4fps cleanly, and `realtimeDelivering` stays false so the chip honestly reads **"Fallback polling"** (stable, no SUBSCRIBED↔CLOSED flicker since delivering requires a *usable* event).
+
+**On the 401 itself:** Supabase Realtime can't authorize the per-record read for this RLS table — almost certainly the access token is expired after a very long session (a fresh login would let real, error-free events flow and auto-upgrade to direct-write "Realtime connected"). The overlay no longer depends on that working: polling carries it.
+
+**Cleanup:** removed the temporary `[perception-realtime]` console diagnostics and the `reportError` on channel errors (no more console/Sentry spam from the reconnect loop). 311 tests pass (added an errored-event-ignored test); lint + tsc clean.
+
 ## 2026-05-29 — Fix: authorize the Realtime socket BEFORE subscribing (Error 401 on every event)
 
 **Subject:** With `REPLICA IDENTITY FULL` applied, UPDATE events now flow — but the diagnostics showed every event arriving as `keys=[] errors=['Error 401: Unauthorized']`, with the channel churning `SUBSCRIBED → CLOSED → SUBSCRIBED`. The per-record RLS authorization was failing because the **Realtime socket wasn't presenting the user JWT** — relying on the memoized client's eager/background `setAuth` raced the overlay's `subscribe()`, so the channel authorized record reads as `anon` → 401 → stripped payload → reconnect loop.
