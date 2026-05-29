@@ -133,6 +133,7 @@ function UnstableConfidenceEvidence({
 
   // M5 drift-vs-recent-baseline fields. Present only once the camera has
   // enough confidence history; absent for a young camera or first run.
+  const currentAvg = get(evidence, "current_avg_confidence", isNumber);
   const previousAvg = get(evidence, "previous_avg_confidence", isNumber);
   const dropRatio = get(evidence, "drop_ratio", isNumber);
   const baselineWindow = get(evidence, "baseline_window_seconds", isNumber);
@@ -181,6 +182,10 @@ function UnstableConfidenceEvidence({
       <Row
         label="Low-confidence threshold"
         value={lowThreshold !== undefined ? lowThreshold.toFixed(2) : null}
+      />
+      <Row
+        label="Recent avg confidence"
+        value={currentAvg !== undefined ? currentAvg.toFixed(2) : null}
       />
       <Row
         label="Previous avg confidence"
