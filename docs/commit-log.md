@@ -4,6 +4,10 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — docs: Realtime client requirements (setAuth-before-subscribe, client-side filtering) in dashboard-next.md
+
+**Subject:** Documented the two non-obvious client-side Realtime requirements learned this session in `docs/dashboard-next.md` (Pattern 3): (1) the browser client is a memoized singleton that puts the user JWT on the Realtime socket via `realtime.setAuth(token)`, and RLS-protected subscriptions must `getSession()` → `setAuth` **before** `.subscribe()` (else per-record `401`); (2) filter `camera_id` **client-side**, not via a server-side `filter:`, which silently drops UPDATE events unless the table is `REPLICA IDENTITY FULL`. Added a cross-reference to the api-server's DB-side requirements (publication / REPLICA IDENTITY / `GRANT SELECT … TO authenticated`) for "SUBSCRIBED but silent" debugging, and corrected the now-stale "filtered by `camera_id`" description of `CameraDetailRealtimeNext` (it filters client-side now). Docs only.
+
 ## 2026-05-29 — Fix: drop errored (401) Realtime events that were thrashing the overlay; rely on the 250ms poll
 
 **Subject:** Detection boxes regressed to "barely updating" even though the chip said "Realtime connected". Cause: the unauthorized (401) change events arrive in **bursts** during the reconnect churn an auth failure causes, and the handler ran `setState` + `mutate()` on **every one** — hundreds/sec — thrashing React and starving the 250ms poll that actually updates the overlay. Fix: **ignore any change event carrying `errors`** (e.g. `Error 401: Unauthorized`) — they have no usable row and must not drive the overlay. The 250ms poll (which has always worked) now updates detections at ~4fps cleanly, and `realtimeDelivering` stays false so the chip honestly reads **"Fallback polling"** (stable, no SUBSCRIBED↔CLOSED flicker since delivering requires a *usable* event).
