@@ -32,7 +32,7 @@ export default async function CameraReliabilityPage({
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
 
-  const [summary, openFindings, resolvedFindings, confidenceTrend] =
+  const [summary, openFindings, resolvedFindings, trend24h, trend7d] =
     await Promise.all([
       getReliabilitySummary({ accountId: activeAccountId, cameraId }),
       getReliabilityFindings({ accountId: activeAccountId, cameraId, status: "open" }),
@@ -42,12 +42,19 @@ export default async function CameraReliabilityPage({
         status: "resolved",
         limit: RESOLVED_LIMIT,
       }),
-      // M7: resilient (returns null on any error) so a trend failure can never
+      // M7/M8-A: both trend ranges are fetched server-side and handed to the
+      // client card, which toggles between them instantly. Both fetches are
+      // resilient (return null on any error), so a trend failure can never
       // reject this Promise.all and blank the whole Reliability tab.
       getReliabilityConfidenceTrend({
         accountId: activeAccountId,
         cameraId,
         range: "24h",
+      }),
+      getReliabilityConfidenceTrend({
+        accountId: activeAccountId,
+        cameraId,
+        range: "7d",
       }),
     ]);
 
@@ -66,7 +73,7 @@ export default async function CameraReliabilityPage({
 
       <ReliabilitySummaryCard summary={summary} />
 
-      <ReliabilityConfidenceTrendCard trend={confidenceTrend} />
+      <ReliabilityConfidenceTrendCard trend24h={trend24h} trend7d={trend7d} />
 
       {processingDisabled ? <ProcessingDisabledHint /> : null}
 
