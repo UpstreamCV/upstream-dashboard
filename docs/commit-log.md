@@ -4,6 +4,24 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-30 — Reliability M8-A: 24h/7d confidence-trend toggle + degradation badge
+
+**Subject:** Add a 24h | 7d range toggle and a plain-language trend badge (Stable / Improving / Degrading / Warming up) to the Detection confidence trend card on `/dashboard/cameras/[cameraId]/reliability`.
+
+**Why:** M7 showed a static 24h confidence sparkline. M8-A lets an operator switch the window and, more importantly, answer "has this camera's detection confidence been stable, improving, or getting worse?" at a glance. Dashboard-only; **no backend, no persisted finding** — the badge is a UI interpretation of the existing M7 trend points. M5 drift evaluator and M6 rollups are unchanged and remain the data source.
+
+**What changed (dashboard only):**
+- `src/lib/perception/confidence-trend-interpretation.ts` (new, pure) — `interpretConfidenceTrend(points)` → `{ status, label, blurb }`. Confidence-bearing hours are split into first/second halves (weighted by `confidence_sample_count`); `changeRatio = (lateAvg − earlyAvg)/earlyAvg`; `≤ −0.15` Degrading, `≥ +0.15` Improving, else Stable; under 4 valid points / 20 samples (or a null/zero early half) → Warming up. **Confidence-only language — never claims accuracy changed.**
+- `src/components/dashboard-next/reliability-confidence-trend-card.tsx` — now a **client component**. A 24h|7d `RangeToggle` (two `aria-pressed` buttons in a `role="group"`, default 24h) and a `TrendBadge` were added; the M7 Sparkline/StatRow/gap-splitting are unchanged. The verdict is computed once and gates BOTH the badge and the chart, so they can never disagree (the sparkline is only drawn for a real, non-warming verdict; otherwise the "collecting history…" copy + "Warming up" badge show).
+- `src/app/dashboard/(app)/cameras/[cameraId]/reliability/page.tsx` — fetches **both** ranges server-side (two resilient reads) and passes `trend24h`/`trend7d`; the client card toggles between them instantly (no client fetch, no loading state). Summary/findings fetches and resilient error handling are unchanged.
+- Tests — `confidence-trend-interpretation.test.ts` (15 cases: thresholds incl. ±0.15 boundaries, weighting flips verdict, odd-n middle exclusion, interleaved-null split, zero-weight guards) + the card test rewritten for jsdom + `@testing-library/react` (14 cases: default 24h, toggle switches dataset both ways, chart×badge consistency, each verdict, empty/warming/unavailable, gap dot/line, no internal field names).
+
+**Verification:** `npm run lint` clean; `npx tsc --noEmit` clean; `npm test` 347/347 pass (29 new). Reviewed via a multi-agent adversarial workflow, which caught a real chart-vs-badge contradiction (a sparkline rendered under a "not enough history" badge for 2–3-hour-old cameras); fixed by deriving the chart gate from the same verdict as the badge. Browser smoke against a real camera with rollups still recommended.
+
+**Docs updated:** `docs/commit-log.md` (this entry). No api-server change (the M7 `?range=7d` endpoint already supports 7d).
+
+---
+
 ## 2026-05-30 — Reliability M7: "Detection confidence trend" chart on the camera Reliability tab
 
 **Subject:** Add a 24h detection-confidence trend chart to `/dashboard/cameras/[cameraId]/reliability`, backed by the new api-server `confidence-trend` read endpoint over the M6 hourly rollups.

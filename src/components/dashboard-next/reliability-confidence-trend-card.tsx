@@ -1,16 +1,32 @@
+"use client";
+
+import { useState } from "react";
+import { clsx } from "clsx";
 import { formatAbsolute } from "@/lib/time";
+import {
+  interpretConfidenceTrend,
+  type ConfidenceTrendStatus,
+  type ConfidenceTrendVerdict,
+} from "@/lib/perception/confidence-trend-interpretation";
 import type {
   ConfidenceTrendPoint,
+  ConfidenceTrendRange,
   ConfidenceTrendResponse,
 } from "@/lib/api/types";
 
-// Reliability M7 — "Detection confidence trend" card on the camera Reliability
-// tab. Renders a 24h hourly average-confidence sparkline from the M6 rollups
-// (served pre-aggregated across packages by the read API). Server Component, no
-// chart library — a hand-rolled inline SVG keeps the dependency surface zero.
+// Reliability M7/M8-A — "Detection confidence trend" card on the camera
+// Reliability tab. Renders an hourly average-confidence sparkline from the M6
+// rollups (served pre-aggregated across packages by the read API), with a
+// 24h | 7d range toggle and a plain-language trend badge. No chart library — a
+// hand-rolled inline SVG keeps the dependency surface zero.
 //
-// States (in order): unavailable (fetch failed / null) → empty (no rollups) →
-// warming up (fewer than two hourly confidence points, so no line yet) → chart.
+// M8-A note: both ranges are fetched server-side and passed in as props; the
+// toggle just switches which one is shown (instant, no client fetch). The trend
+// badge is a DASHBOARD-LEVEL interpretation of the points (interpretConfidenceTrend),
+// NOT a persisted reliability finding — M5 drift + M6 rollups are unchanged.
+//
+// Per-range states (in order): unavailable (fetch failed / null) → empty (no
+// rollups) → warming up (fewer than two hourly confidence points) → chart.
 // Hours with no usable confidence (empty-frame hours) are gaps in the line.
 
 // Sparkline geometry. The viewBox is stretched to the card width
@@ -32,53 +48,111 @@ function pct(value: number | null | undefined): string {
 }
 
 export function ReliabilityConfidenceTrendCard({
+  trend24h,
+  trend7d,
+}: {
+  trend24h: ConfidenceTrendResponse | null;
+  trend7d: ConfidenceTrendResponse | null;
+}) {
+  const [range, setRange] = useState<ConfidenceTrendRange>("24h");
+  const trend = range === "24h" ? trend24h : trend7d;
+  // Compute the verdict once and derive BOTH the badge and the chart gate from
+  // it, so the sparkline and the badge can never disagree: the chart is only
+  // drawn for a real (non-"warming") verdict — when there isn't enough history
+  // to judge a trend, the body shows the "collecting" copy and the badge says
+  // "Warming up", never a finished-looking line under a "not enough history"
+  // badge.
+  const verdict = trend ? interpretConfidenceTrend(trend.points) : null;
+  const hasVerdict = verdict != null && verdict.status !== "warming";
+  return (
+    <Card range={range} onRangeChange={setRange}>
+      {verdict ? <TrendBadge verdict={verdict} /> : null}
+      <TrendBody trend={trend} hasVerdict={hasVerdict} />
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-range body (the M7 states), now driven by the selected range. The chart
+// gate is the verdict (hasVerdict), so it stays consistent with the badge.
+// ---------------------------------------------------------------------------
+
+function TrendBody({
   trend,
+  hasVerdict,
 }: {
   trend: ConfidenceTrendResponse | null;
+  hasVerdict: boolean;
 }) {
   if (trend === null) {
     return (
-      <Card>
-        <Body>
-          Confidence trend is currently unavailable. Existing camera monitoring
-          is unaffected.
-        </Body>
-      </Card>
+      <Body>
+        Confidence trend is currently unavailable. Existing camera monitoring is
+        unaffected.
+      </Body>
     );
   }
 
   const points = trend.points;
   if (points.length === 0) {
     return (
-      <Card range={trend.range}>
-        <Body>
-          No confidence history yet. A trend appears once this camera has been
-          processing for at least an hour.
-        </Body>
-      </Card>
+      <Body>
+        No confidence history yet. A trend appears once this camera has been
+        processing for at least an hour.
+      </Body>
     );
   }
 
-  const rated = points.filter((p) => p.avg_confidence != null);
-  if (rated.length < 2) {
+  if (!hasVerdict) {
+    // Some confidence data, but not yet enough hours/samples to judge a trend —
+    // matches the "Warming up" badge. Show the factual stats, not a line.
+    const hasRated = points.some((p) => p.avg_confidence != null);
     return (
-      <Card range={trend.range}>
+      <>
         <Body>
-          Collecting confidence history… a trend line appears after the second
-          hourly data point.
+          Collecting confidence history… a trend appears once this camera has
+          enough recent confidence data.
         </Body>
-        {rated.length === 1 ? (
-          <StatRow trend={trend} />
-        ) : null}
-      </Card>
+        {hasRated ? <StatRow trend={trend} /> : null}
+      </>
     );
   }
 
   return (
-    <Card range={trend.range}>
+    <>
       <Sparkline points={points} />
       <StatRow trend={trend} />
-    </Card>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Trend badge (M8-A) — dashboard-level interpretation, not a finding.
+// ---------------------------------------------------------------------------
+
+const BADGE_COLOR: Record<ConfidenceTrendStatus, string> = {
+  degrading: "border-[#8a6d1f]/40 text-[#8a6d1f]",
+  improving: "border-[var(--dn-creek-mid)]/40 text-[var(--dn-creek-deep)]",
+  stable: "border-black/10 text-[var(--dn-text-50)]",
+  warming: "border-black/10 text-[var(--dn-text-50)]",
+};
+
+function TrendBadge({ verdict }: { verdict: ConfidenceTrendVerdict }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <span
+        className={clsx(
+          "inline-flex items-center rounded-full border px-2 py-0.5",
+          "text-[11px] font-mono uppercase tracking-wider",
+          BADGE_COLOR[verdict.status],
+        )}
+      >
+        Trend: {verdict.label}
+      </span>
+      <span className="text-[clamp(0.8rem,0.95vw,0.9rem)] text-[var(--dn-text-50)]">
+        {verdict.blurb}
+      </span>
+    </div>
   );
 }
 
@@ -172,10 +246,7 @@ function Sparkline({ points }: { points: ConfidenceTrendPoint[] }) {
 }
 
 function tooltip(p: ConfidenceTrendPoint): string {
-  const parts = [
-    formatAbsolute(p.bucket_start),
-    `avg ${pct(p.avg_confidence)}`,
-  ];
+  const parts = [formatAbsolute(p.bucket_start), `avg ${pct(p.avg_confidence)}`];
   if (p.low_confidence_ratio != null) {
     parts.push(`low-conf ${pct(p.low_confidence_ratio)}`);
   }
@@ -220,11 +291,51 @@ function Body({ children }: { children: React.ReactNode }) {
   );
 }
 
+const RANGES: ConfidenceTrendRange[] = ["24h", "7d"];
+
+function RangeToggle({
+  range,
+  onRangeChange,
+}: {
+  range: ConfidenceTrendRange;
+  onRangeChange: (r: ConfidenceTrendRange) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Confidence trend range"
+      className="inline-flex gap-1"
+    >
+      {RANGES.map((r) => {
+        const active = r === range;
+        return (
+          <button
+            key={r}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onRangeChange(r)}
+            className={clsx(
+              "rounded-full border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition",
+              active
+                ? "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
+                : "border-black/10 bg-white text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.04]",
+            )}
+          >
+            {r}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Card({
   range,
+  onRangeChange,
   children,
 }: {
-  range?: string;
+  range: ConfidenceTrendRange;
+  onRangeChange: (r: ConfidenceTrendRange) => void;
   children: React.ReactNode;
 }) {
   return (
@@ -233,11 +344,7 @@ function Card({
         <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
           detection confidence trend
         </p>
-        {range ? (
-          <span className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
-            last {range}
-          </span>
-        ) : null}
+        <RangeToggle range={range} onRangeChange={onRangeChange} />
       </div>
       <p className="mt-1 text-[11px] text-[var(--dn-text-50)]">
         Hourly confidence history from recent processor output.

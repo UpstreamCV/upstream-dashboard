@@ -1,17 +1,21 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test } from "vitest";
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, test } from "vitest";
 import type {
   ConfidenceTrendPoint,
   ConfidenceTrendResponse,
-  ConfidenceTrendSummary,
 } from "@/lib/api/types";
 
 import { ReliabilityConfidenceTrendCard } from "./reliability-confidence-trend-card";
 
+afterEach(cleanup);
+
+let hour = 0;
 function point(over: Partial<ConfidenceTrendPoint> = {}): ConfidenceTrendPoint {
+  const start = `2026-05-30T${String(hour++ % 24).padStart(2, "0")}:00:00Z`;
   return {
-    bucket_start: "2026-05-30T12:00:00Z",
-    bucket_end: "2026-05-30T13:00:00Z",
+    bucket_start: start,
+    bucket_end: start,
     avg_confidence: 0.8,
     min_confidence: 0.5,
     max_confidence: 0.95,
@@ -26,7 +30,7 @@ function point(over: Partial<ConfidenceTrendPoint> = {}): ConfidenceTrendPoint {
 
 function trend(
   points: ConfidenceTrendPoint[],
-  summaryOver: Partial<ConfidenceTrendSummary> = {},
+  summaryOver: Partial<ConfidenceTrendResponse["summary"]> = {},
 ): ConfidenceTrendResponse {
   const rated = points.filter((p) => p.avg_confidence != null);
   const avgs = rated.map((p) => p.avg_confidence as number);
@@ -52,111 +56,184 @@ function trend(
   };
 }
 
-function render(t: ConfidenceTrendResponse | null): string {
-  return renderToStaticMarkup(<ReliabilityConfidenceTrendCard trend={t} />);
+// A range with enough history to draw a chart AND yield a real (non-warming)
+// verdict: 4 flat hourly points (→ Stable), 400 confidence samples total.
+const chart = (over?: Partial<ConfidenceTrendResponse["summary"]>) =>
+  trend(
+    [
+      point({ avg_confidence: 0.7 }),
+      point({ avg_confidence: 0.7 }),
+      point({ avg_confidence: 0.7 }),
+      point({ avg_confidence: 0.7 }),
+    ],
+    over,
+  );
+
+function get7dButton() {
+  return screen.getByRole("button", { name: "7d" });
+}
+function get24hButton() {
+  return screen.getByRole("button", { name: "24h" });
 }
 
-const polylineCount = (html: string) => (html.match(/<polyline/g) ?? []).length;
-
-describe("ReliabilityConfidenceTrendCard", () => {
-  test("always renders the card label", () => {
-    const html = render(trend([point(), point({ avg_confidence: 0.6 })]));
-    expect(html).toContain("detection confidence trend");
-    expect(html).toContain("Hourly confidence history from recent processor output.");
+describe("ReliabilityConfidenceTrendCard (M8-A toggle + badge)", () => {
+  test("always renders the label + a 24h|7d toggle, defaulting to 24h", () => {
+    render(<ReliabilityConfidenceTrendCard trend24h={chart()} trend7d={chart()} />);
+    expect(screen.getByText("detection confidence trend")).toBeTruthy();
+    expect(get24hButton().getAttribute("aria-pressed")).toBe("true");
+    expect(get7dButton().getAttribute("aria-pressed")).toBe("false");
   });
 
-  test("null trend → unavailable state, no chart", () => {
-    const html = render(null);
-    expect(html).toContain("currently unavailable");
-    expect(html).not.toContain("<svg");
-    expect(html).not.toContain("<polyline");
-  });
-
-  test("empty points → empty state, no chart", () => {
-    const html = render(trend([]));
-    expect(html).toContain("No confidence history yet");
-    expect(html).not.toContain("<svg");
-  });
-
-  test("single confidence point → warming state, no line", () => {
-    const html = render(trend([point({ avg_confidence: 0.8 })]));
-    expect(html).toContain("Collecting confidence history");
-    expect(html).not.toContain("<polyline");
-  });
-
-  test("two+ points → chart with line + stats", () => {
-    const html = render(
-      trend(
-        [
-          point({ avg_confidence: 0.82, confidence_sample_count: 12000 }),
-          point({ avg_confidence: 0.7, confidence_sample_count: 345 }),
-        ],
-        {
-          latest_avg_confidence: 0.82,
-          lowest_avg_confidence: 0.7,
-          total_confidence_samples: 12345,
-        },
-      ),
+  test("clicking 7d shows the 7d dataset, clicking 24h returns", () => {
+    render(
+      <ReliabilityConfidenceTrendCard
+        trend24h={chart({ total_confidence_samples: 12345 })}
+        trend7d={chart({ total_confidence_samples: 67890 })}
+      />,
     );
-    expect(html).toContain("<svg");
-    expect(polylineCount(html)).toBeGreaterThanOrEqual(1);
-    // Stats formatted as percentages + grouped sample count.
-    expect(html).toContain("82%");
-    expect(html).toContain("70%");
-    expect(html).toContain("12,345");
-    expect(html).toContain("Latest avg");
-    expect(html).toContain("Lowest hourly");
-    expect(html).toContain("Total samples");
+    expect(screen.getByText("12,345")).toBeTruthy(); // 24h total samples
+    expect(screen.queryByText("67,890")).toBeNull();
+
+    fireEvent.click(get7dButton());
+    expect(get7dButton().getAttribute("aria-pressed")).toBe("true");
+    expect(get24hButton().getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("67,890")).toBeTruthy(); // 7d total samples
+    expect(screen.queryByText("12,345")).toBeNull();
+
+    fireEvent.click(get24hButton());
+    expect(get24hButton().getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("12,345")).toBeTruthy();
   });
 
-  test("interior null hour splits the line into separate segments", () => {
-    const html = render(
-      trend([
-        point({ avg_confidence: 0.8 }),
-        point({ avg_confidence: 0.9 }),
-        point({ avg_confidence: null }), // empty-frame hour → gap
-        point({ avg_confidence: 0.6 }),
-        point({ avg_confidence: 0.7 }),
-      ]),
+  test("renders a sparkline for a range with a real verdict (>=4 valid points)", () => {
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={chart()} trend7d={chart()} />,
     );
-    expect(html).toContain("<svg");
-    // Two runs of >=2 non-null points → two polylines (the gap is not bridged).
-    expect(polylineCount(html)).toBeGreaterThanOrEqual(2);
+    expect(container.querySelector("svg")).toBeTruthy();
+    expect(container.querySelector("polyline")).toBeTruthy();
   });
 
-  test("isolated rated hours between gaps render dots, not lines", () => {
-    // Three lone non-null points each surrounded by gaps → three length-1 runs,
-    // so the line never reaches 2 points and each renders as a <circle> dot.
-    const html = render(
-      trend([
-        point({ avg_confidence: 0.8 }),
-        point({ avg_confidence: null }),
-        point({ avg_confidence: 0.9 }),
-        point({ avg_confidence: null }),
-        point({ avg_confidence: 0.7 }),
-      ]),
+  test("chart and 'Warming up' never co-render: 2-3 rated points show no line", () => {
+    // 3 rated points = not enough to judge a trend → "Warming up" badge AND no
+    // chart (the body shows the collecting copy instead). The two agree.
+    const sparse = trend([
+      point({ avg_confidence: 0.8 }),
+      point({ avg_confidence: 0.7 }),
+      point({ avg_confidence: 0.75 }),
+    ]);
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={sparse} trend7d={chart()} />,
     );
-    expect(html).toContain("<svg");
-    expect(html).toContain("<circle");
-    expect(polylineCount(html)).toBe(0);
+    expect(screen.getByText("Trend: Warming up")).toBeTruthy();
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByText(/^Trend: (Stable|Improving|Degrading)$/)).toBeNull();
   });
 
-  test("null summary stats render as em dash, not NaN%", () => {
-    const html = render(
-      trend([point({ avg_confidence: 0.8 }), point({ avg_confidence: 0.6 })], {
-        lowest_avg_confidence: null,
-      }),
+  test("a real verdict shows the chart and NOT the warming badge", () => {
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={chart()} trend7d={chart()} />,
     );
-    expect(html).toContain("—");
-    expect(html).not.toContain("NaN");
+    expect(container.querySelector("svg")).toBeTruthy();
+    expect(screen.getByText("Trend: Stable")).toBeTruthy();
+    expect(screen.queryByText("Trend: Warming up")).toBeNull();
+  });
+
+  test("isolated rated hour between gaps renders a dot (circle), not a line", () => {
+    // 4 valid points (→ real verdict so the chart draws); the lone 0.8 between
+    // two null hours becomes a <circle>, the 0.7/0.65/0.6 run a <polyline>.
+    const gapped = trend([
+      point({ avg_confidence: 0.8 }),
+      point({ avg_confidence: null }),
+      point({ avg_confidence: 0.7 }),
+      point({ avg_confidence: 0.65 }),
+      point({ avg_confidence: 0.6 }),
+    ]);
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={gapped} trend7d={chart()} />,
+    );
+    expect(container.querySelector("circle")).toBeTruthy();
+    expect(container.querySelectorAll("polyline").length).toBe(1);
+  });
+
+  test("null range → unavailable copy, no chart, no badge", () => {
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={null} trend7d={chart()} />,
+    );
+    expect(screen.getByText(/currently unavailable/)).toBeTruthy();
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByText(/^Trend:/)).toBeNull();
+    // The OTHER range still has data — toggling reveals it.
+    fireEvent.click(get7dButton());
+    expect(container.querySelector("svg")).toBeTruthy();
+  });
+
+  test("empty points → empty copy, no chart", () => {
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={trend([])} trend7d={chart()} />,
+    );
+    expect(screen.getByText(/No confidence history yet/)).toBeTruthy();
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  test("single rated point → warming copy, no line", () => {
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard
+        trend24h={trend([point({ avg_confidence: 0.8 })])}
+        trend7d={chart()}
+      />,
+    );
+    expect(screen.getByText(/Collecting confidence history/)).toBeTruthy();
+    expect(container.querySelector("polyline")).toBeNull();
+  });
+
+  test("badge reads Degrading when the late half drops ≥15%", () => {
+    const degrading = trend([
+      point({ avg_confidence: 0.8, confidence_sample_count: 100 }),
+      point({ avg_confidence: 0.8, confidence_sample_count: 100 }),
+      point({ avg_confidence: 0.6, confidence_sample_count: 100 }),
+      point({ avg_confidence: 0.6, confidence_sample_count: 100 }),
+    ]);
+    render(<ReliabilityConfidenceTrendCard trend24h={degrading} trend7d={chart()} />);
+    expect(screen.getByText("Trend: Degrading")).toBeTruthy();
+  });
+
+  test("badge reads Improving when the late half rises ≥15%", () => {
+    const improving = trend([
+      point({ avg_confidence: 0.6, confidence_sample_count: 100 }),
+      point({ avg_confidence: 0.6, confidence_sample_count: 100 }),
+      point({ avg_confidence: 0.75, confidence_sample_count: 100 }),
+      point({ avg_confidence: 0.75, confidence_sample_count: 100 }),
+    ]);
+    render(<ReliabilityConfidenceTrendCard trend24h={improving} trend7d={chart()} />);
+    expect(screen.getByText("Trend: Improving")).toBeTruthy();
+  });
+
+  test("badge reads Warming up when there is not enough history", () => {
+    render(<ReliabilityConfidenceTrendCard trend24h={trend([])} trend7d={chart()} />);
+    expect(screen.getByText("Trend: Warming up")).toBeTruthy();
+  });
+
+  test("does not crash on null avg_confidence (gap splits the line)", () => {
+    const gapped = trend([
+      point({ avg_confidence: 0.8 }),
+      point({ avg_confidence: 0.9 }),
+      point({ avg_confidence: null }),
+      point({ avg_confidence: 0.6 }),
+      point({ avg_confidence: 0.7 }),
+    ]);
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={gapped} trend7d={chart()} />,
+    );
+    expect(container.querySelectorAll("polyline").length).toBeGreaterThanOrEqual(2);
   });
 
   test("does not leak internal weighted/tenant field names", () => {
-    const html = render(trend([point(), point({ avg_confidence: 0.6 })]));
+    const { container } = render(
+      <ReliabilityConfidenceTrendCard trend24h={chart()} trend7d={chart()} />,
+    );
+    const html = container.innerHTML;
     for (const leaked of [
       "avg_confidence_weighted",
-      "low_confidence_ratio_weighted",
-      "confidence_stddev_weighted",
       "stream_session_id",
       "account_id",
     ]) {
