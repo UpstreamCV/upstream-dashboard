@@ -1,8 +1,11 @@
 import "server-only";
 
+import { reportError } from "@/lib/error";
 import { serverFetch } from "./server";
 import { UpstreamApiError } from "./errors";
 import type {
+  ConfidenceTrendRange,
+  ConfidenceTrendResponse,
   ReliabilityFinding,
   ReliabilityFindingsResponse,
   ReliabilityStatus,
@@ -78,5 +81,35 @@ export async function getReliabilityFindings(opts: {
       return [];
     }
     throw err;
+  }
+}
+
+/**
+ * Hourly detection-confidence history for the Reliability tab's trend chart
+ * (M7). Backed by the M6 rollups; the api-server aggregates across packages to
+ * one point per hour.
+ *
+ * Unlike summary/findings, this catches **all** errors and returns `null`
+ * (logging via reportError), not just 404. The trend is a non-essential
+ * enhancement: the page fetches it alongside summary/findings in a single
+ * `Promise.all`, where any rejection would blank the whole Reliability tab via
+ * the segment error boundary. Degrading to `null` (the card shows an
+ * "unavailable" state) keeps summary/findings — and their deliberate re-throw
+ * semantics — untouched.
+ */
+export async function getReliabilityConfidenceTrend(opts: {
+  accountId: string;
+  cameraId: string;
+  range?: ConfidenceTrendRange;
+}): Promise<ConfidenceTrendResponse | null> {
+  const range: ConfidenceTrendRange = opts.range ?? "24h";
+  try {
+    return await serverFetch<ConfidenceTrendResponse>(
+      `/v1/cameras/${opts.cameraId}/reliability/confidence-trend`,
+      { accountId: opts.accountId, query: { range } },
+    );
+  } catch (err) {
+    reportError(err, { area: "reliability-confidence-trend" });
+    return null;
   }
 }

@@ -511,3 +511,39 @@ export interface ReliabilitySummary {
   recommended_next_action: string | null;
   last_evaluated_at: IsoDateTime;
 }
+
+// Reliability M7 — hourly detection-confidence history for the Reliability tab's
+// trend chart. Aggregated across packages to one point per hour by the read API
+// (backed by detection_confidence_hourly_rollups). Confidence stats are `null`
+// for an hour that carried no usable confidence (rendered as a gap).
+export type ConfidenceTrendRange = "24h" | "7d";
+
+export interface ConfidenceTrendPoint {
+  bucket_start: IsoDateTime;
+  bucket_end: IsoDateTime;
+  avg_confidence: number | null;
+  min_confidence: number | null;
+  max_confidence: number | null;
+  low_confidence_ratio: number | null;
+  confidence_stddev: number | null;
+  metric_count: number;
+  object_count_total: number;
+  confidence_sample_count: number;
+}
+
+export interface ConfidenceTrendSummary {
+  point_count: number;
+  latest_avg_confidence: number | null;
+  lowest_avg_confidence: number | null;
+  highest_avg_confidence: number | null;
+  total_confidence_samples: number;
+  latest_bucket_start: IsoDateTime | null;
+}
+
+export interface ConfidenceTrendResponse {
+  camera_id: Uuid;
+  range: ConfidenceTrendRange;
+  bucket_size: "1h";
+  points: ConfidenceTrendPoint[];
+  summary: ConfidenceTrendSummary;
+}

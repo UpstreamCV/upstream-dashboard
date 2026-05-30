@@ -4,6 +4,25 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-30 — Reliability M7: "Detection confidence trend" chart on the camera Reliability tab
+
+**Subject:** Add a 24h detection-confidence trend chart to `/dashboard/cameras/[cameraId]/reliability`, backed by the new api-server `confidence-trend` read endpoint over the M6 hourly rollups.
+
+**Why:** M6 made hourly confidence rollups but they were invisible to users. M7 turns the Reliability tab from a current-findings list into a historical surface: an operator can see whether a camera's detection confidence is stable, improving, degrading, or recovering.
+
+**What changed:**
+- `src/lib/api/types.ts` — `ConfidenceTrendRange`/`ConfidenceTrendPoint`/`ConfidenceTrendSummary`/`ConfidenceTrendResponse` interfaces (mirror the API JSON).
+- `src/lib/api/reliability.ts` — `getReliabilityConfidenceTrend({ accountId, cameraId, range })`. **Resilient by design: catches ALL errors → `null` (via `reportError`), not just 404**, so the page's `Promise.all` can never reject and blank the tab. The existing summary/findings fetchers keep their re-throw semantics.
+- `src/components/dashboard-next/reliability-confidence-trend-card.tsx` (new) — Server Component, `.dn-tile`. States: null→unavailable, 0 points→empty, <2 confidence points→warming, else a **hand-rolled inline SVG sparkline** (no chart dependency added — none was installed). Null-confidence hours are gaps (the line splits, never bridges); lone points render as dots; per-hour hover `<title>` tooltips (hour · avg% · low-conf% · samples). Percentages via round(*100)%, null→"—". Reuses `formatAbsolute` (`@/lib/time`) + `toLocaleString()`.
+- `src/app/dashboard/(app)/cameras/[cameraId]/reliability/page.tsx` — 4th parallel fetch + the card rendered right after the summary card.
+- Tests — `reliability-confidence-trend-card.test.tsx` (9 cases: states, gap-splitting, lone-dot, percentage/`—`, no internal field names) + `reliability-confidence-trend.test.ts` (URL/range building + the catch-all-resilience contract).
+
+**Verification:** `npm run lint` clean; `npx tsc --noEmit` clean; `npm test` 327/327 pass (13 new). Browser smoke against a real camera with rollups still recommended (chart renders; empty/warming/unavailable states; existing findings unaffected).
+
+**Docs updated:** `docs/commit-log.md` (this entry). API contract documented in `../upstream-api-server/docs/api-contracts.md`.
+
+---
+
 ## 2026-05-29 — Promote dashboard-next to the default `/dashboard`; keep old dashboard as `/dashboard-legacy` fallback
 
 **Subject:** Make the light-theme `dashboard-next` redesign the default dashboard at `/dashboard`, and preserve the previous dark dashboard as a fully navigable fallback at `/dashboard-legacy`.
