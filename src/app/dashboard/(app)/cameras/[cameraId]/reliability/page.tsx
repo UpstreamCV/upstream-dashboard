@@ -1,7 +1,9 @@
+import { ReliabilityConfidenceTrendCard } from "@/components/dashboard-next/reliability-confidence-trend-card";
 import { ReliabilityFindingCard } from "@/components/dashboard-next/reliability-finding-card";
 import { ReliabilitySummaryCard } from "@/components/dashboard-next/reliability-summary-card";
 import { getActiveAccount } from "@/lib/account/active";
 import {
+  getReliabilityConfidenceTrend,
   getReliabilityFindings,
   getReliabilitySummary,
 } from "@/lib/api/reliability";
@@ -30,16 +32,24 @@ export default async function CameraReliabilityPage({
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
 
-  const [summary, openFindings, resolvedFindings] = await Promise.all([
-    getReliabilitySummary({ accountId: activeAccountId, cameraId }),
-    getReliabilityFindings({ accountId: activeAccountId, cameraId, status: "open" }),
-    getReliabilityFindings({
-      accountId: activeAccountId,
-      cameraId,
-      status: "resolved",
-      limit: RESOLVED_LIMIT,
-    }),
-  ]);
+  const [summary, openFindings, resolvedFindings, confidenceTrend] =
+    await Promise.all([
+      getReliabilitySummary({ accountId: activeAccountId, cameraId }),
+      getReliabilityFindings({ accountId: activeAccountId, cameraId, status: "open" }),
+      getReliabilityFindings({
+        accountId: activeAccountId,
+        cameraId,
+        status: "resolved",
+        limit: RESOLVED_LIMIT,
+      }),
+      // M7: resilient (returns null on any error) so a trend failure can never
+      // reject this Promise.all and blank the whole Reliability tab.
+      getReliabilityConfidenceTrend({
+        accountId: activeAccountId,
+        cameraId,
+        range: "24h",
+      }),
+    ]);
 
   const processingDisabled = wasJustDisabled(summary, resolvedFindings);
 
@@ -55,6 +65,8 @@ export default async function CameraReliabilityPage({
       </header>
 
       <ReliabilitySummaryCard summary={summary} />
+
+      <ReliabilityConfidenceTrendCard trend={confidenceTrend} />
 
       {processingDisabled ? <ProcessingDisabledHint /> : null}
 
