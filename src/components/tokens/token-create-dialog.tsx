@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   createTokenAction,
   type CreateTokenResult,
-} from "@/app/dashboard/settings/api-tokens/actions";
+} from "@/app/dashboard-legacy/settings/api-tokens/actions";
 
 function InstallSnippet({ token }: { token: string }) {
   const lines = [

@@ -96,7 +96,7 @@ export function CameraCard({
       </dl>
 
       <Link
-        href={`/dashboard-next/cameras/${camera.id}`}
+        href={`/dashboard/cameras/${camera.id}`}
         className="dn-btn dn-glow-soft mt-1 block text-center font-bold py-[clamp(0.55rem,0.9vw,0.85rem)] px-4 text-[clamp(0.8rem,0.95vw,1rem)]"
       >
         <span className="relative z-10">View</span>

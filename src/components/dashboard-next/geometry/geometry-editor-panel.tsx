@@ -19,7 +19,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { saveGeometryAction } from "@/app/dashboard-next/(app)/cameras/[cameraId]/configure/geometry/actions";
+import { saveGeometryAction } from "@/app/dashboard/(app)/cameras/[cameraId]/configure/geometry/actions";
 import type { GeometryConfig, GeometryLine, LatestFrame } from "@/lib/api/types";
 import {
   type GeometryValidationIssue,

@@ -168,7 +168,7 @@ export function LiveStreamPlayerNext({
               setState({ kind: "needs-gesture" });
             }
             reportError(err, {
-              area: "dashboard-next/live-stream-player",
+              area: "dashboard/live-stream-player",
               phase: "autoplay",
             });
           }
@@ -181,7 +181,7 @@ export function LiveStreamPlayerNext({
           return;
         }
         reportError(err, {
-          area: "dashboard-next/live-stream-player",
+          area: "dashboard/live-stream-player",
           phase: "connect",
         });
         scheduleReconnect(err instanceof Error ? err.message : String(err));
@@ -243,7 +243,7 @@ export function LiveStreamPlayerNext({
       })
       .catch((err) => {
         reportError(err, {
-          area: "dashboard-next/live-stream-player",
+          area: "dashboard/live-stream-player",
           phase: "gesture-play",
         });
       });

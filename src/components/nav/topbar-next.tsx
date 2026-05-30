@@ -47,7 +47,7 @@ export function TopbarNext({ name }: { name: string }) {
           Upstream Dashboard
         </span>
         <Image
-          src="/dashboard-next/upstream-logo.png"
+          src="/dashboard/upstream-logo.png"
           alt="Upstream"
           width={64}
           height={64}

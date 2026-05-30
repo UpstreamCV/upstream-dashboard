@@ -20,7 +20,7 @@ import { signInAction, type LoginState } from "@/app/(auth)/login/actions";
 // the pointer approaches.
 export function LoginFormNext() {
   const params = useSearchParams();
-  const next = params.get("next") ?? "/dashboard-next";
+  const next = params.get("next") ?? "/dashboard";
   const [state, formAction, pending] = useActionState<
     LoginState | undefined,
     FormData

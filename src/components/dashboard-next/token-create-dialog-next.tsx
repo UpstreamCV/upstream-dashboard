@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   createTokenAction,
   type CreateTokenResult,
-} from "@/app/dashboard-next/(app)/api-tokens/actions";
+} from "@/app/dashboard/(app)/api-tokens/actions";
 
 // Faithful port of src/components/tokens/token-create-dialog.tsx restyled for
 // the dashboard-next light theme.

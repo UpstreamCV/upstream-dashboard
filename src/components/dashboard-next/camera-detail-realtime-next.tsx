@@ -27,15 +27,13 @@ export function CameraDetailRealtimeNext({
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
-    // Channel name: `dn-camera:${cameraId}:sessions`. The `dn-` prefix keeps
-    // this subscription isolated from /dashboard's `camera:${cameraId}:sessions`
-    // while both dashboards run in parallel — a user with both tabs open on
-    // the same camera gets two independent refreshes instead of accidentally
-    // sharing one channel. On promotion the prefix is dropped (the surviving
-    // name is `camera:…`). See `docs/dashboard-next.md` "Realtime channel
-    // naming convention" and the promotion checklist.
+    // Channel name: `camera:${cameraId}:sessions` — the primary /dashboard name.
+    // The /dashboard-legacy fallback uses `legacy-camera:…` so a user with both
+    // tabs open on the same camera gets two independent subscriptions instead of
+    // accidentally sharing one. When /dashboard-legacy is retired this stays the
+    // sole name. See `docs/dashboard-next.md` "Realtime channel naming convention".
     const channel = supabase
-      .channel(`dn-camera:${cameraId}:sessions`)
+      .channel(`camera:${cameraId}:sessions`)
       .on(
         "postgres_changes",
         // NO server-side `filter`: Supabase only applies postgres_changes

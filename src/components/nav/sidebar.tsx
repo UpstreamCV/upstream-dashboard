@@ -12,20 +12,20 @@ import {
 } from "lucide-react";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, match: /^\/dashboard$/ },
-  { href: "/dashboard/cameras", label: "Cameras", icon: Video, match: /^\/dashboard\/cameras/ },
-  { href: "/dashboard/agents", label: "Agents", icon: Cpu, match: /^\/dashboard\/agents/ },
+  { href: "/dashboard-legacy", label: "Dashboard", icon: LayoutDashboard, match: /^\/dashboard-legacy$/ },
+  { href: "/dashboard-legacy/cameras", label: "Cameras", icon: Video, match: /^\/dashboard-legacy\/cameras/ },
+  { href: "/dashboard-legacy/agents", label: "Agents", icon: Cpu, match: /^\/dashboard-legacy\/agents/ },
   {
-    href: "/dashboard/stream-sessions",
+    href: "/dashboard-legacy/stream-sessions",
     label: "Stream sessions",
     icon: Activity,
-    match: /^\/dashboard\/stream-sessions/,
+    match: /^\/dashboard-legacy\/stream-sessions/,
   },
   {
-    href: "/dashboard/settings/api-tokens",
+    href: "/dashboard-legacy/settings/api-tokens",
     label: "API tokens",
     icon: KeyRound,
-    match: /^\/dashboard\/settings\/api-tokens/,
+    match: /^\/dashboard-legacy\/settings\/api-tokens/,
   },
 ] as const;
 

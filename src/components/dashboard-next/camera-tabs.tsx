@@ -30,7 +30,7 @@ export function CameraTabs({ cameraId }: { cameraId: string }) {
       className="flex flex-wrap items-center gap-1 border-b border-white/15 pb-1"
     >
       {TABS.map((tab) => {
-        const href = `/dashboard-next/cameras/${cameraId}/${tab.segment}`;
+        const href = `/dashboard/cameras/${cameraId}/${tab.segment}`;
         // Prefix match so sub-routes (e.g. /configure/geometry) keep their
         // parent tab highlighted. Safe today because no tab href is a prefix
         // of another tab href; revisit if a sibling tab grows that overlap.

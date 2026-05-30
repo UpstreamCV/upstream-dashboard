@@ -4,7 +4,10 @@ import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import { reportError } from "@/lib/error";
 
-export default function DashboardError({
+// Segment-scoped error boundary. area: "dashboard" keeps new-dashboard
+// failures distinguishable from the live dashboard in error reporting.
+// Repainted to the scoped light theme (no prod .glass/text-ink).
+export default function DashboardNextError({
   error,
   reset,
 }: {
@@ -16,26 +19,26 @@ export default function DashboardError({
   }, [error]);
 
   return (
-    <div className="glass rounded-3xl px-6 py-10 text-center">
-      <AlertTriangle className="w-7 h-7 mx-auto text-[#e89e93]" />
-      <h2 className="display text-xl font-semibold mt-3">
-        Something <em>broke</em>
-      </h2>
-      <p className="text-sm text-ink-soft mt-2 max-w-md mx-auto">
-        {error.message || "An unexpected error occurred."}
-      </p>
-      {error.digest ? (
-        <p className="text-[11px] mono text-ink-mute mt-2">
-          digest: {error.digest}
+    <div className="dn-shell-bg min-h-dvh grid place-items-center p-6">
+      <div className="dn-tile w-full max-w-md text-center p-8">
+        <AlertTriangle className="w-7 h-7 mx-auto" style={{ color: "#e15a4c" }} />
+        <h2 className="text-xl font-bold mt-3">Something broke</h2>
+        <p className="text-sm mt-2 text-[var(--dn-text-50)]">
+          {error.message || "An unexpected error occurred."}
         </p>
-      ) : null}
-      <button
-        type="button"
-        onClick={reset}
-        className="mt-5 rounded-full bg-ink text-[#0f1809] font-medium px-4 py-2 text-sm transition hover:bg-white"
-      >
-        Try again
-      </button>
+        {error.digest ? (
+          <p className="text-[11px] mt-2 text-[var(--dn-text-50)]">
+            digest: {error.digest}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={reset}
+          className="dn-grad-btn mt-5 px-5 py-2 text-sm font-bold"
+        >
+          Try again
+        </button>
+      </div>
     </div>
   );
 }
