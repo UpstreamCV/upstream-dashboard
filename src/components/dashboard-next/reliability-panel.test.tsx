@@ -209,7 +209,7 @@ describe("ReliabilityPanel — View details link (M4)", () => {
       />,
     );
     expect(html).toContain("View reliability details");
-    expect(html).toContain("/dashboard-next/cameras/cam-123/reliability");
+    expect(html).toContain("/dashboard/cameras/cam-123/reliability");
   });
 
   test("link renders on healthy and unknown variants too (so operators can always drill in)", () => {

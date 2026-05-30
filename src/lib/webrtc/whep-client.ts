@@ -2,13 +2,13 @@
  * Framework-free WHEP (WebRTC-HTTP Egress Protocol) negotiator.
  *
  * **Shared module** — imported by both dashboards:
- *   - `/dashboard` (dark): `LiveStreamPlayer` at
- *     `src/components/stream/live-stream-player.tsx`.
- *   - `/dashboard-next` (light): `LiveStreamPlayerNext` at
+ *   - `/dashboard` (light): `LiveStreamPlayerNext` at
  *     `src/components/dashboard-next/live-stream-player-next.tsx`.
+ *   - `/dashboard-legacy` (dark): `LiveStreamPlayer` at
+ *     `src/components/stream/live-stream-player.tsx`.
  *
- * Both players hit the same `connectWhep` / `closeWhepSession` pair. On
- * promotion of dashboard-next this file is a candidate to move into
+ * Both players hit the same `connectWhep` / `closeWhepSession` pair. When
+ * /dashboard-legacy is retired this file is a candidate to move into
  * `src/lib/stream/`; see `docs/dashboard-next.md` "Shared modules".
  *
  * Flow:

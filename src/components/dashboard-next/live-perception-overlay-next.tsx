@@ -281,7 +281,7 @@ export function LivePerceptionOverlayNext({
       if (cancelled) return;
 
       channel = supabase
-        .channel(`dn-camera:${cameraId}:perception`)
+        .channel(`camera:${cameraId}:perception`)
         .on(
           "postgres_changes",
           // No server-side `filter`: Supabase only applies a postgres_changes

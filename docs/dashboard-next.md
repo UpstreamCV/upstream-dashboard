@@ -1,6 +1,8 @@
 # dashboard-next — architecture, conventions, promotion
 
-The canonical reference for the parallel light-theme redesign at `src/app/dashboard-next/`. Pair this doc with `docs/architecture.md` (the live `/dashboard` flow — most of it applies to `/dashboard-next` too because the data layer is shared) and `src/app/dashboard-next/README.md` (the at-a-glance status table).
+The canonical reference for the light-theme dashboard now at `src/app/dashboard/` (renamed from `src/app/dashboard-next/` on promotion). Pair this doc with `docs/architecture.md` (the dashboard data flow) and `src/app/dashboard/README.md` (the at-a-glance status table).
+
+> **Promotion status (2026-05-29): EXECUTED at the route level.** The new dashboard is now the default at **`/dashboard`**; the previous dark dashboard is preserved as a navigable fallback at **`/dashboard-legacy`**. Done: the folder rename + route/import/redirect/Realtime updates from the [promotion checklist](#promotion-checklist). **Deferred** (would delete components the live `/dashboard-legacy` fallback still imports): dropping `-next` component suffixes, moving components, renaming chrome files, and folding the theme. Realtime channels: the new dashboard now uses `camera:…`; `/dashboard-legacy` uses `legacy-camera:…`. **Note:** the deep-dive sections below still write `/dashboard-next/*` and `src/app/dashboard-next/` in examples — read those as `/dashboard/*` and `src/app/dashboard/` until a later doc sweep.
 
 ## Purpose & status
 
@@ -486,7 +488,9 @@ The Plan & Usage tile is partially wired: cameras and concurrent sessions are re
 
 ## Promotion checklist
 
-When `/dashboard-next` is ready to become `/dashboard`. This is the **authoritative** version (the README points here):
+**Status (2026-05-29): route-level steps EXECUTED; cosmetic steps DEFERRED while `/dashboard-legacy` stays live as a fallback.** ✅ done: step 1 (old segment → `src/app/dashboard-legacy/`, kept not deleted), step 2 (`src/app/dashboard-next/` → `src/app/dashboard/`), step 3 (route literals `/dashboard-next/` → `/dashboard/` across hrefs, redirects, `revalidatePath`, proxy `PUBLIC_PATHS`), and a fallback-safe variant of step 6 (new dashboard drops the `dn-` prefix → `camera:…`; `/dashboard-legacy` renamed to `legacy-camera:…` so the two coexisting dashboards stay isolated). ⏸ deferred until `/dashboard-legacy` is retired: steps 4 (rename chrome files), 5 (move components), 7 (move shared modules), 8 (fold theme) — each would replace or delete a component the live fallback still imports. Step 9 (docs) is in progress; step 10 (final `git grep` sweep) waits on the deferred steps.
+
+The original checklist (use when `/dashboard-legacy` is finally retired):
 
 1. **Retire the old segment.** Rename `src/app/dashboard/` → `src/app/dashboard-legacy/` (or delete it after a grace period).
 2. **Rename the new segment.** `src/app/dashboard-next/` → `src/app/dashboard/`.

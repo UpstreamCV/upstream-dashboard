@@ -126,7 +126,7 @@ export function AgentPanel({ agent }: { agent: Agent | null }) {
             label="Name"
             value={
               <Link
-                href="/dashboard-next/agents"
+                href="/dashboard/agents"
                 className="text-black hover:text-[var(--dn-creek-mid)] transition"
               >
                 {agent.name}

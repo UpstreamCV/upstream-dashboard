@@ -146,7 +146,7 @@ export function ReliabilityPanel({
       <PanelBody summary={summary} variant={variant} />
       {cameraId ? (
         <Link
-          href={`/dashboard-next/cameras/${cameraId}/reliability`}
+          href={`/dashboard/cameras/${cameraId}/reliability`}
           className="mt-4 inline-block text-[clamp(0.78rem,0.9vw,0.85rem)] font-bold text-[var(--dn-creek-mid)] hover:underline"
         >
           View reliability details →

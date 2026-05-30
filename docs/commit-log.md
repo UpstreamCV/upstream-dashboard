@@ -4,6 +4,28 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-29 — Promote dashboard-next to the default `/dashboard`; keep old dashboard as `/dashboard-legacy` fallback
+
+**Subject:** Make the light-theme `dashboard-next` redesign the default dashboard at `/dashboard`, and preserve the previous dark dashboard as a fully navigable fallback at `/dashboard-legacy`.
+
+**Why:** `dashboard-next` was fully wired and the documented target replacement (see `docs/dashboard-next.md`). This executes the route-level half of the promotion checklist while keeping the old dashboard live for rollback safety, so the cutover is reversible and low-risk. No backend, CORS, env, or deploy-config change is required (routing is filesystem + `proxy.ts`; CORS is origin-based).
+
+**What changed:**
+- Route/asset folders — `git mv src/app/dashboard → src/app/dashboard-legacy`, then `src/app/dashboard-next → src/app/dashboard`, then `public/dashboard-next → public/dashboard`.
+- New dashboard — route URL literals `/dashboard-next/*` → `/dashboard/*` and app-folder imports `@/app/dashboard-next` → `@/app/dashboard` (`sidebar-next`, `home-overview-client`, `camera-tabs`/`-card`/`-panels`, `reliability-panel`, `login-form-next`, `topbar-next` asset, route files, `revalidatePath` in api-tokens/settings/geometry actions). `@/components/dashboard-next/*` imports, the `.dashboard-next` theme scope, and `-next` suffixes left intact.
+- Legacy dashboard — internal URLs `/dashboard/*` → `/dashboard-legacy/*` and old token-action imports → `@/app/dashboard-legacy/*` (`sidebar.tsx`, `overview-cards`, camera detail, `not-found`, token components). API paths (`/v1/dashboard/...`) and `@/lib/api/dashboard` left intact.
+- `proxy.ts` — `PUBLIC_PATHS` + the light-login post-login redirect now use `/dashboard/login`; the generic post-login redirect to `/dashboard` is unchanged (now lands on the new dashboard). `/dashboard-legacy/*` stays auth-gated.
+- Realtime — new dashboard drops the `dn-` prefix (`camera:${id}:sessions` / `:perception`); legacy renamed to `legacy-camera:${id}:sessions` so the two coexisting dashboards stay on isolated channels.
+- Error tags — `area: "dashboard-next…"` → `area: "dashboard…"`. Shared-module header comments (`whep-client.ts`, `player-state-event.ts`) re-pointed to `/dashboard` (light) + `/dashboard-legacy` (dark).
+- Tests — `reliability-panel.test.tsx` route assertion + `processing-toggle-next.test.tsx` Server-Action mock path updated for the rename.
+- Deferred (would break the live fallback): dropping `-next` component suffixes / moving components, renaming chrome files, folding `theme.css`, moving shared modules. Tracked in `docs/dashboard-next.md` promotion checklist.
+
+**Verification:** `npm run lint` clean. `npx tsc --noEmit` clean (source). `npm test` 313/313 pass. `npm run build` succeeds — route tree shows `/dashboard` (new, with `(app)` tabs + public `/dashboard/login`) and `/dashboard-legacy` (old). Browser smoke (WHEP, latest frame, Realtime, geometry save, tokens, login/logout, legacy fallback) still required against a real Supabase project.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/dashboard-next.md`, `AGENTS.md`, `src/app/dashboard/README.md`.
+
+---
+
 ## 2026-05-29 — Reliability M5: render windowed "Recent avg confidence" in drift evidence
 
 **Subject:** Follow-up to the api-server M5 window-aggregate fix (drift now

@@ -38,26 +38,26 @@ const NAV: {
 }[] = [
   {
     label: "Home",
-    href: "/dashboard-next",
-    match: /^\/dashboard-next$/,
+    href: "/dashboard",
+    match: /^\/dashboard$/,
     icon: LayoutDashboard,
   },
   {
     label: "Cameras",
-    href: "/dashboard-next/cameras",
-    match: /^\/dashboard-next\/cameras/,
+    href: "/dashboard/cameras",
+    match: /^\/dashboard\/cameras/,
     icon: Video,
   },
   {
     label: "Agents",
-    href: "/dashboard-next/agents",
-    match: /^\/dashboard-next\/agents/,
+    href: "/dashboard/agents",
+    match: /^\/dashboard\/agents/,
     icon: Cpu,
   },
   {
     label: "Streaming Sessions",
-    href: "/dashboard-next/stream-sessions",
-    match: /^\/dashboard-next\/stream-sessions/,
+    href: "/dashboard/stream-sessions",
+    match: /^\/dashboard\/stream-sessions/,
     icon: Radio,
   },
   { label: "Network", href: null, icon: Network },
@@ -66,14 +66,14 @@ const NAV: {
   { label: "Alerts", href: null, icon: Bell },
   {
     label: "API Keys",
-    href: "/dashboard-next/api-tokens",
-    match: /^\/dashboard-next\/api-tokens/,
+    href: "/dashboard/api-tokens",
+    match: /^\/dashboard\/api-tokens/,
     icon: KeyRound,
   },
   {
     label: "Settings",
-    href: "/dashboard-next/settings",
-    match: /^\/dashboard-next\/settings/,
+    href: "/dashboard/settings",
+    match: /^\/dashboard\/settings/,
     icon: Settings,
   },
 ];
@@ -93,7 +93,7 @@ export function SidebarNext() {
     try {
       const res = await fetch("/api/auth/sign-out", { method: "POST" });
       if (res.ok) {
-        window.location.href = "/dashboard-next/login";
+        window.location.href = "/dashboard/login";
         return;
       }
       toast.error("Sign out failed. Try again.");

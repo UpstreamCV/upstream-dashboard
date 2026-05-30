@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { revokeTokenAction } from "@/app/dashboard/settings/api-tokens/actions";
+import { revokeTokenAction } from "@/app/dashboard-legacy/settings/api-tokens/actions";
 
 export function TokenRowActions({
   tokenId,

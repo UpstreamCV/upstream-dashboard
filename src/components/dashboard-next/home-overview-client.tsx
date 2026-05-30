@@ -126,7 +126,7 @@ export function HomeOverviewClient({
             : `${camsOffline} offline · ${camsErrors} with errors`
         }
         actionLabel="View Cameras"
-        actionHref="/dashboard-next/cameras"
+        actionHref="/dashboard/cameras"
       />
       <Tile
         title="Agents Online"
@@ -141,7 +141,7 @@ export function HomeOverviewClient({
               : `${agentsMissing} host${agentsMissing === 1 ? "" : "s"} without recent heartbeat`
         }
         actionLabel="View Agents"
-        actionHref="/dashboard-next/agents"
+        actionHref="/dashboard/agents"
       />
       <Tile
         title="Issues"
@@ -153,7 +153,7 @@ export function HomeOverviewClient({
             : `${camsErrors} camera error${camsErrors === 1 ? "" : "s"} · ${summary.validation_errors_24h} validation error${summary.validation_errors_24h === 1 ? "" : "s"} (24h)`
         }
         actionLabel="View Cameras"
-        actionHref="/dashboard-next/cameras"
+        actionHref="/dashboard/cameras"
       />
       <Tile
         title="Concurrent Streams"
@@ -168,7 +168,7 @@ export function HomeOverviewClient({
               : `${concurrentFree} slot${concurrentFree === 1 ? "" : "s"} free on your plan`
         }
         actionLabel="View Sessions"
-        actionHref="/dashboard-next/stream-sessions"
+        actionHref="/dashboard/stream-sessions"
       />
       <Tile title="Plan & Usage" span={2} actionLabel="View Billing" actionHref="#">
         <div className="flex flex-col gap-5">
@@ -227,7 +227,7 @@ export function HomeOverviewClient({
               : "No active keys"
         }
         actionLabel="Manage Tokens"
-        actionHref="/dashboard-next/api-tokens"
+        actionHref="/dashboard/api-tokens"
       />
       {/* Billing tile is INTENTIONALLY MOCK — there is no billing/metering
           service in upstream-api-server. The figures are illustrative; kept
