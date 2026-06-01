@@ -7,8 +7,11 @@ import {
 
 // Pure validator — no I/O, runs in the default node environment. Backend
 // validation is authoritative; this guards authoring/forged-payload cases so
-// they render inline instead of round-tripping. M5: tracker /
-// confidence_threshold / processing_fps must be null (M6 controls).
+// they render inline instead of round-tripping. M6: tracker /
+// confidence_threshold / processing_fps are authored controls — `null` means
+// "use the runtime/model default", otherwise each must satisfy the same bounds
+// the api-server enforces (tracker ∈ model.supported_trackers; confidence in
+// [0,1]; fps an integer in [1,30]).
 
 function model(over: Partial<ModelRegistryEntry> = {}): ModelRegistryEntry {
   return {
@@ -75,6 +78,20 @@ describe("validateProcessingConfig — valid configs", () => {
       ),
     ).toEqual([]);
   });
+
+  test("accepts every M6 field set to a real, in-bounds value", () => {
+    const m = model({ supported_trackers: ["nvdcf"] });
+    expect(
+      validateProcessingConfig(
+        config({
+          tracker: "nvdcf",
+          confidence_threshold: 0.5,
+          processing_fps: 10,
+        }),
+        m,
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("validateProcessingConfig — version", () => {
@@ -131,22 +148,117 @@ describe("validateProcessingConfig — model_key", () => {
   });
 });
 
-describe("validateProcessingConfig — M6 fields must ride as null", () => {
-  test("rejects a non-null tracker", () => {
+describe("validateProcessingConfig — tracker (M6)", () => {
+  test("accepts a null tracker (the runtime-default sentinel)", () => {
     const m = model();
-    const bad = { ...config(), tracker: "nvdcf" } as unknown;
+    expect(validateProcessingConfig(config({ tracker: null }), m)).toEqual([]);
+  });
+
+  test("accepts a tracker that's in the model's supported_trackers", () => {
+    const m = model({ supported_trackers: ["nvdcf", "iou"] });
+    expect(validateProcessingConfig(config({ tracker: "iou" }), m)).toEqual([]);
+  });
+
+  test("rejects a tracker the model doesn't support", () => {
+    const m = model({ supported_trackers: ["nvdcf"] });
+    const issues = validateProcessingConfig(config({ tracker: "missing" }), m);
+    expect(issues.map((i) => i.field)).toContain("tracker");
+    expect(issues.find((i) => i.field === "tracker")?.message).toContain(
+      "missing",
+    );
+  });
+
+  test("rejects a non-string, non-null tracker", () => {
+    const m = model();
+    const bad = { ...config(), tracker: 7 } as unknown;
     expect(fieldsWithIssues(bad, m)).toContain("tracker");
   });
 
-  test("rejects a non-null confidence_threshold", () => {
+  test("does not check tracker membership when the model is undefined", () => {
+    // No registry entry → model-scoped membership is unchecked; only type is.
+    const issues = validateProcessingConfig(
+      // model_key resolves, so the only candidate field issue would be tracker.
+      { ...config(), tracker: "anything" } as unknown,
+      undefined,
+    );
+    expect(issues.map((i) => i.field)).not.toContain("tracker");
+  });
+});
+
+describe("validateProcessingConfig — confidence_threshold (M6)", () => {
+  test("accepts a null confidence_threshold (the default sentinel)", () => {
     const m = model();
-    const bad = { ...config(), confidence_threshold: 0.5 } as unknown;
+    expect(
+      validateProcessingConfig(config({ confidence_threshold: null }), m),
+    ).toEqual([]);
+  });
+
+  test("accepts confidence at the [0, 1] bounds and in between", () => {
+    const m = model();
+    for (const value of [0, 0.55, 1]) {
+      expect(
+        validateProcessingConfig(config({ confidence_threshold: value }), m),
+      ).toEqual([]);
+    }
+  });
+
+  test("rejects confidence above 1.0", () => {
+    const m = model();
+    const bad = { ...config(), confidence_threshold: 1.5 } as unknown;
     expect(fieldsWithIssues(bad, m)).toContain("confidence_threshold");
   });
 
-  test("rejects a non-null processing_fps", () => {
+  test("rejects confidence below 0.0", () => {
     const m = model();
-    const bad = { ...config(), processing_fps: 10 } as unknown;
+    const bad = { ...config(), confidence_threshold: -0.1 } as unknown;
+    expect(fieldsWithIssues(bad, m)).toContain("confidence_threshold");
+  });
+
+  test("rejects a non-number, non-null confidence_threshold", () => {
+    const m = model();
+    const bad = { ...config(), confidence_threshold: "0.5" } as unknown;
+    expect(fieldsWithIssues(bad, m)).toContain("confidence_threshold");
+  });
+});
+
+describe("validateProcessingConfig — processing_fps (M6)", () => {
+  test("accepts a null processing_fps (the default sentinel)", () => {
+    const m = model();
+    expect(
+      validateProcessingConfig(config({ processing_fps: null }), m),
+    ).toEqual([]);
+  });
+
+  test("accepts integer FPS at the [1, 30] bounds and in between", () => {
+    const m = model();
+    for (const value of [1, 5, 30]) {
+      expect(
+        validateProcessingConfig(config({ processing_fps: value }), m),
+      ).toEqual([]);
+    }
+  });
+
+  test("rejects FPS below 1", () => {
+    const m = model();
+    const bad = { ...config(), processing_fps: 0 } as unknown;
+    expect(fieldsWithIssues(bad, m)).toContain("processing_fps");
+  });
+
+  test("rejects FPS above 30", () => {
+    const m = model();
+    const bad = { ...config(), processing_fps: 31 } as unknown;
+    expect(fieldsWithIssues(bad, m)).toContain("processing_fps");
+  });
+
+  test("rejects a non-integer FPS", () => {
+    const m = model();
+    const bad = { ...config(), processing_fps: 2.5 } as unknown;
+    expect(fieldsWithIssues(bad, m)).toContain("processing_fps");
+  });
+
+  test("rejects a non-number, non-null processing_fps", () => {
+    const m = model();
+    const bad = { ...config(), processing_fps: "10" } as unknown;
     expect(fieldsWithIssues(bad, m)).toContain("processing_fps");
   });
 });

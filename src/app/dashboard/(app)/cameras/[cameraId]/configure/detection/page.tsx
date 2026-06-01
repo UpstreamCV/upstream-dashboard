@@ -8,22 +8,24 @@ import { getCameraProcessingConfig } from "@/lib/api/camera-processing-config";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { listModels } from "@/lib/api/models";
 import type {
+  CameraProcessingConfig,
   CameraProcessingConfigRecord,
   ModelRegistryEntry,
 } from "@/lib/api/types";
 
-// M5 — Model & Detection editor.
+// M5/M6 — Model & Detection editor.
 //
 // Server-renders the model registry + the camera's current processing config,
 // then hands both to the interactive <ModelDetectionPanel> (Client Component).
-// Scope: model selection + which object classes to detect + save only.
-// Tracker, confidence threshold, and processing FPS are M6 — they ride as
-// null in the saved config and have no UI here.
+// Scope: model selection, which object classes to detect, and (M6) tracker /
+// confidence threshold / processing FPS, plus save. Each M6 control defaults to
+// null ("use the runtime/model default"). The settings persist but the live
+// processor does not consume them yet (the panel's notice block says so).
 //
-// Sidebar carries the server-rendered status panel (revision + timestamps)
-// and a collapsed raw-JSON inspector for engineers verifying the wire shape.
-// The sidebar re-renders after every successful save because the panel calls
-// router.refresh().
+// Sidebar carries the server-rendered status panel (revision + saved-state
+// summary + timestamps) and a collapsed raw-JSON inspector for engineers
+// verifying the wire shape. The sidebar re-renders after every successful save
+// because the panel calls router.refresh().
 
 export default async function CameraDetectionPage({
   params,
@@ -106,6 +108,9 @@ function StatusPanel({ record }: { record: CameraProcessingConfigRecord }) {
           schema v{record.config.version} · {record.config.model_key}
         </span>
       </div>
+
+      <ConfigSummary config={record.config} />
+
       {isDefault ? (
         <>
           <h3 className="mt-3 inline-flex items-center gap-2 font-bold text-black">
@@ -145,6 +150,62 @@ function StatusPanel({ record }: { record: CameraProcessingConfigRecord }) {
         </>
       )}
     </div>
+  );
+}
+
+// Labeled summary of the saved (server) config, so the operator confirms what
+// the api-server actually holds without reading raw JSON. `null` on an M6 field
+// is the "use the runtime/model default" sentinel; an empty selected_classes is
+// "all supported classes".
+function ConfigSummary({ config }: { config: CameraProcessingConfig }) {
+  const classes =
+    config.selected_classes.length === 0
+      ? "All supported classes"
+      : config.selected_classes.length <= 3
+        ? config.selected_classes.join(", ")
+        : `${config.selected_classes.length} classes`;
+  const tracker = config.tracker ?? "Runtime default";
+  const confidence =
+    config.confidence_threshold === null
+      ? "Runtime default"
+      : String(config.confidence_threshold);
+  const fps =
+    config.processing_fps === null
+      ? "Runtime default"
+      : `${config.processing_fps} FPS`;
+  return (
+    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+      <SummaryRow label="Model" value={config.model_key} mono />
+      <SummaryRow label="Classes" value={classes} />
+      <SummaryRow label="Tracker" value={tracker} />
+      <SummaryRow label="Confidence" value={confidence} />
+      <SummaryRow label="FPS" value={fps} />
+    </dl>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <>
+      <dt className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)] self-center">
+        {label}
+      </dt>
+      <dd
+        className={
+          "text-black/80" + (mono ? " font-mono text-xs" : " text-sm")
+        }
+      >
+        {value}
+      </dd>
+    </>
   );
 }
 
