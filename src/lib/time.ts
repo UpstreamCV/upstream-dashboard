@@ -1,5 +1,16 @@
 const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
+// Shared formatter so large tables don't construct a fresh Intl.DateTimeFormat
+// per cell on every render/tick (mirrors the shared `rtf` above). Intl
+// formatters are immutable and safe to reuse across calls.
+const dtf = new Intl.DateTimeFormat("en", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 60 * 60 * 24 * 365],
   ["month", 60 * 60 * 24 * 30],
@@ -28,11 +39,5 @@ export function formatAbsolute(input: string | Date | null | undefined): string 
   if (!input) return "—";
   const date = typeof input === "string" ? new Date(input) : input;
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return dtf.format(date);
 }

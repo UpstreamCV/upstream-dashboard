@@ -1,0 +1,173 @@
+# Website Performance Sweep Report
+
+> Generated 2026-05-31 by a multi-agent performance sweep (15 agents: orient → 9 page-by-page deep dives → cross-cutting rendering + network analysis → synthesis). Scope: the active `/dashboard` app (`src/app/dashboard/(app)/` + `src/components/dashboard-next/` + shared `src/lib/`). `/dashboard-legacy` is rollback-only and deprioritized.
+>
+> **Implementation status:** ✅ **Batch 1 implemented 2026-05-31** (see `docs/commit-log.md`) — 347/347 tests pass, lint + build clean, bundle unchanged. Batches 2–5 pending approval.
+
+## Executive Summary
+The active `/dashboard` app is architecturally healthy: every page is an RSC shell delegating live data to small SWR client wrappers, there are no tree-wide context providers or `SWRConfig` to cause cascade re-renders, SWR deep-compares so no-op polls don't re-render, list keys are stable, and all subscriptions/intervals/WebRTC teardown correctly. The most likely sources of perceptible slowness are concentrated in two places: (1) the **camera monitor live overlay**, where a 4 Hz poll + Supabase Realtime cache writes + a 1 s countdown tick re-render the whole overlay — and the heavy WHEP player held as an unmemoized child — while re-running `normalizeSnapshot`/`selectOverlayObjects` (twice per frame) with zero memoization; and (2) the **global `CursorGlow` mousemove handler** that forces synchronous layout (`getBoundingClientRect`) per glow element on every pointer move, unthrottled, across the entire authed shell. Secondary costs are network-layer: the upstream proxy does a network `getUser()` (plus a redundant `getSession()`) on every 10 s poll, `getActiveAccount()` runs uncached 2–3× per render, and a Realtime session transition triggers `router.refresh()` that re-runs ~13 no-store upstream fetches. A handful of cheap wins (memoizing the overlay derivations, sharing one `Intl.DateTimeFormat`, rAF-throttling `CursorGlow`, `React.cache` on `getActiveAccount`) address most of the real cost. Bundle-wise, the Supabase SDK (~511 KB) ships in the client bundle and appears double-bundled; dynamic-importing the two Realtime consumers is the top deferral opportunity.
+
+## Highest-Risk Slowness Sources
+
+### 1. Live perception overlay re-renders the whole overlay + WHEP player on every 4 Hz poll / Realtime write / 1 s tick, with no memoization
+- **Files:** `src/components/dashboard-next/live-perception-overlay-next.tsx:147,187,211,214,225,308-320,353-358`; `src/lib/perception/overlay-svg.tsx:33,46`; `src/lib/perception/overlay-helpers.ts:135-150,194-214`; `src/components/dashboard-next/use-live-detection-session.ts:39-56`; `src/components/dashboard-next/live-stream-player-next.tsx:34,52`
+- **What is happening:** While a live-detections session is on, `useUpstreamList` polls `perception/latest` at 250 ms AND the Realtime handler writes each broadcast row straight into the SWR cache (`mutate({snapshot},{revalidate:false})`) at ~3/s. Each change re-renders `LivePerceptionOverlayNext`, which unconditionally re-runs `normalizeSnapshot(record.snapshot)` (deep JSONB coercion of all objects/rois/lines), then `selectOverlayObjects(...)`, then builds a fresh `<PerceptionOverlaySvg>` — which calls `selectOverlayObjects` a **second** time internally. `LiveStreamPlayerNext` is a direct, **unmemoized** child (no `React.memo` exists anywhere in the active app), so the player subtree reconciles every tick. Separately, `useLiveDetectionSession`'s 1 s countdown `setTick` forces a full re-render once per second even when `record` is unchanged.
+- **Why it may cause lag:** This is the page's hottest render path. At ~4–7 renders/sec the overlay does double coercion+filter passes (steady array allocation / GC churn + main-thread CPU) and reconciles the whole player tree; the 1 s tick is pure waste — it invalidates the entire overlay+player render just to update one "expires in mm:ss" text node. Most likely source of perceptible live-view lag.
+- **Severity:** Medium
+- **Confidence:** High (work duplication is High; the user-visible lag magnitude is Medium — agents leaned conservative because object counts are typically small)
+- **Suggested fix:** `const snapshot = useMemo(() => record ? normalizeSnapshot(record.snapshot) : null, [record])`; memoize `overlayObjects` on `[snapshot, minConfidence]` and the `svg` element on `[snapshot, showBoxes, showLabels, showGeometry, minConfidence]`; pass precomputed `overlayObjects` into `PerceptionOverlaySvg` as an additive optional prop (falling back to internal compute to keep the legacy consumer + `renderToStaticMarkup` test working); wrap `LiveStreamPlayerNext` and `PerceptionOverlaySvg` in `React.memo`; extract the countdown text into its own leaf that owns the tick. **Do NOT change the 250 ms cadence or Realtime gating** (explicitly disallowed and correctly engineered).
+- **Risk of fix:** Low. Pure memoization keyed on values already used; `React.memo` is safe once the overlay prop is a stable memoized reference. Only care: correct dep lists (avoid stale overlay), and keep the new SVG prop additive so legacy + the unit test don't break.
+
+### 2. `CursorGlow` mousemove handler forces synchronous layout per glow element on every pointer move (unthrottled, whole authed shell)
+- **Files:** `src/components/dashboard-next/cursor-glow.tsx:11,14,17,18,19,21,35`; `src/app/dashboard/(app)/layout.tsx:26`; `src/app/dashboard/theme.css:153`; `src/components/dashboard-next/tile.tsx:71`; `src/components/nav/topbar-next.tsx:33`
+- **What is happening:** `CursorGlow` is mounted once in `(app)/layout.tsx`, so it runs on every authed page. Its `window` `mousemove` listener is passive but has no rAF/throttle. On every event it calls `document.querySelectorAll('.dn-glow-soft')` fresh, then for **each** matched element reads `getBoundingClientRect()` (forced synchronous layout) interleaved with 3 inline CSS-var writes — read-after-write layout thrashing. Home has ~8–9 glow elements; the glowed elements sit inside `backdrop-filter` panels with a `--glow`-driven `::after` radial gradient, so writes also trigger style recalc + paint of blurred layers.
+- **Why it may cause lag:** `mousemove` fires 60–120+/s. A `querySelectorAll` plus N `getBoundingClientRect` reads interleaved with writes forces repeated layout recomputation many times per second purely from cursor motion — independent of polling or React. It does NOT show up in React Profiler (mutates inline styles directly), and scales with the number of glow buttons on screen. Strong candidate for perceived input lag while moving the cursor.
+- **Severity:** Medium
+- **Confidence:** High
+- **Suggested fix:** Coalesce to one update per frame: store only the latest event and schedule a single `requestAnimationFrame` that does the query + measure + write pass (skip if one is pending); batch all `getBoundingClientRect` reads before the style writes; optionally skip elements beyond `RANGE`; cancel any pending rAF in cleanup. Visual behavior unchanged (≤1 frame of glow lag).
+- **Risk of fix:** Low. rAF coalescing preserves behavior. Keep `getBoundingClientRect` inside the single per-frame rAF pass (don't cache rects without invalidation, or the glow center drifts on scroll/resize/route change).
+
+### 3. Upstream proxy re-verifies auth with a network `getUser()` (plus redundant `getSession()`) on every proxied poll
+- **Files:** `src/app/api/upstream/[...path]/route.ts:54,64,82`; `src/lib/api/use-list.ts:19`; `src/components/dashboard-next/home-overview-client.tsx:45`
+- **What is happening:** The catch-all proxy `handle()` calls `supabase.auth.getUser()` (a **network** round-trip to the Supabase Auth server — verified against `@supabase/auth-js`, not a local cookie decode) and then `supabase.auth.getSession()` (local) on every request. Every `useUpstreamList` poll (default 10 s) for every list goes through this proxy; Home polls 4 endpoints = 4 proxy hits/10 s, each doing `getUser()`+`getSession()` before the upstream fetch starts. `getUser()` already loads the session internally, so the separate `getSession()` after it is redundant.
+- **Why it may cause lag:** Each poll pays a sequential Auth-server round-trip in front of the upstream fetch, directly delaying the data live pages depend on and adding steady Auth-server load scaling with (open tabs × pollers/page × 1/10 s). This is the single most amplified per-request cost — paid on every poll, forever.
+- **Severity:** Medium
+- **Confidence:** High (cost is High; whether `getUser` can be safely reduced is Medium — security boundary)
+- **Suggested fix:** Low-risk part: reuse the session already resolved by `getUser()` instead of issuing a second `getSession()`. **Do NOT drop `getUser()` itself** without backend confirmation — it is the server-side JWT verification boundary; treat "is full network `getUser` needed on every GET read vs only on mutations" as investigate-only with the backend.
+- **Risk of fix:** Removing the redundant `getSession`-after-`getUser` is low-risk and behavior-preserving. Weakening/removing `getUser()` is a security-boundary change (moderate-to-high risk) requiring validation against upstream-api-server's own auth.
+
+### 4. Realtime session transition fires `router.refresh()`, re-running the entire layout+page RSC tree (~13 no-store upstream calls)
+- **Files:** `src/components/dashboard-next/camera-detail-realtime-next.tsx:50-61`; `src/app/dashboard/(app)/cameras/[cameraId]/layout.tsx:80-87`; `src/app/dashboard/(app)/cameras/[cameraId]/monitor/page.tsx:60,109`
+- **What is happening:** `CameraDetailRealtimeNext` (mounted in the camera layout, so it lives across all tabs) calls `router.refresh()` on each deduped `stream_sessions` state change for this camera. `router.refresh()` re-executes the whole active server subtree: the `(app)` layout's `getActiveAccount`, the camera layout's `getActiveAccount`+`getCamera`+`listStreamSessions`, and (Monitor tab) the page's `getActiveAccount`, `getCamera`, a 6-call `Promise.all`, and a 2-call `Promise.all` — roughly a dozen fresh `cache:"no-store"` round-trips plus auth round-trips, then a full RSC re-stream.
+- **Why it may cause lag:** A single stream lifecycle (approved → streaming → ended) is 2–3 transitions in quick succession, and a reconnecting agent can flip states repeatedly, each time fanning out a heavy refetch of data that mostly didn't change (camera meta, agent, reliability, processing-config). The handler de-dupes on `lastStateRef` so it fires only on real transitions, which bounds it — this is a sanctioned freshness path, not a leak.
+- **Severity:** Medium
+- **Confidence:** Medium
+- **Suggested fix:** Keep `router.refresh()` (live freshness depends on it). Reduce blast radius: debounce/coalesce rapid successive transitions with a short trailing timer (250–500 ms) so an approved→streaming burst triggers one refresh instead of three; combine with `React.cache` on `getActiveAccount`/`getCamera` (finding below) so each refresh is cheaper. **Do NOT add a server-side `postgres_changes` filter** (the code comment correctly explains it drops UPDATE events). Re-scoping which panels refetch is a larger refactor — defer.
+- **Risk of fix:** Debouncing adds sub-second latency before the UI reacts to a "streaming" transition (keep it short/trailing). Re-scoping refetch risks the session/validation panels that must stay live — start with debounce + caching only.
+
+### 5. Geometry editor re-renders the full SVG overlay on every pointermove during drag, with un-memoized polygon-point recomputation
+- **Files:** `src/components/dashboard-next/geometry/geometry-editor-panel.tsx:242-249,273-280,316-327,491,499`; `src/components/dashboard-next/geometry/geometry-editor-svg.tsx:108-114,116,150,194,211`
+- **What is happening:** Endpoint/vertex/whole-ROI drag handlers attach `window` `pointermove` listeners that call `setShapes(...)` on every move. Each `setShapes` re-renders the panel and its child `GeometryEditorSvg` (a plain function component, not `React.memo`), which recomputes `roiPointsAttr` (`points.map(...).join(' ')`) for **every** ROI on every render plus walks all lines/vertices building fresh JSX. An inline `onLineSelect` arrow prop (`:499`) is recreated every render, which would defeat any future `React.memo`.
+- **Why it may cause lag:** `pointermove` fires at ~60–120 Hz during a drag; a full panel+SVG reconcile per event, including per-ROI string-building, is wasted work each frame. Only one shape changes per move, yet the entire overlay re-renders. Visible lag on lower-end machines or high-vertex polygons.
+- **Severity:** Medium
+- **Confidence:** Medium (cost is real; whether it's perceptible depends on shape count — agents leaned conservative)
+- **Suggested fix:** Memoize per-ROI point strings (cache or `useMemo` keyed on `[rois, size]`); split each ROI into its own `React.memo`'d `<RoiShape>`; hoist `onLineSelect` into a `useCallback`. Optionally rAF-coalesce the drag `setShapes`, flushing the final position on `pointerup`. Measure first — with a handful of shapes this may be acceptable as-is.
+- **Risk of fix:** Low–Medium. Memoizing point strings is safe; `useCallback` is pure. Splitting into memo'd children needs stable props. rAF-coalescing must flush the last move on `pointerup` (test required) or it can drop the final position.
+
+## Page-by-Page Findings
+
+### Home (`/dashboard`) + Agents + Stream Sessions + API Tokens
+- All four follow the RSC-fetch → SWR-poll-with-`fallbackData` pattern; Home fans out 4 polled endpoints at 10 s, Agents/Sessions one each, Tokens does **not** poll (relies on Server Action `revalidatePath`).
+- Notable cross-cutting issues land here but originate globally: `CursorGlow` jank (#2) and `Intl.DateTimeFormat`-per-call in `formatAbsolute` (used by every `RelativeTime` title in the large Sessions/Tokens tables). Derived counts (`filter`/`length`) recompute per render but are cheap and bounded by SWR deep-compare. No leaks, no hidden-tab waste.
+
+### Cameras list (`/dashboard/cameras`)
+- Healthy. Minor: `agentNames` map + three status `.filter` passes recompute unmemoized on each render that occurs (`cameras-grid-client.tsx:34,39-41`); `CameraCard`/`StatCard`/`StatusDot` are unmemoized — leaf memoization here is **not** recommended (no benefit without stabilizing element identity across SWR array swaps). `/v1/agents` is polled at the same 10 s cadence as `/v1/cameras` despite being effectively static display names (see Network).
+
+### Camera detail shell + Monitor tab (`/dashboard/cameras/[cameraId]`)
+- Heaviest page. Hot paths: live overlay re-render loop (#1) and the `router.refresh()` fan-out (#4). Server-side waterfalls: layout awaits `getCamera` then `listStreamSessions` sequentially though both depend only on the in-scope `cameraId` (`layout.tsx:35,43`); monitor page runs three serial await waves (`monitor/page.tsx:52→60→109`) and duplicates the layout's `getCamera`+`listStreamSessions`. No camera-detail `loading.tsx`, so the shell is gated behind the layout's serial fetches. Latest-frame `<img>` reloads full bytes every 7 s because the signed URL rotates each poll even when the frame is unchanged (`latest-frame-card-next.tsx:54`). Player/overlay gating, subscription teardown, and WebRTC cleanup are all correct (verified).
+
+### Camera configure / geometry editor
+- Configure landing is a static link tile. Geometry editor: drag re-render loop (#5); sequential RSC fetches for geometry config + latest frame that are independent and could be parallel (`configure/geometry/page.tsx:35,50`). All listeners/observers cleaned up correctly. No polling/Realtime on this route.
+
+### Reliability tab
+- Clean. Fetches 5 resources in one parallel `Promise.all` (no waterfall); both 24h+7d trends pre-fetched so the client toggle never re-fetches. `interpretConfidenceTrend` + sparkline geometry recompute unmemoized but over ≤168 points — trivial. The only re-render driver is the deduped `router.refresh()`; the hourly-rollup trends participate in that fan-out (accepted tradeoff).
+
+### Observations panel (`/dashboard/cameras/[cameraId]/observations`)
+- Lean. Polling is OFF by default (`refreshInterval:0`), 5 s only when "Live" toggled on. Per-row `summarizeObservation`/`typeLabel`/`shortId` and `JSON.stringify(payload)` for expanded rows recompute on every render (incl. the 30 s `RelativeTime` tick) — a clean per-row `useMemo` keyed on the `observations` reference removes this. No Realtime, no canvas, no auth gate inside the panel.
+
+### Live / latest-frame perception overlays
+- Covered by #1. Latest-frame overlay (`latest-frame-perception-overlay-next.tsx`) shares the same un-memoized coercion path at 5 s when Live is on, and registers overlapping SWR keys (see Network). Polling/Realtime gating, freshness checks, and all cleanup are correct.
+
+### Auth/session gate + proxy + nav shell
+- `(app)/layout.tsx` blocks first paint of the whole authed shell on `getActiveAccount()` (network `getUser()` + `listMemberships()`, issued sequentially though independent). `getActiveAccount` is **not** `React.cache`-wrapped, so `getUser()` runs 2–3× per render. Proxy auth overhead (#3). `ScrollArea` and the no-provider design were checked and are healthy boundaries.
+
+## Network/API Findings
+- **Proxy `getUser()`+`getSession()` per poll** (#3, High) — `route.ts:54,64`. Most amplified per-request cost; redundant `getSession()` after `getUser()` is a safe micro-win.
+- **`getActiveAccount()` uncached, runs 2–3× per render** — `(app)/layout.tsx:16`, `cameras/[cameraId]/layout.tsx:31`, `monitor/page.tsx:48`, `lib/account/active.ts:41,43`. `listMemberships` is `cache()`-wrapped but `getUser()` is called directly, so it runs once per call site. Wrap `getActiveAccount` in `React.cache`. Confidence High.
+- **`router.refresh()` fan-out** (#4) — re-issues doubled `getCamera`/`listStreamSessions` + tripled `getUser`/`listMemberships` on top of the page's fetch waves.
+- **Layout/page serverFetch duplication** — `serverFetch` is not `React.cache`-wrapped, so `getCamera`×2 and `listStreamSessions`×2 per monitor render. Optionally `React.cache`-wrap `getCamera`/`listStreamSessions` (de-dupes within a single render pass; stays `no-store`). Accepted-in-docs; low priority. Confidence High.
+- **Server-side fetch waterfalls** — camera layout (`layout.tsx:35,43`), monitor page three serial waves (`monitor/page.tsx:52,60,109`), geometry page (`configure/geometry/page.tsx:35,50`). Parallelize where inputs (`accountId`+`cameraId`) are already known; keep `getCamera` as the 404→`notFound()` gate and avoid floating rejected promises. Confidence Medium.
+- **Two pairs of overlapping SWR keys on the monitor page** — `perception/latest` registered by both `LivePerceptionOverlayNext` (`:191`, `dedupingInterval:250`) and `LatestFramePerceptionOverlayNext` (`:56`, default 3 s dedupe); `latest-frame` registered by both `LatestFrameCardNext` (`:21`, 7 s) and `LatestFramePerceptionOverlayNext` (`:52`, `live?5000:0`). Not a bug today (second overlay defaults `live=false`), but two hooks on one key with conflicting `dedupingInterval` is the exact coalescing fragility the `use-list.ts:11-14` comment warns about — it can misbehave the moment the second overlay's Live toggle flips. Have the secondary overlay consume the shared key passively (`refreshInterval:0`, no dedupe override) and let the live overlay own cadence. Confidence High; severity Low.
+- **`/v1/agents` polled by three components / at camera cadence** — `cameras-grid-client.tsx:30`, `agents-grid-client.tsx:18`, `home-overview-client.tsx:50`. Cross-page co-mount is coalesced by SWR's 3 s dedupe (no steady-state double-request). The questionable case is the cameras grid polling effectively-static agent names at the same 10 s as time-sensitive camera status. Consider 60 s for the cameras-grid `/v1/agents` poll only. **Do NOT apply a blanket interval increase.** Confidence Medium; severity Low.
+- **Latest-frame `<img>` re-downloads bytes every 7 s** — `latest-frame-card-next.tsx:54`, `types.ts:124`. Signed URL rotates each poll; key the `src` on `storage_key`/`captured_at` and only swap on a genuinely new frame, respecting `expires_at`. Confidence Medium; severity Low.
+- **Reliability re-fetches both trend ranges on every `router.refresh()`** — `reliability/page.tsx:49,54`. Small payloads; accepted tradeoff for instant client toggling. No change without evidence of excessive refreshes.
+- **Positive verifications:** `fallbackData` seeding is consistent (no duplicate initial client request); no poller fires before its ID/account is ready (no 401/404-then-refetch churn).
+
+## React Rendering Findings
+- **No `React.memo` anywhere in the active app** (grep-confirmed). This is the systemic backdrop, but it is **correctly Low** for list grids/cards because SWR 2.4.1 deep-compares (`dequal`) — a no-op 10 s poll does NOT re-render. The one place memo genuinely matters is the **data-independent, high-frequency** live-overlay path (#1): `PerceptionOverlaySvg` + `LiveStreamPlayerNext` tick at ~4 Hz, not on data change. **Do NOT blanket-memo list cards** (no benefit without stabilizing element identity across SWR array swaps — adds noise and false confidence).
+- **Live overlay double-computation** (#1) — `normalizeSnapshot` + `selectOverlayObjects` run twice per frame across the overlay boundary (`live-perception-overlay-next.tsx:211,214`; `overlay-svg.tsx:46`); also in the latest-frame overlay (`:79,83`). Medium / High confidence on the duplication.
+- **1 s countdown tick re-renders the entire overlay + player** (#1) — `use-live-detection-session.ts:52-56`, `live-perception-overlay-next.tsx:147`. Pure waste; fixed by the snapshot/player memoization or by extracting the countdown leaf.
+- **`CursorGlow`** (#2) — not a React re-render (mutates inline styles), but the dominant input-lag candidate.
+- **`RelativeTime` 30 s ticker + `Intl.DateTimeFormat`-per-call** — `relative-time.tsx:29,60,74`; `lib/time.ts:31`; `sessions-table.tsx:88,94`; `tokens-table.tsx:97,103,110`. The leaf-only re-render boundary is healthy (does NOT bubble to parent table bodies), and the shared ref-counted ticker is the correct design. The avoidable cost is `formatAbsolute` constructing a fresh `Intl.DateTimeFormat` on every call: a 100-row sessions table rebuilds ~200 formatters per render/tick. Hoist one module-level `dtf` (mirroring the existing shared `rtf`). Confidence High; severity Low.
+- **Geometry drag loop** (#5).
+- **Unmemoized derived counts/lookups in wrappers** — `cameras-grid-client.tsx:34,39`; `home-overview-client.tsx:80,107,110`; `agents-grid-client.tsx:23-25`; `sessions-table-client.tsx:33-35`. Bounded by SWR deep-compare; optional `useMemo` only if fleets grow large. Quick-win-eligible but low value at current sizes.
+- **Positive verifications:** `ScrollArea` isolates scroll re-renders to itself (children passed as props); no context providers / no `SWRConfig` — polling updates are isolated per leaf; all list keys are stable domain ids (no index keys).
+
+## Bundle/Dependency Findings
+- **Build measurement (supplement to agent run):** `next build` (Turbopack) compiles in ~2.2 s and passes TypeScript with no errors. The first build run failed at "Collecting page data" because the three `NEXT_PUBLIC_*` env vars were unset (`src/lib/env.ts` zod validation throws). A re-run with placeholder public env values **completed successfully**; the Turbopack route table lists all `/dashboard/*` routes as dynamic (`ƒ`) server-rendered, but Turbopack's table omits the per-route "First Load JS" KB column, so route-level sizes must be read from chunk analysis below. `.next/static` totals **2.3 MB** uncompressed.
+- **Full `@supabase/supabase-js` SDK in the client bundle, apparently double-bundled (HIGH impact/confidence)** — the two largest static chunks are **523,347 bytes (~511 KB) each** (`.next/static/chunks/05~w.ywqxq~f~.js`, `178dp5f-uic8u.js`), both carrying `RealtimeClient`/`GoTrueClient`/storage/websocket markers and `cmp`-different — ~1 MB of duplicated SDK on disk, likely the `/dashboard` and `/dashboard-legacy` route groups each pulling `lib/supabase/client.ts`. The SDK reaches the client only via Realtime (sanctioned), through exactly two consumers: `camera-detail-realtime-next.tsx:5,29` and `live-perception-overlay-next.tsx:8,267`. **Top opportunity:** `dynamic(() => import(...), { ssr:false })` those two components so the SDK loads only on camera-detail routes (defers loading; does not change Realtime behavior). When legacy retires, the double-bundling halves.
+- **`lucide-react` (LOW risk)** — 38 M on disk but tree-shakes (`sideEffects:false`, real ESM `module` entry, named imports only, no barrel). Optional hardening: add `experimental.optimizePackageImports: ['lucide-react']` to the currently-empty `next.config.ts`.
+- **`zod` leaking toward client (MEDIUM, verify)** — intended server-only (`src/lib/env.ts`), but `env.ts` is imported by the client supabase client (`lib/supabase/client.ts:4`). No zod markers were found in inspected chunks, but not exhaustively grepped. Confirm `env.ts`'s validated export is structured so the schema/zod import is dead-code-eliminated on the client (validation runs once server-side; client reads plain values).
+- **No code-splitting today** — zero `next/dynamic`/`React.lazy` in shipped code; only App Router's automatic per-route segment splitting. Geometry editor (largest source file, `geometry-editor-panel.tsx`, 847 lines) is already route-scoped — optional `next/dynamic`, modest gain. WHEP/WebRTC (`lib/webrtc/whep-client.ts`) is framework-free and route-scoped — no action. `sonner` `<Toaster>` is global but small gz — acceptable.
+- **No duplicated runtime dependency versions** — all client/runtime deps resolve to a single version; the multi-version packages are dev/build tooling only.
+- **Cosmetic note:** root `<Toaster theme="dark">` (`app/layout.tsx`) on a light-themed `/dashboard` — not a perf issue.
+
+## Quick Wins
+A checklist of small, safe, low-risk changes (the `quickWin` findings):
+
+- [ ] **Memoize live-overlay derivations** — `useMemo` `normalizeSnapshot` on `[record]`, `selectOverlayObjects`/`svg` on snapshot+toggles. `live-perception-overlay-next.tsx:211,214,225`; same in `latest-frame-perception-overlay-next.tsx:79,83`.
+- [x] **Share one `Intl.DateTimeFormat`** in `formatAbsolute` (hoist module-level `dtf`, mirror existing `rtf`). `src/lib/time.ts:31`. *(Batch 1, done)*
+- [x] **rAF-throttle `CursorGlow`** + batch reads-before-writes. `src/components/dashboard-next/cursor-glow.tsx:17-35`. *(Batch 1, done)*
+- [ ] **`React.cache`-wrap `getActiveAccount`** so `getUser()`+`listMemberships()` run once per render pass. `src/lib/account/active.ts:41`.
+- [ ] **Drop redundant `getSession()` after `getUser()`** in the proxy (read token from the `getUser` result). `src/app/api/upstream/[...path]/route.ts:64`.
+- [x] **Hoist `onLineSelect` into `useCallback`** in the geometry panel (prereq for memoizing SVG children). `geometry-editor-panel.tsx:499`. *(Batch 1, done)*
+- [ ] **Parallelize the geometry page's two independent RSC fetches.** `configure/geometry/page.tsx:35,50`.
+- [ ] **Parallelize the camera layout's `getCamera` + `listStreamSessions`** (use the `cameraId` param for sessions). `cameras/[cameraId]/layout.tsx:35,43`.
+- [x] **Per-row `useMemo` in the observations panel** for `summarize`/labels, keyed on the `observations` reference. `recent-observations-panel-next.tsx`. *(Batch 1, done — `JSON.stringify` left lazy/open-rows-only to avoid eager work)*
+- [x] **`experimental.optimizePackageImports: ['lucide-react']`** in `next.config.ts`. *(Batch 1, done)*
+- [ ] *(Optional, low value)* memoize `agentNames`/counts in `cameras-grid-client.tsx:34,39-41`.
+
+## Bigger Fixes
+Larger changes needing care; tradeoff noted:
+
+- **`React.memo` `PerceptionOverlaySvg` + `LiveStreamPlayerNext` and thread a precomputed `overlayObjects` prop** — removes the double `selectOverlayObjects` pass and stops the player reconciling on every overlay tick. *Tradeoff:* `PerceptionOverlaySvg` is shared with `/dashboard-legacy` and a `renderToStaticMarkup` unit test — the new prop must be additive/optional; requires a stable memoized `snapshot` reference to be effective. (#1)
+- **Debounce/coalesce `router.refresh()` on rapid session transitions** (trailing 250–500 ms). *Tradeoff:* sub-second delay before the UI reacts to a "streaming" transition — keep short/trailing. (#4)
+- **Geometry drag: split ROIs into `React.memo`'d children and/or rAF-coalesce `setShapes`.** *Tradeoff:* rAF coalescing must flush the final position on `pointerup` or it drops the last move — needs a test. (#5)
+- **`dynamic(..., { ssr:false })` the two Supabase-Realtime consumers** to pull the ~511 KB SDK out of the shared bundle and investigate the double-bundling. *Tradeoff:* none to Realtime behavior; verify the SDK hoists to one shared async chunk. (Bundle)
+- **Latest-frame `<img>` src pinning** to avoid re-downloading identical bytes. *Tradeoff:* must fall back to a fresh signed URL before `expires_at` or you serve an expired URL — test against the signing TTL.
+- **Investigate-only (backend required):** whether full network `getUser()` is needed on every GET read at the proxy vs only on mutations. *Tradeoff:* security boundary — do not change without upstream-api-server auth confirmation. (#3)
+
+## Recommended Implementation Plan
+
+- **Batch 1 — Safe quick wins (no behavior change):** share `Intl.DateTimeFormat` (`time.ts:31`); rAF-throttle `CursorGlow` (`cursor-glow.tsx`); hoist `onLineSelect` `useCallback` (`geometry-editor-panel.tsx:499`); `optimizePackageImports: ['lucide-react']`; per-row `useMemo` in observations panel.
+- **Batch 2 — Data fetching / polling cleanup:** `React.cache`-wrap `getActiveAccount` (and optionally `getCamera`/`listStreamSessions`); drop redundant proxy `getSession()`; parallelize the geometry-page and camera-layout fetches; resolve the overlapping monitor-page SWR keys (passive secondary overlay); set the cameras-grid `/v1/agents` poll to 60 s; debounce `router.refresh()`.
+- **Batch 3 — Rendering and memoization cleanup:** `useMemo` the overlay `normalizeSnapshot`/`selectOverlayObjects`/`svg`; `React.memo` `PerceptionOverlaySvg` (+ additive precomputed-objects prop) and `LiveStreamPlayerNext`; extract the countdown leaf; geometry ROI memo'd children + optional rAF drag coalescing; latest-frame `<img>` src pinning.
+- **Batch 4 — Bundle splitting / lazy loading:** `dynamic`-import the two Supabase-Realtime consumers; confirm/resolve the SDK double-bundling; verify `zod`/`env.ts` is not in the client graph.
+- **Batch 5 — Deeper architecture (only if warranted by data):** scope `router.refresh()` so only session-dependent panels refetch; backend-confirmed reduction of per-read proxy `getUser()`; decouple hourly reliability trends from the refresh fan-out. Pursue only with profiling evidence of frequent refreshes / proxy auth load.
+
+## Verification Plan
+
+- **Baseline first:** with the three `NEXT_PUBLIC_*` env vars set, run `next build` and record before/after `.next/static/chunks` sizes (target the two ~511 KB chunks). Capture a React Profiler trace of the monitor page during an active live-detections session and a DevTools Performance trace while moving the mouse over Home, as the two before/after anchors.
+
+- **Batch 1:**
+  - *DevTools Performance:* record cursor movement over Home — confirm "Recalculate Style"/"Layout" events collapse to ≤1 per frame after the `CursorGlow` rAF change.
+  - *React Profiler:* observations panel and Sessions/Tokens tables — confirm `formatAbsolute`/per-row work no longer reruns on the 30 s tick.
+  - *Smoke:* glow visually tracks the cursor; geometry line selection still works; relative/absolute timestamps render identically.
+
+- **Batch 2:**
+  - *Network tab:* on a monitor navigation, confirm `getUser`/upstream call counts drop (no duplicate `getCamera`/`listStreamSessions`, no second `getSession`); confirm the geometry/layout fetches now overlap (parallel, not staircased) in the waterfall.
+  - *Network tab:* on the cameras grid, confirm `/v1/agents` now polls at 60 s while `/v1/cameras` stays 10 s; toggle the secondary monitor overlay's Live and confirm `perception/latest` is served from one cadence (no duplicate competing timers).
+  - *Smoke:* auth flow (login → select-account → dashboard) unchanged; debounced `router.refresh()` still updates session/validation panels on a real stream start/stop within ~½ s; reliability range toggle still instant.
+
+- **Batch 3:**
+  - *React Profiler (live session):* confirm `PerceptionOverlaySvg`/`LiveStreamPlayerNext` no longer re-render on the 1 s countdown tick and only re-render when the snapshot actually changes; confirm `selectOverlayObjects` runs once per frame, not twice (add a temporary counter or inspect commit reasons).
+  - *Smoke:* live overlay boxes/labels/geometry match the video and update at the same liveness; countdown still counts down; latest-frame image updates on a genuinely new frame but does NOT re-download on an unchanged frame (Network tab, no 7 s image refetch); image still refreshes before signed-URL expiry.
+  - *Geometry:* drag an ROI vertex with several shapes present — confirm only the dragged shape reconciles (Profiler "why did this render") and the final position lands on `pointerup`.
+
+- **Batch 4:**
+  - *Build/bundle:* re-run `next build`; confirm the Supabase SDK appears in a single shared async chunk (not two ~511 KB chunks) and is absent from the shared/global bundle; confirm no `zod` markers in client chunks; confirm `lucide` icons still render.
+  - *Smoke:* camera-detail Realtime (session badge, perception overlay) still connects and updates after the dynamic import; non-camera routes (Home/Agents/Sessions/Tokens) load without pulling the SDK chunk (Network tab).
+
+- **Batch 5 (only if pursued):** A/B the refresh fan-out under simulated session churn (reconnecting agent) — confirm static meta panels no longer refetch while session/validation panels stay live; any proxy `getUser` change must be validated against upstream-api-server auth (reject a tampered/expired JWT) before merge.
+
+- **Cross-cutting regression sweep (every batch):** verify no leaked intervals/Realtime channels on tab hide/unhide and on navigation between camera sub-tabs (DevTools Performance "Live" memory + Supabase channel count); confirm hidden tabs still don't poll (`refreshWhenHidden:false`); confirm the camera 404 → `notFound()` path still renders for a removed camera after any fetch-parallelization.
