@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Shapes } from "lucide-react";
+import { ArrowRight, ScanEye, Shapes } from "lucide-react";
 
 // Configure tab — the P6-B seam. The preflight sub-route at ./geometry
 // already renders the camera's real saved geometry (read-only); the
@@ -12,9 +12,32 @@ export default async function CameraConfigurePage({
 }) {
   const { cameraId } = await params;
   const geometryHref = `/dashboard/cameras/${cameraId}/configure/geometry`;
+  const detectionHref = `/dashboard/cameras/${cameraId}/configure/detection`;
 
   return (
     <div className="space-y-4 md:space-y-6">
+      <Link
+        href={detectionHref}
+        className="group dn-tile flex items-center gap-4 p-[clamp(1.1rem,1.8vw,1.5rem)] transition hover:bg-[var(--dn-creek-mid)]/5"
+      >
+        <ScanEye
+          className="h-7 w-7 shrink-0 text-[var(--dn-creek-mid)]"
+          aria-hidden
+        />
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+            Model &amp; Detection
+          </h3>
+          <p className="mt-1 text-sm text-[var(--dn-text-50)]">
+            Choose the detection model and which object classes to detect.
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dn-creek-mid)]/15 px-3 py-1.5 text-sm font-bold text-[var(--dn-creek-deep)] transition group-hover:bg-[var(--dn-creek-mid)]/25">
+          Open editor
+          <ArrowRight className="h-3.5 w-3.5" />
+        </span>
+      </Link>
+
       <Link
         href={geometryHref}
         className="group dn-tile flex items-center gap-4 p-[clamp(1.1rem,1.8vw,1.5rem)] transition hover:bg-[var(--dn-creek-mid)]/5"
