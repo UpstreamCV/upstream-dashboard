@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Activity, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { RelativeTime } from "@/components/data/relative-time";
@@ -80,7 +80,26 @@ export function RecentObservationsPanelNext({
           : undefined,
     });
 
-  const observations = data?.observations ?? [];
+  // Stable empty-array identity when data is undefined so the `rows` memo below
+  // (and SWR deep-compared data) don't recompute on every render.
+  const observations = useMemo(() => data?.observations ?? [], [data]);
+
+  // Derive the always-rendered per-row fields once per observation set rather
+  // than on every re-render (row expand/collapse, refresh spinner, and 5 s
+  // polls that return deep-equal data all re-render this component, but the
+  // rows themselves are unchanged). JSON.stringify stays lazy in the expanded
+  // branch below so unopened payloads are never stringified.
+  const rows = useMemo(
+    () =>
+      observations.map((obs) => ({
+        obs,
+        summary: summarizeObservation(obs),
+        typeText: typeLabel(obs.type),
+        sessionShort: shortId(obs.stream_session_id),
+        processorShort: shortId(obs.processor_id),
+      })),
+    [observations],
+  );
 
   function toggleRow(id: string) {
     setOpenRows((prev) => {
@@ -182,7 +201,7 @@ export function RecentObservationsPanelNext({
               </tr>
             </thead>
             <tbody>
-              {observations.map((obs) => {
+              {rows.map(({ obs, summary, typeText, sessionShort, processorShort }) => {
                 const open = openRows.has(obs.id);
                 return (
                   <Fragment key={obs.id}>
@@ -198,20 +217,20 @@ export function RecentObservationsPanelNext({
                           className="font-mono text-xs text-black"
                           title={obs.type}
                         >
-                          {typeLabel(obs.type)}
+                          {typeText}
                         </span>
                       </td>
                       <td className="py-2 pr-3 align-top text-black/80">
-                        {summarizeObservation(obs)}
+                        {summary}
                       </td>
                       <td className="py-2 pr-3 align-top whitespace-nowrap">
                         <span className="font-mono text-xs text-[var(--dn-text-50)]">
-                          {shortId(obs.stream_session_id)}
+                          {sessionShort}
                         </span>
                       </td>
                       <td className="py-2 pr-3 align-top whitespace-nowrap">
                         <span className="font-mono text-xs text-[var(--dn-text-50)]">
-                          {shortId(obs.processor_id)}
+                          {processorShort}
                         </span>
                       </td>
                       <td className="py-2 align-top text-right">

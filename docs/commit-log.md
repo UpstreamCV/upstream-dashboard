@@ -4,6 +4,25 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-31 — Perf sweep Batch 1: safe quick wins (no behavior change)
+
+**Subject:** Apply the five low-risk, behavior-preserving performance fixes from the dashboard performance sweep (`docs/perf-sweep-report.md`, Batch 1).
+
+**Why:** The dashboard felt laggy. A multi-agent sweep found the active `/dashboard` app is architecturally healthy (no tree-wide providers, SWR deep-compares, subscriptions/timers all clean) and concentrated the real cost in a few hot paths. Batch 1 is the subset that is provably safe — pure memoization, render-pass batching, and a build-config hardening — landed first so the remaining batches (data/polling, rendering/memoization, bundle-splitting) can be verified against a clean baseline. No polling cadence, Realtime, auth, or backend behavior was touched.
+
+**What changed (dashboard only):**
+- `src/lib/time.ts` — hoisted one shared module-level `Intl.DateTimeFormat` for `formatAbsolute` (mirrors the existing shared `rtf`), so large Sessions/Tokens tables stop constructing ~200 formatters per render/tick.
+- `src/components/dashboard-next/cursor-glow.tsx` — the shell-wide `mousemove` glow tracker now coalesces 60–120 Hz events into one `requestAnimationFrame`, and **batches all `getBoundingClientRect` reads before any CSS-var writes** (was read-after-write per element → forced synchronous layout each event). Pending rAF is cancelled on unmount. Visual behavior unchanged (≤1 frame of glow latency).
+- `src/components/dashboard-next/recent-observations-panel-next.tsx` — per-row `summary`/`type`/short-id derivations are now `useMemo`'d on the `observations` reference (stabilized to a constant empty-array identity when undefined), so row expand/collapse and idle 5 s polls no longer recompute every row. `JSON.stringify` of payloads stays lazy (open rows only) to avoid eager work.
+- `src/components/dashboard-next/geometry/geometry-editor-panel.tsx` — extracted the inline `onLineSelect` arrow into a stable `useCallback` (removes a per-render prop identity change; prerequisite for memoizing `GeometryEditorSvg` in Batch 3).
+- `next.config.ts` — added `experimental.optimizePackageImports: ['lucide-react']` (defensive tree-shaking + faster dev compiles; `lucide-react` already side-effect-free, so no bundle-size delta today).
+
+**Verification:** `npm test` 347/347 pass; `npm run lint` clean (the linter caught a `useMemo` dep-stability issue in the first pass at the observations change, fixed by memoizing the `observations` array itself); `npm run build` succeeds — TypeScript clean, all 19 pages generate. `.next/static` unchanged at 2.3 MB (the two ~511 KB Supabase chunks are the Batch 4 dynamic-import target, untouched here). Browser smoke recommended: cursor glow over Home tiles, observations JSON expand/collapse, geometry line selection.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/perf-sweep-report.md` (Batch 1 marked implemented). No api-server change.
+
+---
+
 ## 2026-05-30 — Reliability M8-A: 24h/7d confidence-trend toggle + degradation badge
 
 **Subject:** Add a 24h | 7d range toggle and a plain-language trend badge (Stable / Improving / Degrading / Warming up) to the Detection confidence trend card on `/dashboard/cameras/[cameraId]/reliability`.

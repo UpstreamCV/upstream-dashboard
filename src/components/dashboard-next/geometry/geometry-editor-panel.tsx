@@ -126,6 +126,13 @@ export function GeometryEditorPanel({
 
   const cancelRoiDraft = useCallback(() => setRoiDraft(null), []);
 
+  // Stable identity so GeometryEditorSvg can be memoized later without this
+  // prop defeating it (setSelected is a stable setState dispatcher).
+  const handleLineSelect = useCallback(
+    (id: string) => setSelected({ kind: "line", id }),
+    [],
+  );
+
   // Keyboard shortcuts while a draft is in flight: Escape cancels either
   // draft; Backspace pops the last ROI vertex during ROI drawing.
   useEffect(() => {
@@ -496,7 +503,7 @@ export function GeometryEditorPanel({
             interactive={tool === "select"}
             lineDraft={lineDraft}
             roiDraft={roiDraft}
-            onLineSelect={(id) => setSelected({ kind: "line", id })}
+            onLineSelect={handleLineSelect}
             onRoiPointerDown={handleRoiPointerDown}
             onLineEndpointPointerDown={startEndpointDrag}
             onRoiVertexPointerDown={startRoiVertexDrag}
