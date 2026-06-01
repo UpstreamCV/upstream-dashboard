@@ -5,7 +5,8 @@ import { Boxes, RefreshCw, Radio, Spline, Tag } from "lucide-react";
 import clsx from "clsx";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { useUpstreamList } from "@/lib/api/use-list";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client-lazy";
 import type {
   LatestPerceptionRecord,
   LatestPerceptionResponse,
@@ -264,23 +265,30 @@ export function LivePerceptionOverlayNext({
   // publish rate rather than the dedupe-throttled refetch rate.
   useEffect(() => {
     if (!shouldUseRealtime) return;
-    const supabase = createSupabaseBrowserClient();
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let supabase: SupabaseClient | null = null;
+    let channel: RealtimeChannel | null = null;
     let cancelled = false;
 
     void (async () => {
+      // The Supabase SDK is loaded lazily (kept off the camera-route critical
+      // bundle), so await the client before touching it. The 250ms SWR poll is
+      // already carrying the overlay, so a slightly-later Realtime connect is
+      // invisible.
+      const client = await getSupabaseBrowserClient();
+      if (cancelled) return;
+      supabase = client;
       // Authorize the Realtime socket with the user's JWT BEFORE subscribing.
       // postgres_changes on an RLS table authorizes each record read against
       // this token; if it isn't set, the payload comes back "Error 401:
       // Unauthorized" (the socket authorizes as anon) and the channel churns
       // SUBSCRIBED -> CLOSED. Relying on the client's eager/background setAuth
       // races the subscribe, so set it explicitly and await it here.
-      const { data } = await supabase.auth.getSession();
+      const { data } = await client.auth.getSession();
       if (cancelled) return;
-      await supabase.realtime.setAuth(data.session?.access_token ?? null);
+      await client.realtime.setAuth(data.session?.access_token ?? null);
       if (cancelled) return;
 
-      channel = supabase
+      channel = client
         .channel(`camera:${cameraId}:perception`)
         .on(
           "postgres_changes",
@@ -329,7 +337,7 @@ export function LivePerceptionOverlayNext({
       cancelled = true;
       setRealtimeStatus(null);
       setLastRealtimeEventAt(null);
-      if (channel) void supabase.removeChannel(channel);
+      if (supabase && channel) void supabase.removeChannel(channel);
     };
   }, [shouldUseRealtime, cameraId, mutate, now]);
 

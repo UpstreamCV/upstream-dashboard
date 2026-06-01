@@ -4,6 +4,26 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-01 — Navigation: lazy-load the Supabase SDK off camera-route critical JS
+
+**Subject:** Defer the ~511 KB Supabase browser SDK to an on-demand async chunk so it no longer ships in every camera route's initial bundle; load it only when a Realtime subscription actually starts.
+
+**Why:** Follow-up navigation work (N2). The build manifest confirmed the Supabase SDK (the two ~511 KB `RealtimeClient`/`GoTrueClient` chunks) was referenced **only** by camera routes — but by **all** camera tabs, because the session-state Realtime listener lives in the shared `[cameraId]/layout.tsx`. So entering a camera or switching camera tabs shipped ~511 KB of SDK in the critical initial JS purely for a background push, even on tabs that need no Realtime (Settings/Configure/Reliability). Non-camera routes never loaded it (which is why N1 alone made general nav feel fast). The original sweep's suggestion to `dynamic()`-import the overlay component was rejected: `LivePerceptionOverlayNext` wraps the video player, so lazy-loading the component would delay the video. Lazy-loading the SDK at the point of use keeps all UI immediate.
+
+**What changed (active /dashboard only):**
+- `src/lib/supabase/client-lazy.ts` (new) — `getSupabaseBrowserClient()`: an async, memoized (one promise/socket per tab) getter that obtains the client via a dynamic `import("@supabase/ssr")`, so Turbopack splits the SDK into its own async chunk. Same setAuth-on-create + on-auth-change token mirroring as the eager `./client` (which the /dashboard-legacy fallback still uses, left as-is).
+- `src/components/dashboard-next/camera-detail-realtime-next.tsx` — its effect now `await`s the lazy client inside a cancel-guarded async IIFE before subscribing; debounce + teardown preserved (renders `null`, so zero UI impact).
+- `src/components/dashboard-next/live-perception-overlay-next.tsx` — its Realtime effect (already an async IIFE) now awaits the lazy client first; auth-before-subscribe, the errored-event drop, the direct SWR cache write, and teardown are unchanged. The 250 ms poll already carries the overlay, so a slightly-later Realtime connect is invisible.
+- `src/components/dashboard-next/live-perception-overlay-next.test.tsx` — mock retargeted from `@/lib/supabase/client` (sync) to `@/lib/supabase/client-lazy` (async `getSupabaseBrowserClient`).
+
+**Result (placeholder-env build):** the two 511 KB initial chunks are gone; the SDK is now a single **233 KB on-demand async chunk**, confirmed **absent** from the initial bundles of the monitor / settings / reliability tabs. `.next/static` 2.3 MB → 2.1 MB; camera-route critical JS down ~511 KB.
+
+**Verification:** `npm test` 347/347 pass (overlay test updated); `npm run lint` clean; `npm run build` clean (19 pages). Smoke after deploy: open a streaming camera and confirm the status badge + perception overlay still update on a real stream start/stop (Realtime still connects), and tab between camera tabs.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/perf-sweep-report.md` (N2 status).
+
+---
+
 ## 2026-06-01 — Navigation: add loading.tsx Suspense boundaries for instant transitions
 
 **Subject:** Add `loading.tsx` boundaries at the (app) shell and camera-detail levels so client-side navigations show an immediate skeleton instead of blocking on server fetches, and so `<Link>` can partially prefetch these dynamic routes.
