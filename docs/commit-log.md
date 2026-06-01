@@ -4,6 +4,26 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-01 — Navigation: add loading.tsx Suspense boundaries for instant transitions
+
+**Subject:** Add `loading.tsx` boundaries at the (app) shell and camera-detail levels so client-side navigations show an immediate skeleton instead of blocking on server fetches, and so `<Link>` can partially prefetch these dynamic routes.
+
+**Why:** Follow-up to the perf sweep — the user reported that *navigating between pages* (not the live session) felt slow. Root cause (confirmed against `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`): every `/dashboard` route is **dynamic** (`ƒ`), and Next 16 **skips prefetch for dynamic routes unless a `loading.tsx` boundary exists**. The repo had `loading.tsx` only at the `dashboard` root — none at the `(app)` shell or the camera-detail/tab level — so each `<Link>` click waited for the full RSC render + `no-store` fetches with the old page frozen on screen, and prefetch was silently disabled. The camera-tabs component already assumed per-tab boundaries ("loading boundaries scope per tab") that were never created. This replaces the original Batch 3 (live-overlay re-render loop), which was **dropped** — the live overlay isn't where the felt lag is.
+
+**What changed (dashboard only):**
+- `src/app/dashboard/(app)/loading.tsx` (new) — content-area skeleton for top-level navigations (Home / Cameras / Agents / Stream sessions / Settings / API tokens). Renders inside the persistent shell (sidebar/topbar stay; only `<main>` swaps), so transitions show instant feedback. Its existence also enables `<Link>` partial-prefetch of the shell on hover/viewport.
+- `src/app/dashboard/(app)/cameras/[cameraId]/loading.tsx` (new) — content skeleton for camera-detail **tab** switches (Monitor / Observations / Configure / Settings / Reliability). Renders inside the `[cameraId]` layout, so the camera header + tab strip persist and only the tab content shows the skeleton while the tab streams in. Layout mirrors the (heaviest) Monitor tab.
+
+Both are content-only (no `ShellBackdrop`/dvh wrapper — that's the shell's job); skeleton styling reuses the existing pattern (`bg-white/1x` header bars on the frosted `dn-panel`, pulsing solid-white `dn-tile` cards).
+
+**Considered and rejected for now:** `unstable_instant` / Cache Components (Next 16's instant-navigation API). It requires `cacheComponents: true` + `use cache`, i.e. caching account-scoped multi-tenant data — too risky for the payoff against this app's deliberate `cache: "no-store"` model. The standard streaming/`loading.tsx` model achieves the perceived-speed win with no architectural change. Bundle-splitting the Supabase Realtime consumers (which would speed hydration → earlier prefetch) is a candidate next step (the old Batch 4), deferred pending review of this change.
+
+**Verification:** `npm test` 347/347 pass; `npm run lint` clean; `npm run build` clean (all 19 pages generate; both loading boundaries compile). Additive Suspense fallbacks — worst case is a brief skeleton flash on a very fast response. Browser smoke recommended: click between sidebar pages and between camera tabs and confirm an immediate skeleton + streamed content (vs. the prior freeze).
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/perf-sweep-report.md` (navigation finding + status).
+
+---
+
 ## 2026-05-31 — Perf sweep Batch 2: data-fetching / polling cleanup
 
 **Subject:** Apply the data/polling latency cleanups from the performance sweep (`docs/perf-sweep-report.md`, Batch 2): request dedupe, fetch parallelization, shared-key cadence ownership, a targeted poll interval, and a debounced live-refresh.
