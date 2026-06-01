@@ -27,6 +27,13 @@ export function CameraDetailRealtimeNext({
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
+    // Coalesce bursts of state transitions into one refresh. A normal lifecycle
+    // (approved -> streaming -> ended) is 2-3 transitions in quick succession,
+    // and a reconnecting agent can flip states rapidly — each router.refresh()
+    // re-runs the whole camera RSC subtree (~13 no-store fetches). A short
+    // trailing debounce keeps the live view fresh (<=300ms behind the final
+    // transition) while collapsing rapid-fire churn into a single refetch.
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     // Channel name: `camera:${cameraId}:sessions` — the primary /dashboard name.
     // The /dashboard-legacy fallback uses `legacy-camera:…` so a user with both
     // tabs open on the same camera gets two independent subscriptions instead of
@@ -56,13 +63,20 @@ export function CameraDetailRealtimeNext({
           // Skip DELETE events and no-op writes that don't change `state`.
           if (next && next !== lastStateRef.current) {
             lastStateRef.current = next;
-            router.refresh();
+            // Trailing debounce: reset the timer on each transition so a rapid
+            // burst fires one refresh ~300ms after the last change.
+            if (refreshTimer) clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(() => {
+              refreshTimer = null;
+              router.refresh();
+            }, 300);
           }
         },
       )
       .subscribe();
 
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
       void supabase.removeChannel(channel);
     };
   }, [cameraId, router]);

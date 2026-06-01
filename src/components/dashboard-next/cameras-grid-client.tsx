@@ -10,8 +10,9 @@ import type {
   CameraListResponse,
 } from "@/lib/api/types";
 
-// Client wrapper that polls /v1/cameras + /v1/agents every 10s (defaults to
-// useUpstreamList's 10s interval). Server hands in initialData for instant
+// Client wrapper that polls /v1/cameras every 10s (the default) for live status,
+// and /v1/agents every 60s — agent display names are effectively static, so they
+// don't need the time-sensitive cadence. Server hands in initialData for instant
 // first paint; from then on SWR keeps things fresh.
 
 export function CamerasGridClient({
@@ -28,6 +29,9 @@ export function CamerasGridClient({
 
   const agents =
     useUpstreamList<AgentListResponse>("/v1/agents", {
+      // Names rarely change; poll 6x slower than camera status (a rename shows
+      // up within 60s). Targeted, not a blanket interval bump.
+      refreshInterval: 60_000,
       fallbackData: { agents: initialAgents },
     }).data?.agents ?? initialAgents;
 

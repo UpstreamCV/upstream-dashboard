@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
@@ -37,8 +38,15 @@ export type ActiveAccountContext = {
  *  - >1 memberships, no pin  → /select-account
  *  - cookie points at an account the user no longer belongs to → cookie cleared,
  *                                                                /select-account
+ *
+ * Wrapped in React `cache()` so the per-render fan-out — the `(app)` layout, the
+ * `[cameraId]` layout, and the page all call this — resolves to a single
+ * `getUser()` (a network round-trip to Supabase Auth) + one membership read per
+ * request, instead of 2–3. `listMemberships` is already `cache()`-wrapped; this
+ * extends the dedupe to the auth call and the cookie resolution.
  */
-export async function getActiveAccount(): Promise<ActiveAccountContext> {
+export const getActiveAccount = cache(
+  async (): Promise<ActiveAccountContext> => {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -72,4 +80,5 @@ export async function getActiveAccount(): Promise<ActiveAccountContext> {
     activeAccountId: active.accountId,
     activeAccount: active,
   };
-}
+  },
+);
