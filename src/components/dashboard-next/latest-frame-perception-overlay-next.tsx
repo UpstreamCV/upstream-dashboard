@@ -47,16 +47,23 @@ export function LatestFramePerceptionOverlayNext({
   const [minConfidence, setMinConfidence] = useState(0);
   const [live, setLive] = useState(false);
 
-  const refreshInterval = live ? 5_000 : 0;
+  const frameRefreshInterval = live ? 5_000 : 0;
 
   const frameSwr = useUpstreamList<LatestFrame>(
     `/v1/cameras/${cameraId}/latest-frame`,
-    { refreshInterval, fallbackData: initialFrame ?? undefined },
+    { refreshInterval: frameRefreshInterval, fallbackData: initialFrame ?? undefined },
   );
+  // Perception shares its SWR key with <LivePerceptionOverlayNext>, which owns a
+  // fast (250ms) cadence + 250ms dedupe while a session streams. Driving the same
+  // key on a second 5s cadence here created competing timers / mismatched dedupe
+  // windows on one cache entry — exactly the coalescing fragility use-list.ts
+  // warns about. Consume the key passively: read whatever the live overlay (or
+  // this panel's manual Refresh button) writes to cache. Perception never changes
+  // without an active session, so there is nothing for this panel to poll for.
   const perceptionSwr = useUpstreamList<LatestPerceptionResponse>(
     buildLatestPerceptionPath(cameraId),
     {
-      refreshInterval,
+      refreshInterval: 0,
       fallbackData: initialPerception
         ? { snapshot: initialPerception }
         : undefined,

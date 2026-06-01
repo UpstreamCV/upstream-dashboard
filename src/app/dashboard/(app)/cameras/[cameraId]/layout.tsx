@@ -30,21 +30,21 @@ export default async function CameraDetailLayout({
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
 
-  let camera: Camera;
-  try {
-    camera = await getCamera({ accountId: activeAccountId, cameraId });
-  } catch (err) {
-    if (err instanceof UpstreamApiError && err.status === 404) {
-      notFound();
-    }
-    throw err;
-  }
-
-  const sessions = await listStreamSessions({
-    accountId: activeAccountId,
-    cameraId: camera.id,
-    limit: 1,
-  });
+  // getCamera (the 404 gate) and listStreamSessions both key off
+  // (accountId, cameraId) and don't depend on each other, so run them
+  // concurrently instead of serially. listStreamSessions uses the cameraId
+  // param (== camera.id) so it needn't wait on getCamera. A 404 from getCamera
+  // still routes to notFound(); the in-flight sessions fetch for a missing
+  // camera is harmless and abandoned.
+  const [camera, sessions] = await Promise.all([
+    getCamera({ accountId: activeAccountId, cameraId }).catch((err): Camera => {
+      if (err instanceof UpstreamApiError && err.status === 404) {
+        notFound();
+      }
+      throw err;
+    }),
+    listStreamSessions({ accountId: activeAccountId, cameraId, limit: 1 }),
+  ]);
   const currentSession: StreamSession | null = sessions[0] ?? null;
 
   return (

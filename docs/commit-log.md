@@ -4,6 +4,28 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-05-31 — Perf sweep Batch 2: data-fetching / polling cleanup
+
+**Subject:** Apply the data/polling latency cleanups from the performance sweep (`docs/perf-sweep-report.md`, Batch 2): request dedupe, fetch parallelization, shared-key cadence ownership, a targeted poll interval, and a debounced live-refresh.
+
+**Why:** Batch 1 cleared the render-side quick wins; Batch 2 targets server-side latency and request-count amplification on the camera pages (the heaviest routes). These reduce camera-page TTFB and background API chatter without changing what's rendered. One item from the report's list was **deliberately dropped** after reading the code (see below).
+
+**What changed (dashboard only):**
+- `src/lib/account/active.ts` — `getActiveAccount` is now wrapped in React `cache()`. It runs 2–3× per camera render (the `(app)` layout, the `[cameraId]` layout, and the page), each doing a network `getUser()`; request-scoped caching collapses that to one `getUser()` + one membership read per render, and compounds under the Realtime `router.refresh()` path.
+- `src/app/dashboard/(app)/cameras/[cameraId]/layout.tsx` — `getCamera` + `listStreamSessions` now run in `Promise.all` (were serial). Sessions uses the `cameraId` param (== `camera.id`) so neither awaits the other; `getCamera`'s 404 → `notFound()` gate is preserved.
+- `src/app/dashboard/(app)/cameras/[cameraId]/configure/geometry/page.tsx` — `getCameraGeometryConfig` + `getLatestFrame` parallelized the same way (were serial), 404 gate preserved.
+- `src/components/dashboard-next/latest-frame-perception-overlay-next.tsx` — the secondary overlay's perception fetch is now passive (`refreshInterval: 0`). It shares the `perception/latest` SWR key with `LivePerceptionOverlayNext`, which owns a 250ms cadence + 250ms dedupe while streaming; driving the same key on a second 5s cadence created the competing-timer/mismatched-dedupe fragility `use-list.ts` warns about. The captured-frame poll and the panel's Live toggle/manual Refresh are unchanged; perception never changes without an active session, so nothing is lost.
+- `src/components/dashboard-next/cameras-grid-client.tsx` — `/v1/agents` (effectively-static display names) now polls at 60s while `/v1/cameras` (live status) stays at the 10s default. Targeted, not a blanket increase; a rename appears within 60s.
+- `src/components/dashboard-next/camera-detail-realtime-next.tsx` — `router.refresh()` on `stream_sessions` transitions is now trailing-debounced (300ms). A lifecycle is 2–3 transitions in quick succession and each refresh re-runs ~13 `no-store` fetches; the debounce coalesces a burst into one refetch while keeping the live view ≤300ms behind the final transition. Timer cleared on unmount.
+
+**Deliberately NOT done — "drop redundant proxy `getSession()`":** The sweep flagged the proxy's `getSession()` after `getUser()` as redundant. Reading `src/app/api/upstream/[...path]/route.ts`, it isn't: `getUser()` does the network JWT verification but does not return the access token; `getSession()` is a local cookie read that's the only clean way to obtain the `access_token` for the upstream `Authorization` header. It's not a network call and isn't safely removable. Skipped (≈0 benefit, non-zero risk). The only real per-request cost there is `getUser()`, which is the security boundary and stays.
+
+**Verification:** `npm test` 347/347 pass; `npm run lint` clean; `npm run build` clean (TypeScript validates the `cache()` wrapper + `Promise.all` typings; all 19 pages generate). No api-server change. Behavior-preserving except the two intentional, documented timing trade-offs (agents 60s; refresh debounce 300ms). Browser smoke recommended: camera detail/monitor navigation, start/stop a stream (session badge + panels update within ≤300ms), cameras list.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/perf-sweep-report.md` (Batch 2 status).
+
+---
+
 ## 2026-05-31 — Perf sweep Batch 1: safe quick wins (no behavior change)
 
 **Subject:** Apply the five low-risk, behavior-preserving performance fixes from the dashboard performance sweep (`docs/perf-sweep-report.md`, Batch 1).

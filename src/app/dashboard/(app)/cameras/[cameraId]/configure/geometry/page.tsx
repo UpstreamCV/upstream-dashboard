@@ -30,27 +30,24 @@ export default async function CameraGeometryEditorPage({
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
 
-  let record: GeometryConfigRecord;
-  try {
-    record = await getCameraGeometryConfig({
-      accountId: activeAccountId,
-      cameraId,
-    });
-  } catch (err) {
-    if (err instanceof UpstreamApiError && err.status === 404) {
-      notFound();
-    }
-    throw err;
-  }
-
-  // getLatestFrame returns null on 404 / snapshot_not_found — the camera
-  // hasn't streamed yet, so there's nothing to draw on. We still render
-  // the sidebar (operator can read the status + raw record) but show an
-  // empty state where the canvas would be.
-  const latestFrame: LatestFrame | null = await getLatestFrame({
-    accountId: activeAccountId,
-    cameraId,
-  });
+  // The geometry record (404 -> notFound) and the latest frame are independent
+  // reads keyed off (accountId, cameraId), so fetch them concurrently instead of
+  // serially. getLatestFrame returns null on 404 / snapshot_not_found — the
+  // camera hasn't streamed yet, so there's nothing to draw on; we still render
+  // the sidebar (status + raw record) and show an empty state where the canvas
+  // would be.
+  const [record, latestFrame]: [GeometryConfigRecord, LatestFrame | null] =
+    await Promise.all([
+      getCameraGeometryConfig({ accountId: activeAccountId, cameraId }).catch(
+        (err): GeometryConfigRecord => {
+          if (err instanceof UpstreamApiError && err.status === 404) {
+            notFound();
+          }
+          throw err;
+        },
+      ),
+      getLatestFrame({ accountId: activeAccountId, cameraId }),
+    ]);
 
   return (
     <div className="space-y-4 md:space-y-6">
