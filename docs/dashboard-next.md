@@ -139,7 +139,7 @@ The camera detail page is a **tabbed workflow** under `(app)/cameras/[cameraId]/
 | Observations | `/observations` | Recent processor observations + per-row JSON (debug/reliability) | `listRecentObservations(limit: DEFAULT)` |
 | Configure | `/configure` | P6-B seam — geometry editor placeholder + preflight link | none |
 | Configure → Geometry | `/configure/geometry` | Read-only preflight: real `GeometryConfigRecord` from `/v1/cameras/{id}/geometry-config` | `getCameraGeometryConfig` |
-| Configure → Detection | `/configure/detection` | M5 Model & Detection editor: pick a model + object classes, save | `listModels`, `getCameraProcessingConfig` |
+| Configure → Detection | `/configure/detection` | M5/M6 Model & Detection editor: pick a model + object classes + tracker / confidence / FPS, save | `listModels`, `getCameraProcessingConfig` |
 | Settings | `/settings` | Read-only camera metadata + ids + timestamps | `getCamera` |
 | Reliability | `/reliability` | Stub — surfaces findings once backend signals exist | none |
 
@@ -400,11 +400,11 @@ In P6-B2, clicking an existing ROI polygon while in Draw line or Draw ROI mode s
 - Autosave — explicit Save button stays the only commit path.
 - Per-vertex insert / delete — shape-level delete only.
 
-## Model & Detection (M5)
+## Model & Detection (M5/M6)
 
-The first detection-config surface lands at a new Configure sub-route, `/dashboard/cameras/{id}/configure/detection`. Scope is deliberately narrow: **model selection + "what to detect?" class selection + save.** Nothing else. The Configure landing page links into it alongside the geometry editor; `camera-tabs.tsx` prefix-matches `/configure`, so the Configure tab stays active — no nav change was needed.
+The detection-config surface lives at a Configure sub-route, `/dashboard/cameras/{id}/configure/detection`. Scope after M6: **model selection, "what to detect?" class selection, and "how to detect?" tracker / confidence threshold / processing FPS, plus save.** The Configure landing page links into it alongside the geometry editor; `camera-tabs.tsx` prefix-matches `/configure`, so the Configure tab stays active — no nav change was needed.
 
-> **Honest status:** users can save an intended per-camera model + class selection from the dashboard, but **the live processor does not consume it yet.** The save round-trips to a real api-server endpoint and bumps a revision; wiring the processor to apply it is a later milestone. The status panel says "The processor picks this up on the camera's next session" as the forward-looking intent, not a claim that it does today.
+> **Honest status:** users can now configure model, classes, tracker, confidence threshold, and processing FPS in the dashboard, but **the live processor still does not consume these settings yet.** The save round-trips to a real api-server endpoint and bumps a revision; wiring the processor to apply it is a later milestone. A calm muted notice in the editor (not an error color) states this verbatim, and the status panel's "The processor picks this up on the camera's next session" is the forward-looking intent, not a claim that runtime behavior changed today.
 
 ### Data flow
 
@@ -415,26 +415,33 @@ Like the geometry preflight, the page reads **already-built, already-tested** ap
 
 > **No collision with the existing account-level config.** `src/lib/api/processing-config.ts` (the account master-switch: `ProcessingConfig` / `getProcessingConfig` / `patchProcessingConfig`) is untouched. Every new symbol is `CameraProcessingConfig*`-prefixed and lives in the new file so the two never tangle.
 
-The page (`configure/detection/page.tsx`, Server Component) fetches the registry and the config concurrently via `Promise.all`, mapping the config's lone `camera_not_found` 404 to `notFound()` (mirrors geometry). It hands both to the `<ModelDetectionPanel>` client island and renders an aside: a `StatusPanel` (revision, `is_default` → "Not configured yet" vs. "Operator-saved" with relative timestamps) and a collapsed raw-JSON `<details>` for engineers verifying the wire shape. The aside re-renders after every save because the panel calls `router.refresh()`.
+The page (`configure/detection/page.tsx`, Server Component) fetches the registry and the config concurrently via `Promise.all`, mapping the config's lone `camera_not_found` 404 to `notFound()` (mirrors geometry). It hands both to the `<ModelDetectionPanel>` client island and renders an aside: a `StatusPanel` (revision, a labeled saved-state summary `dl` — Model / Classes / Tracker / Confidence / FPS — `is_default` → "Not configured yet" vs. "Operator-saved" with relative timestamps) and a collapsed raw-JSON `<details>` for engineers verifying the wire shape. The aside re-renders after every save because the panel calls `router.refresh()`.
 
-### Editor UX — the all-classes toggle + class checklist
+### Editor UX — model, classes, and the M6 tuning controls
 
-`<ModelDetectionPanel>` (`src/components/dashboard-next/detection/model-detection-panel.tsx`, `"use client"`) owns all editor-local state. Three pieces:
+`<ModelDetectionPanel>` (`src/components/dashboard-next/detection/model-detection-panel.tsx`, `"use client"`) owns all editor-local state:
 
-- **Model picker** — a value-controlled native `<select>` defaulting to the saved `model_key`. Enabled models are selectable; disabled models render as `<option disabled>` with a ` (disabled)` suffix. If the saved `model_key` isn't in the registry (e.g. retired), a leading disabled placeholder `{key} (unavailable)` keeps the select reflecting the operator's saved choice instead of silently snapping to the first option. Changing models resets the class selection to "all supported" and clears the old subset — `supported_classes` differs per model, so the prior subset is meaningless.
+- **Model picker** — a value-controlled native `<select>` defaulting to the saved `model_key`. Enabled models are selectable; disabled models render as `<option disabled>` with a ` (disabled)` suffix. If the saved `model_key` isn't in the registry (e.g. retired), a leading disabled placeholder `{key} (unavailable)` keeps the select reflecting the operator's saved choice instead of silently snapping to the first option. Changing models resets the class selection to "all supported", clears the old subset, and — if the current tracker isn't in the new model's `supported_trackers` — resets the tracker to the runtime default (null). `supported_classes`/`supported_trackers` differ per model, so the prior picks are meaningless.
 - **Class selection** — a single **"All supported classes"** checkbox over a per-class checklist. When ON, the checklist still renders but every box is checked **and** disabled (greyed, `cursor-not-allowed`), and the copy explains it saves as an empty list. When OFF, the checklist is interactive and the operator must check ≥ 1 class; an empty subset shows a `role="status"` notice ("Check at least one class, or turn on All supported classes") and disables Save.
-- **Read-only model info** — registry facts only: runtime, default confidence threshold, resource profile, supported trackers, limitations. Plus a note that tracker / confidence / FPS are configured in a later milestone (M6).
+- **Detection tuning (M6)** — three controls, each defaulting to the runtime/model value (`null`):
+  - **Tracker** — a `<select>` (`aria-label="Tracker"`) whose options are a leading **"Runtime default"** (value `""` → null) plus the selected model's `supported_trackers`. Single-tracker models still render (default + the one).
+  - **Confidence threshold** — a paired `range` + `number` input (`aria-label`s "Confidence threshold" and "Confidence threshold value", `min=0 max=1 step=0.05`) kept in sync, plus a **"Use default"** button that sets it to null. When null the helper says "Use model/runtime default" and, when the model publishes one, "Model default: {value}".
+  - **Processing FPS** — a `<select>` (`aria-label="Processing FPS"`) with **Default** (null) / 1 / 2 / 5 / 10 / 15 / 30; null shows "Use runtime/source default".
+- **Read-only model info** — registry facts only: runtime, default confidence threshold, resource profile, supported trackers, limitations. Plus a note that the tuning controls are configured above and a default leaves the model's/runtime's built-in value.
+- **Not-live notice** — a calm muted info tile (not an error color) stating the config persists but the live processor doesn't consume it yet.
 
 **The `[]` = "all supported classes" convention.** An empty `selected_classes` is the sentinel meaning *all classes this model supports* — it **never** means "detect nothing." This is stated in the helper copy, the toolbar summary, and the raw-JSON blurb so the meaning is unmissable. On load: `initialConfig.selected_classes.length === 0` → all-classes ON; otherwise OFF with those exact classes pre-checked.
 
-### What's deferred to M6 (sent as null)
+### M6 controls — null = "use the default"
 
-Tracker, confidence threshold, and processing FPS are **M6 controls — there is no UI for them here.** Every M5 save sends them as `null`. The save-time config is:
+Tracker, confidence threshold, and processing FPS are authored in the editor, but each defaults to `null` ("use the runtime/model default"). The save-time config is:
 
 ```ts
 { version: 1, model_key, selected_classes: allClasses ? [] : [...selectedClasses],
-  tracker: null, confidence_threshold: null, processing_fps: null }
+  tracker, confidence_threshold: confidence, processing_fps: fps }
 ```
+
+where `tracker` / `confidence` / `fps` are `null` unless the operator set them. **No styling/CSS fields cross the wire.** Honest truth: these persist, but the live processor still does not consume them yet — runtime behavior is unchanged until the processor-config milestone.
 
 ### Validation — same source of truth, two places
 
@@ -443,7 +450,7 @@ Tracker, confidence threshold, and processing FPS are **M6 controls — there is
 1. **Client-side**, inside `handleSave` — a structurally broken save never hits the network. Issues render in an inline list under the toolbar.
 2. **Server-side**, inside `saveProcessingConfigAction` — defense-in-depth against a forged payload. The action looks up the model in the registry (`listModels`) so the `model_key` + `selected_classes` checks have the registry facts to validate against, re-runs the same validator, then calls `putCameraProcessingConfig`, `revalidatePath`s the route, and returns a `{ ok: true, record } | { ok: false, message, issues? }` envelope — never a raw error into the UI. `UpstreamApiError` → `friendlyMessage`. Mirrors `configure/geometry/actions.ts`.
 
-The validator mirrors the authoritative server rules (model must exist + be enabled; `selected_classes` is `[]` or a subset of the model's `supported_classes`) and **also enforces the M5 boundary**: it rejects any non-null `tracker` / `confidence_threshold` / `processing_fps`, so an M6 field can't slip through early. **Backend validation stays authoritative** — this layer only fails fast in the browser instead of round-tripping a 422.
+The validator mirrors the authoritative server rules: model must exist + be enabled; `selected_classes` is `[]` or a subset of the model's `supported_classes`; and (M6) each tuning field is `null` ("use default") or within bounds — `tracker` must be in the model's `supported_trackers` (when the model is known), `confidence_threshold` a finite number in `[0.0, 1.0]`, `processing_fps` an integer in `[1, 30]`. Any wrong-typed non-null value is an issue. **Backend validation stays authoritative** — this layer only fails fast in the browser instead of round-tripping a 422.
 
 ### Backend owns facts; frontend owns hue
 

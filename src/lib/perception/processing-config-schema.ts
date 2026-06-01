@@ -1,4 +1,4 @@
-// Pure schema-validation helpers for the camera processing config (M5).
+// Pure schema-validation helpers for the camera processing config (M5/M6).
 // No React, no I/O, so they're importable from the client editor, the Server
 // Action (defense-in-depth), and node-environment vitest.
 //
@@ -10,9 +10,10 @@
 // Contract: ../upstream-api-server/docs/api-contracts.md
 //   (GET/PUT /v1/cameras/{camera_id}/processing-config)
 //
-// M5 scope: only `model_key` + `selected_classes` are authored. `tracker`,
-// `confidence_threshold`, and `processing_fps` are M6 — they must be `null`
-// in an M5 save, so we reject anything else defensively.
+// Authored fields: `model_key`, `selected_classes`, and (M6) `tracker`,
+// `confidence_threshold`, `processing_fps`. Each of the three M6 fields is
+// optional — `null` means "use the runtime/model default" — and otherwise must
+// satisfy the same bounds the api-server enforces.
 
 import type { CameraProcessingConfig, ModelRegistryEntry } from "@/lib/api/types";
 
@@ -26,7 +27,7 @@ export type ProcessingConfigValidationIssue = {
 export const PROCESSING_CONFIG_SCHEMA_VERSION = 1 as const;
 
 /**
- * Validate a candidate processing config against the M5 rules and, when the
+ * Validate a candidate processing config against the schema rules and, when the
  * chosen model is known, against that model's registry facts. Returns an empty
  * array when the config is valid. `model` is the registry entry whose
  * `model_key` matches `config.model_key`, or `undefined` if no such entry was
@@ -92,25 +93,65 @@ export function validateProcessingConfig(
     }
   }
 
-  // M5: tracker / confidence_threshold / processing_fps are M6 controls. They
-  // must ride as null until then.
-  if (c.tracker !== null) {
-    issues.push({
-      field: "tracker",
-      message: "Tracker selection isn't available yet (M6).",
-    });
+  // tracker — null is the "use runtime default" sentinel and always valid. A
+  // string must be one of the chosen model's supported_trackers (only checkable
+  // when the model is known). Any other type is malformed.
+  const tracker = c.tracker;
+  if (tracker !== null) {
+    if (typeof tracker !== "string") {
+      issues.push({
+        field: "tracker",
+        message: "tracker must be a tracker name or null.",
+      });
+    } else if (
+      model !== undefined &&
+      !model.supported_trackers.includes(tracker)
+    ) {
+      issues.push({
+        field: "tracker",
+        message: `Tracker "${tracker}" isn't supported by ${model.display_name}.`,
+      });
+    }
   }
-  if (c.confidence_threshold !== null) {
-    issues.push({
-      field: "confidence_threshold",
-      message: "Confidence threshold isn't available yet (M6).",
-    });
+
+  // confidence_threshold — null is the "use model/runtime default" sentinel and
+  // always valid. A number must be finite and in [0.0, 1.0]. Any other type is
+  // malformed.
+  const confidence = c.confidence_threshold;
+  if (confidence !== null) {
+    if (typeof confidence !== "number") {
+      issues.push({
+        field: "confidence_threshold",
+        message: "confidence_threshold must be a number or null.",
+      });
+    } else if (
+      !Number.isFinite(confidence) ||
+      confidence < 0 ||
+      confidence > 1
+    ) {
+      issues.push({
+        field: "confidence_threshold",
+        message: "Confidence threshold must be between 0.0 and 1.0.",
+      });
+    }
   }
-  if (c.processing_fps !== null) {
-    issues.push({
-      field: "processing_fps",
-      message: "Processing FPS isn't available yet (M6).",
-    });
+
+  // processing_fps — null is the "use runtime/source default" sentinel and
+  // always valid. A number must be an integer in [1, 30]. Any other type is
+  // malformed.
+  const fps = c.processing_fps;
+  if (fps !== null) {
+    if (typeof fps !== "number") {
+      issues.push({
+        field: "processing_fps",
+        message: "processing_fps must be a number or null.",
+      });
+    } else if (!Number.isInteger(fps) || fps < 1 || fps > 30) {
+      issues.push({
+        field: "processing_fps",
+        message: "Processing FPS must be a whole number between 1 and 30.",
+      });
+    }
   }
 
   return issues;

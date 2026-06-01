@@ -4,6 +4,24 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-01 — Model & Detection (M6): tracker / confidence / processing-FPS controls
+
+**Subject:** Finish the Model & Detection editor — add dashboard controls for tracker, confidence threshold, and processing FPS (each defaulting to the runtime/model default), flip the validator from rejecting these fields to validating their bounds, and surface the saved values in the status panel.
+
+**Why:** M5 shipped model + class selection but parked tracker / confidence / FPS as M6, hard-coding them to `null` and having the validator *reject* any non-null value. The api-server already validates `tracker` / `confidence_threshold` / `processing_fps` (M4) and `GET /v1/models` already returns `supported_trackers` + `default_confidence_threshold`, so M6 is **dashboard-only**: wire the controls and let the existing endpoints validate. Honest truth held in the copy: these settings now persist, but the live processor does **not** consume them yet — runtime/detection behavior is unchanged until the processor-config milestone.
+
+**What changed (dashboard only — no backend/processor/eligible-sessions/DeepStream/reliability files touched):**
+- `src/lib/perception/processing-config-schema.ts` — replaced the three "reject non-null (M6)" blocks with real bounds. `tracker`: null OK; a string must be in `model.supported_trackers` when the model is known (else `Tracker "X" isn't supported by {display_name}.`); any non-string non-null → issue. `confidence_threshold`: null OK; a number must be finite in `[0.0, 1.0]`; any non-number non-null → issue. `processing_fps`: null OK; a number must be an integer in `[1, 30]`; any non-number non-null → issue. version / model_key / selected_classes logic unchanged; docstring de-M5'd.
+- `src/components/dashboard-next/detection/model-detection-panel.tsx` — new `tracker` / `confidence` / `fps` state (init from `initialConfig`); `TrackerControl` (`<select>`: "Runtime default" + `supported_trackers`), `ConfidenceControl` (synced range + number, `min=0 max=1 step=0.05`, "Use default" button → null), `FpsControl` (`<select>`: Default / 1 / 2 / 5 / 10 / 15 / 30). `handleModelChange` resets the tracker when it leaves the new model's `supported_trackers`. `handleSave` now sends the real values (not hard-coded null) behind the same client `validateProcessingConfig` gate. Added a calm muted "not live yet" notice tile, expanded the toolbar summary with tracker/confidence/fps, and refreshed the model-info note (was "later milestone (M6)").
+- `src/app/dashboard/(app)/cameras/[cameraId]/configure/detection/page.tsx` — `StatusPanel` now renders a labeled summary `dl` (Model / Classes / Tracker / Confidence / FPS; "Runtime default" for null, "All supported classes" for empty classes) after the revision banner. Revision / status / timestamps / raw-JSON details unchanged.
+- `configure/detection/actions.ts` unchanged — it already passes the model into `validateProcessingConfig`, so it inherits the new rules.
+
+**Verification:** verify phase runs `npm test` / `npm run lint` / `npm run build` (the existing `processing-config-schema.test.ts` "M6 fields must ride as null" cases are now stale and updated by the tests step). No styling/CSS fields cross the wire; `selected_classes: []` still means "all supported classes".
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/dashboard-next.md` (Model & Detection section → M6: the three controls, null = default, the not-live caveat).
+
+---
+
 ## 2026-06-01 — Navigation: lazy-load the Supabase SDK off camera-route critical JS
 
 **Subject:** Defer the ~511 KB Supabase browser SDK to an on-demand async chunk so it no longer ships in every camera route's initial bundle; load it only when a Realtime subscription actually starts.

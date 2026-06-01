@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import clsx from "clsx";
-import { Save, ScanEye } from "lucide-react";
+import { Info, Save, ScanEye } from "lucide-react";
 import { saveProcessingConfigAction } from "@/app/dashboard/(app)/cameras/[cameraId]/configure/detection/actions";
 import type {
   CameraProcessingConfig,
@@ -15,18 +15,30 @@ import {
   validateProcessingConfig,
 } from "@/lib/perception/processing-config-schema";
 
-// M5 — Model & Detection editor's brains. Owns ALL editor-local state and
-// drives the Server Action. The operator picks a detection model and chooses
-// which object classes to detect ("all supported" or a checked subset). The
-// persistence boundary: only the CameraProcessingConfig shape is ever sent to
-// the api-server, and `tracker` / `confidence_threshold` / `processing_fps`
-// ride as null (those controls land in M6). The backend owns facts; the
-// frontend owns hue — no styling fields cross the wire.
+// M5/M6 — Model & Detection editor's brains. Owns ALL editor-local state and
+// drives the Server Action. The operator picks a detection model, chooses which
+// object classes to detect ("all supported" or a checked subset), and (M6) the
+// tracker, confidence threshold, and processing FPS — each defaulting to the
+// runtime/model default (null). The persistence boundary: only the
+// CameraProcessingConfig shape is ever sent to the api-server. The backend owns
+// facts; the frontend owns hue — no styling fields cross the wire.
+//
+// Honest status: these settings persist to a real api-server endpoint, but the
+// live processor does NOT consume them yet — runtime/detection behavior is
+// unchanged until the processor-config milestone. The notice block says so.
 
 const SELECT_CLASS =
   "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+const NUMBER_CLASS =
+  "w-20 rounded-lg border border-black/10 bg-white px-2 py-1 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50";
+const GHOST_BTN =
+  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-bold text-black/70 transition hover:border-[var(--dn-creek-mid)] hover:text-black disabled:cursor-not-allowed disabled:opacity-50";
+
+// Processing-FPS choices the dashboard offers. `null` = use the runtime/source
+// default. Values stay within the api-server's [1, 30] integer bound.
+const FPS_OPTIONS: number[] = [1, 2, 5, 10, 15, 30];
 
 interface ModelDetectionPanelProps {
   cameraId: string;
@@ -53,6 +65,12 @@ export function ModelDetectionPanel({
   const [selectedClasses, setSelectedClasses] = useState<Set<string>>(
     () => new Set(initialConfig.selected_classes),
   );
+  // M6 controls. `null` is the "use runtime/model default" sentinel for each.
+  const [tracker, setTracker] = useState<string | null>(initialConfig.tracker);
+  const [confidence, setConfidence] = useState<number | null>(
+    initialConfig.confidence_threshold,
+  );
+  const [fps, setFps] = useState<number | null>(initialConfig.processing_fps);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveIssues, setSaveIssues] = useState<ProcessingConfigValidationIssue[]>(
@@ -66,13 +84,51 @@ export function ModelDetectionPanel({
   );
 
   // Changing models means a different supported_classes set, so the old subset
-  // is meaningless. Reset to "all supported" ON and clear the subset.
+  // is meaningless. Reset to "all supported" ON and clear the subset. The
+  // tracker is also model-scoped: if the current pick isn't in the new model's
+  // supported_trackers, snap it back to the runtime default (null).
   const handleModelChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const nextKey = e.target.value;
+      const nextModel = models.find((m) => m.model_key === nextKey);
       setSelectedModelKey(nextKey);
       setAllClasses(true);
       setSelectedClasses(new Set());
+      setTracker((prev) =>
+        prev !== null &&
+        nextModel !== undefined &&
+        !nextModel.supported_trackers.includes(prev)
+          ? null
+          : prev,
+      );
+      setDirty(true);
+      setSaveError(null);
+      setSaveIssues([]);
+    },
+    [models],
+  );
+
+  const handleTrackerChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      // "" is the option value for the runtime default → store as null.
+      setTracker(e.target.value === "" ? null : e.target.value);
+      setDirty(true);
+      setSaveError(null);
+      setSaveIssues([]);
+    },
+    [],
+  );
+
+  const handleConfidenceChange = useCallback((value: number | null) => {
+    setConfidence(value);
+    setDirty(true);
+    setSaveError(null);
+    setSaveIssues([]);
+  }, []);
+
+  const handleFpsChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      setFps(e.target.value === "" ? null : Number(e.target.value));
       setDirty(true);
       setSaveError(null);
       setSaveIssues([]);
@@ -110,9 +166,9 @@ export function ModelDetectionPanel({
       version: 1,
       model_key: selectedModelKey,
       selected_classes: allClasses ? [] : [...selectedClasses],
-      tracker: null,
-      confidence_threshold: null,
-      processing_fps: null,
+      tracker,
+      confidence_threshold: confidence,
+      processing_fps: fps,
     };
 
     const issues = validateProcessingConfig(config, selectedModel);
@@ -148,10 +204,13 @@ export function ModelDetectionPanel({
   }, [
     allClasses,
     cameraId,
+    confidence,
+    fps,
     router,
     selectedClasses,
     selectedModel,
     selectedModelKey,
+    tracker,
   ]);
 
   // When NOT "all supported", the operator must check at least one class.
@@ -175,7 +234,19 @@ export function ModelDetectionPanel({
         onClassToggle={handleClassToggle}
       />
 
+      <DetectionTuning
+        model={selectedModel}
+        tracker={tracker}
+        confidence={confidence}
+        fps={fps}
+        onTrackerChange={handleTrackerChange}
+        onConfidenceChange={handleConfidenceChange}
+        onFpsChange={handleFpsChange}
+      />
+
       <ModelInfo model={selectedModel} />
+
+      <NotLiveNotice />
 
       <div className="dn-tile flex flex-wrap items-center gap-2 p-3">
         {dirty ? (
@@ -191,6 +262,24 @@ export function ModelDetectionPanel({
           {allClasses
             ? "all supported classes"
             : `${selectedClasses.size} class${selectedClasses.size === 1 ? "" : "es"} selected`}
+        </span>
+        <span aria-hidden className="text-[var(--dn-text-50)]">
+          ·
+        </span>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+          tracker {tracker ?? "default"}
+        </span>
+        <span aria-hidden className="text-[var(--dn-text-50)]">
+          ·
+        </span>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+          conf {confidence === null ? "default" : confidence.toFixed(2)}
+        </span>
+        <span aria-hidden className="text-[var(--dn-text-50)]">
+          ·
+        </span>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+          {fps === null ? "fps default" : `${fps} fps`}
         </span>
         <button
           type="button"
@@ -382,6 +471,219 @@ function ClassSelection({
   );
 }
 
+// --- detection tuning (tracker / confidence / FPS) --------------------------
+
+function DetectionTuning({
+  model,
+  tracker,
+  confidence,
+  fps,
+  onTrackerChange,
+  onConfidenceChange,
+  onFpsChange,
+}: {
+  model: ModelRegistryEntry | undefined;
+  tracker: string | null;
+  confidence: number | null;
+  fps: number | null;
+  onTrackerChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  onConfidenceChange: (value: number | null) => void;
+  onFpsChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+}) {
+  return (
+    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
+      <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
+        how to detect?
+      </p>
+      <h3 className="mt-1 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+        Tracker, confidence &amp; processing rate
+      </h3>
+      <p className="mt-1.5 text-xs text-[var(--dn-text-50)]">
+        Leave any control on its default to keep the model&rsquo;s or
+        runtime&rsquo;s built-in value.
+      </p>
+
+      <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <TrackerControl
+          model={model}
+          tracker={tracker}
+          onChange={onTrackerChange}
+        />
+        <FpsControl fps={fps} onChange={onFpsChange} />
+        <div className="sm:col-span-2">
+          <ConfidenceControl
+            model={model}
+            confidence={confidence}
+            onChange={onConfidenceChange}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrackerControl({
+  model,
+  tracker,
+  onChange,
+}: {
+  model: ModelRegistryEntry | undefined;
+  tracker: string | null;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+}) {
+  const supported = model?.supported_trackers ?? [];
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+        Tracker
+      </span>
+      <select
+        aria-label="Tracker"
+        value={tracker ?? ""}
+        onChange={onChange}
+        className={clsx(SELECT_CLASS, "max-w-xs")}
+      >
+        <option value="">Runtime default</option>
+        {supported.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
+      <span className="text-xs text-[var(--dn-text-50)]">
+        {tracker === null
+          ? "Use runtime default tracker."
+          : `Tracking objects with ${tracker}.`}
+      </span>
+    </label>
+  );
+}
+
+function ConfidenceControl({
+  model,
+  confidence,
+  onChange,
+}: {
+  model: ModelRegistryEntry | undefined;
+  confidence: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  // Range/number share one value. When null, the slider rests at the model
+  // default (or 0.5) for a sensible thumb position, but the saved value stays
+  // null until the operator moves it.
+  const fallback = model?.default_confidence_threshold ?? 0.5;
+  const sliderValue = confidence ?? fallback;
+  return (
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+        Confidence threshold
+      </legend>
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          aria-label="Confidence threshold"
+          min={0}
+          max={1}
+          step={0.05}
+          value={sliderValue}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="h-1.5 max-w-xs flex-1 accent-[var(--dn-creek-mid)]"
+        />
+        <input
+          type="number"
+          aria-label="Confidence threshold value"
+          min={0}
+          max={1}
+          step={0.05}
+          value={confidence ?? ""}
+          placeholder={fallback.toFixed(2)}
+          onChange={(e) =>
+            onChange(e.target.value === "" ? null : Number(e.target.value))
+          }
+          className={NUMBER_CLASS}
+        />
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          disabled={confidence === null}
+          className={GHOST_BTN}
+        >
+          Use default
+        </button>
+      </div>
+      <span className="text-xs text-[var(--dn-text-50)]">
+        {confidence === null ? (
+          <>
+            Use model/runtime default.
+            {model?.default_confidence_threshold != null
+              ? ` Model default: ${model.default_confidence_threshold}.`
+              : ""}
+          </>
+        ) : (
+          `Detect objects at or above ${confidence.toFixed(2)} confidence.`
+        )}
+      </span>
+    </fieldset>
+  );
+}
+
+function FpsControl({
+  fps,
+  onChange,
+}: {
+  fps: number | null;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+        Processing FPS
+      </span>
+      <select
+        aria-label="Processing FPS"
+        value={fps ?? ""}
+        onChange={onChange}
+        className={clsx(SELECT_CLASS, "max-w-xs")}
+      >
+        <option value="">Default</option>
+        {FPS_OPTIONS.map((n) => (
+          <option key={n} value={n}>
+            {n} FPS
+          </option>
+        ))}
+      </select>
+      <span className="text-xs text-[var(--dn-text-50)]">
+        {fps === null
+          ? "Use runtime/source default."
+          : `Process ${fps} frame${fps === 1 ? "" : "s"} per second.`}
+      </span>
+    </label>
+  );
+}
+
+// --- not-live-yet notice ----------------------------------------------------
+
+// Calm, muted info tile (NOT an error color). The settings persist, but the
+// live processor does not consume them yet — be honest about that.
+function NotLiveNotice() {
+  return (
+    <div
+      className="dn-tile flex items-start gap-2.5 border border-black/10 bg-black/[0.02] p-3"
+      role="note"
+    >
+      <Info
+        className="mt-0.5 h-4 w-4 shrink-0 text-[var(--dn-text-50)]"
+        aria-hidden
+      />
+      <p className="text-xs text-[var(--dn-text-50)]">
+        This saves the intended model &amp; detection config for this camera.
+        Live processor consumption isn&rsquo;t enabled yet — runtime behavior is
+        unchanged until the processor-config milestone.
+      </p>
+    </div>
+  );
+}
+
 // --- read-only model info ---------------------------------------------------
 
 function ModelInfo({ model }: { model: ModelRegistryEntry | undefined }) {
@@ -430,8 +732,9 @@ function ModelInfo({ model }: { model: ModelRegistryEntry | undefined }) {
         </div>
       ) : null}
       <p className="mt-3 text-xs text-[var(--dn-text-50)]">
-        Tracker, confidence threshold, and processing FPS are configured in a
-        later milestone (M6) — saved as defaults for now.
+        These are read-only registry facts. Tracker, confidence threshold, and
+        processing FPS are configured above; leaving any at its default keeps
+        the model&rsquo;s/runtime&rsquo;s built-in value.
       </p>
     </div>
   );
