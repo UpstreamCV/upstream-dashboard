@@ -40,8 +40,10 @@ vi.mock("./live-stream-player-next", () => ({
 
 // Controllable Supabase Realtime: records subscribe/remove calls and exposes
 // the status callback + the postgres_changes handler so tests can drive them.
-vi.mock("@/lib/supabase/client", () => ({
-  createSupabaseBrowserClient: () => ({
+// The overlay now loads the SDK lazily, so the client comes from an async
+// getSupabaseBrowserClient() in @/lib/supabase/client-lazy (a Promise).
+vi.mock("@/lib/supabase/client-lazy", () => ({
+  getSupabaseBrowserClient: async () => ({
     auth: {
       getSession: async () => ({ data: { session: { access_token: "t" } } }),
     },
