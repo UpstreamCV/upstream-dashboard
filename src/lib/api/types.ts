@@ -367,6 +367,89 @@ export interface GeometryConfigUpdateRequest {
   config: GeometryConfig;
 }
 
+// --- Model Registry + Camera Processing Config (M5) -------------------------
+// Operator-chosen detection model + which object classes to detect for one
+// camera. *Processing facts only* — presentation (hue, ordering) stays
+// frontend-owned; no styling fields ride the wire. The server uses Pydantic
+// models, so any unknown field in a PUT body is rejected with 422
+// `validation_error`.
+//
+// Source of truth (do not drift): ../upstream-api-server/docs/api-contracts.md
+//   GET /v1/models                                  → ModelsListResponse
+//   GET/PUT /v1/cameras/{camera_id}/processing-config → CameraProcessingConfigResponse
+//
+// Backend validation is authoritative: `model_key` must exist + be enabled;
+// `selected_classes` of `[]` means "all supported classes", otherwise it must
+// be a subset of the chosen model's `supported_classes`; `tracker` (if set)
+// must be one of `supported_trackers`. The M5 dashboard only authors
+// `model_key` + `selected_classes` — `tracker` / `confidence_threshold` /
+// `processing_fps` ride as `null` (those controls land in M6).
+//
+// Two version-like numbers, never conflated:
+//  - `CameraProcessingConfig.version` — JSON schema version (always 1 today).
+//  - `CameraProcessingConfigRecord.revision` — DB row revision: 0 = unsaved
+//    default the server returns when nothing is saved, 1 = first save, +1 on
+//    every subsequent PUT.
+
+/** One model in the registry the operator can pick from. */
+export interface ModelRegistryEntry {
+  model_key: string;
+  display_name: string;
+  description: string | null;
+  task_type: string;
+  runtime: string;
+  default_confidence_threshold: number | null;
+  supported_classes: string[];
+  supported_trackers: string[];
+  model_version: string | null;
+  detector_version: string | null;
+  resource_profile: string | null;
+  enabled: boolean;
+  notes: string | null;
+  limitations: string[] | null;
+}
+
+/** GET /v1/models response envelope. */
+export interface ModelsListResponse {
+  models: ModelRegistryEntry[];
+}
+
+/**
+ * Full processing config payload stored in
+ * `camera_processing_configs.config`. `selected_classes` of `[]` is the
+ * "all supported classes" sentinel — never conflate it with "detect nothing".
+ */
+export interface CameraProcessingConfig {
+  version: 1;
+  model_key: string;
+  selected_classes: string[];
+  tracker: string | null;
+  confidence_threshold: number | null;
+  processing_fps: number | null;
+}
+
+/**
+ * One camera's processing config, shaped for a read response. `id` and
+ * timestamps are `null` and `revision` is `0` when this is the unsaved
+ * default (`is_default = true`). The GET endpoint always returns a valid
+ * record — there is no "no config yet" 404 branch.
+ */
+export interface CameraProcessingConfigRecord {
+  id: Uuid | null;
+  account_id: Uuid;
+  camera_id: Uuid;
+  revision: number;
+  config: CameraProcessingConfig;
+  is_default: boolean;
+  created_at: IsoDateTime | null;
+  updated_at: IsoDateTime | null;
+}
+
+/** GET/PUT /v1/cameras/{camera_id}/processing-config response envelope. */
+export interface CameraProcessingConfigResponse {
+  processing_config: CameraProcessingConfigRecord;
+}
+
 // --- Processor Status (P6-D latest-processor-status API) ---------------------
 // The latest `processor_statuses` row for one camera, including the `payload`
 // JSONB where the P6-C analytics worker stamps the `applied_geometry` lineage

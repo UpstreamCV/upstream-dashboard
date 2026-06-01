@@ -139,6 +139,7 @@ The camera detail page is a **tabbed workflow** under `(app)/cameras/[cameraId]/
 | Observations | `/observations` | Recent processor observations + per-row JSON (debug/reliability) | `listRecentObservations(limit: DEFAULT)` |
 | Configure | `/configure` | P6-B seam — geometry editor placeholder + preflight link | none |
 | Configure → Geometry | `/configure/geometry` | Read-only preflight: real `GeometryConfigRecord` from `/v1/cameras/{id}/geometry-config` | `getCameraGeometryConfig` |
+| Configure → Detection | `/configure/detection` | M5 Model & Detection editor: pick a model + object classes, save | `listModels`, `getCameraProcessingConfig` |
 | Settings | `/settings` | Read-only camera metadata + ids + timestamps | `getCamera` |
 | Reliability | `/reliability` | Stub — surfaces findings once backend signals exist | none |
 
@@ -398,6 +399,55 @@ In P6-B2, clicking an existing ROI polygon while in Draw line or Draw ROI mode s
 - "Refresh frame" button (P6-B4+).
 - Autosave — explicit Save button stays the only commit path.
 - Per-vertex insert / delete — shape-level delete only.
+
+## Model & Detection (M5)
+
+The first detection-config surface lands at a new Configure sub-route, `/dashboard/cameras/{id}/configure/detection`. Scope is deliberately narrow: **model selection + "what to detect?" class selection + save.** Nothing else. The Configure landing page links into it alongside the geometry editor; `camera-tabs.tsx` prefix-matches `/configure`, so the Configure tab stays active — no nav change was needed.
+
+> **Honest status:** users can save an intended per-camera model + class selection from the dashboard, but **the live processor does not consume it yet.** The save round-trips to a real api-server endpoint and bumps a revision; wiring the processor to apply it is a later milestone. The status panel says "The processor picks this up on the camera's next session" as the forward-looking intent, not a claim that it does today.
+
+### Data flow
+
+Like the geometry preflight, the page reads **already-built, already-tested** api-server endpoints — no backend changes shipped with M5. Two new **server-only** clients (the `import "server-only"` + `serverFetch` + unwrap-nested-field pattern cloned from `src/lib/api/geometry.ts`):
+
+- `src/lib/api/models.ts` — `listModels({ accountId })` → `GET /v1/models`, returns `res.models` (`ModelRegistryEntry[]`). The registry is the source of truth for which models exist, which classes each supports, and whether a model is `enabled` (selectable). Disabled entries are returned too, so the picker can show why a previously-saved model is no longer available.
+- `src/lib/api/camera-processing-config.ts` — `getCameraProcessingConfig({ accountId, cameraId })` → `GET …/processing-config`, returns `res.processing_config`; and `putCameraProcessingConfig({ accountId, cameraId, config })` → `PUT` with body `{ config }`. The GET is always-200 with a synthesized default (`is_default: true`, `revision: 0`, `id: null`, null timestamps) when nothing is saved — same probe-default shape as geometry; only `camera_not_found` 404s. The PUT replaces the whole config, bumps `revision`, and 422s on validation failure.
+
+> **No collision with the existing account-level config.** `src/lib/api/processing-config.ts` (the account master-switch: `ProcessingConfig` / `getProcessingConfig` / `patchProcessingConfig`) is untouched. Every new symbol is `CameraProcessingConfig*`-prefixed and lives in the new file so the two never tangle.
+
+The page (`configure/detection/page.tsx`, Server Component) fetches the registry and the config concurrently via `Promise.all`, mapping the config's lone `camera_not_found` 404 to `notFound()` (mirrors geometry). It hands both to the `<ModelDetectionPanel>` client island and renders an aside: a `StatusPanel` (revision, `is_default` → "Not configured yet" vs. "Operator-saved" with relative timestamps) and a collapsed raw-JSON `<details>` for engineers verifying the wire shape. The aside re-renders after every save because the panel calls `router.refresh()`.
+
+### Editor UX — the all-classes toggle + class checklist
+
+`<ModelDetectionPanel>` (`src/components/dashboard-next/detection/model-detection-panel.tsx`, `"use client"`) owns all editor-local state. Three pieces:
+
+- **Model picker** — a value-controlled native `<select>` defaulting to the saved `model_key`. Enabled models are selectable; disabled models render as `<option disabled>` with a ` (disabled)` suffix. If the saved `model_key` isn't in the registry (e.g. retired), a leading disabled placeholder `{key} (unavailable)` keeps the select reflecting the operator's saved choice instead of silently snapping to the first option. Changing models resets the class selection to "all supported" and clears the old subset — `supported_classes` differs per model, so the prior subset is meaningless.
+- **Class selection** — a single **"All supported classes"** checkbox over a per-class checklist. When ON, the checklist still renders but every box is checked **and** disabled (greyed, `cursor-not-allowed`), and the copy explains it saves as an empty list. When OFF, the checklist is interactive and the operator must check ≥ 1 class; an empty subset shows a `role="status"` notice ("Check at least one class, or turn on All supported classes") and disables Save.
+- **Read-only model info** — registry facts only: runtime, default confidence threshold, resource profile, supported trackers, limitations. Plus a note that tracker / confidence / FPS are configured in a later milestone (M6).
+
+**The `[]` = "all supported classes" convention.** An empty `selected_classes` is the sentinel meaning *all classes this model supports* — it **never** means "detect nothing." This is stated in the helper copy, the toolbar summary, and the raw-JSON blurb so the meaning is unmissable. On load: `initialConfig.selected_classes.length === 0` → all-classes ON; otherwise OFF with those exact classes pre-checked.
+
+### What's deferred to M6 (sent as null)
+
+Tracker, confidence threshold, and processing FPS are **M6 controls — there is no UI for them here.** Every M5 save sends them as `null`. The save-time config is:
+
+```ts
+{ version: 1, model_key, selected_classes: allClasses ? [] : [...selectedClasses],
+  tracker: null, confidence_threshold: null, processing_fps: null }
+```
+
+### Validation — same source of truth, two places
+
+`src/lib/perception/processing-config-schema.ts` is a pure (no React, no I/O) validator importable from the client editor, the Server Action, and node-environment tests — the same dual-run shape as `geometry-schema.ts`. `validateProcessingConfig(config, model)` returns `ProcessingConfigValidationIssue[]` (shape is `{ field, message }` — **not** geometry's `{ code, path, severity }`). It runs:
+
+1. **Client-side**, inside `handleSave` — a structurally broken save never hits the network. Issues render in an inline list under the toolbar.
+2. **Server-side**, inside `saveProcessingConfigAction` — defense-in-depth against a forged payload. The action looks up the model in the registry (`listModels`) so the `model_key` + `selected_classes` checks have the registry facts to validate against, re-runs the same validator, then calls `putCameraProcessingConfig`, `revalidatePath`s the route, and returns a `{ ok: true, record } | { ok: false, message, issues? }` envelope — never a raw error into the UI. `UpstreamApiError` → `friendlyMessage`. Mirrors `configure/geometry/actions.ts`.
+
+The validator mirrors the authoritative server rules (model must exist + be enabled; `selected_classes` is `[]` or a subset of the model's `supported_classes`) and **also enforces the M5 boundary**: it rejects any non-null `tracker` / `confidence_threshold` / `processing_fps`, so an M6 field can't slip through early. **Backend validation stays authoritative** — this layer only fails fast in the browser instead of round-tripping a 422.
+
+### Backend owns facts; frontend owns hue
+
+No styling fields cross the wire. The persisted `CameraProcessingConfig` carries only data the api-server validates; the model picker's chrome, the checklist layout, the status-panel tints, and the `--dn-*` tokens are all dashboard-local. The registry's facts (supported classes, limitations, resource profile) are rendered verbatim from `ModelRegistryEntry`; the dashboard adds presentation, never invents detection facts.
 
 ## Token security
 
