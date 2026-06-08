@@ -12,6 +12,7 @@ import type {
   AccountSummary,
   Agent,
   Camera,
+  CameraProcessingConfigResponse,
   ConfidenceTrendPoint,
   ConfidenceTrendRange,
   ConfidenceTrendResponse,
@@ -21,6 +22,7 @@ import type {
   LatestFrame,
   LatestPerceptionPayload,
   LatestPerceptionRecord,
+  ModelsListResponse,
   ObservationRecord,
   ProcessorStatusRecord,
   ReliabilityFinding,
@@ -423,6 +425,79 @@ export function demoObservations(scene: DemoScene): { observations: ObservationR
     rows.unshift(crossing("e4", 4, isoAgo(20_000), MODEL_HIGH_RECALL));
   }
   return { observations: rows };
+}
+
+// GET /v1/models — the detection model registry the M5/M6 "Model & Detection"
+// editor (`configure/detection/page.tsx`) populates its picker from. Two
+// people-counter models that mirror the demo's own MODEL_BASE / MODEL_HIGH_RECALL
+// strings, so the editor, the observations rows, and the reliability "apply
+// high-recall model" beat all name the same models. Scene-invariant: the
+// registry is the catalog, not narrative state.
+export function demoModels(): ModelsListResponse {
+  return {
+    models: [
+      {
+        model_key: MODEL_BASE,
+        display_name: "People Counter v1",
+        description: "Balanced people detection + counting. The default model.",
+        task_type: "detection",
+        runtime: "onnx",
+        default_confidence_threshold: 0.5,
+        supported_classes: ["person"],
+        supported_trackers: ["bytetrack", "botsort"],
+        model_version: "1.0.0",
+        detector_version: "yolo11m",
+        resource_profile: "balanced",
+        enabled: true,
+        notes: null,
+        limitations: [],
+      },
+      {
+        model_key: MODEL_HIGH_RECALL,
+        display_name: "People Counter v2 (High recall)",
+        description:
+          "Tuned for crowded / occluded scenes — catches crossings the balanced model misses.",
+        task_type: "detection",
+        runtime: "onnx",
+        default_confidence_threshold: 0.4,
+        supported_classes: ["person"],
+        supported_trackers: ["bytetrack", "botsort"],
+        model_version: "2.0.0",
+        detector_version: "yolo11l",
+        resource_profile: "accurate",
+        enabled: true,
+        notes: "Recommended when reliability flags missed detections.",
+        limitations: ["Higher compute cost than the balanced model."],
+      },
+    ],
+  };
+}
+
+// GET /v1/cameras/{id}/processing-config — the camera's current model/detection
+// config the detection editor opens with. Returns the unsaved system default
+// (`is_default: true`, `revision: 0`, null id/timestamps) so the editor shows
+// its "Not configured yet" state cleanly — the demo's model story is told on the
+// Reliability tab ("apply recommended model"), not here. Scene-invariant.
+export function demoCameraProcessingConfig(): CameraProcessingConfigResponse {
+  return {
+    processing_config: {
+      id: null,
+      account_id: ACCOUNT_ID,
+      camera_id: CAMERA_ID,
+      revision: 0,
+      config: {
+        version: 1,
+        model_key: MODEL_BASE,
+        selected_classes: [],
+        tracker: null,
+        confidence_threshold: null,
+        processing_fps: null,
+      },
+      is_default: true,
+      created_at: null,
+      updated_at: null,
+    },
+  };
 }
 
 // --- reliability -------------------------------------------------------------
