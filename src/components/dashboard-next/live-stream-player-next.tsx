@@ -10,6 +10,8 @@ import {
   connectWhep,
 } from "@/lib/webrtc/whep-client";
 import { dispatchPlayerState } from "@/components/stream/player-state-event";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { DemoVideo } from "@/lib/demo/demo-video";
 
 // Light-theme port of src/components/stream/live-stream-player.tsx. The
 // WebRTC / WHEP connection logic is preserved verbatim — backoff schedule,
@@ -32,6 +34,32 @@ type PlayerState =
 const BACKOFF_SCHEDULE_MS = [500, 1_000, 2_000, 4_000, 8_000];
 
 export function LiveStreamPlayerNext({
+  demoClip,
+  ...props
+}: {
+  sessionId: string;
+  cameraId: string;
+  approved: StreamParams;
+  overlay?: React.ReactNode;
+  // Demo-only: which clip the looping demo video should show — the raw "clean"
+  // feed before detection is set up, then the annotated strong/weak output.
+  demoClip?: "clean" | "weak" | "strong";
+}) {
+  // Demo mode: skip WHEP entirely — loop the local clip with the overlay on top.
+  if (isDemoMode()) {
+    return (
+      <DemoVideo
+        approved={props.approved}
+        overlay={props.overlay}
+        cameraId={props.cameraId}
+        clip={demoClip}
+      />
+    );
+  }
+  return <RealLiveStreamPlayerNext {...props} />;
+}
+
+function RealLiveStreamPlayerNext({
   sessionId,
   cameraId,
   approved,

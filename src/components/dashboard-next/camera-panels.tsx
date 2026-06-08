@@ -72,7 +72,7 @@ export function CameraMetaPanel({ camera }: { camera: Camera }) {
         }
       />
       <Row
-        label="Latency"
+        label="Tuning"
         value={
           <span className="font-mono capitalize text-[var(--dn-text-50)]">
             {camera.default_latency_mode}
@@ -293,7 +293,7 @@ export function SessionPanel({ session }: { session: StreamSession }) {
         }
       />
       <Row
-        label="Latency"
+        label="Tuning"
         value={
           <span className="font-mono capitalize text-[var(--dn-text-50)]">
             {session.approved.latency_mode}

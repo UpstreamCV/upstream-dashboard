@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { DEMO_MEMBERSHIP } from "@/lib/demo/fixtures";
 
 export type Membership = {
   accountId: string;
@@ -15,6 +17,7 @@ type Row = {
 };
 
 export const listMemberships = cache(async (): Promise<Membership[]> => {
+  if (isDemoMode()) return [DEMO_MEMBERSHIP];
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("account_members")

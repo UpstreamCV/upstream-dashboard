@@ -126,8 +126,8 @@ function PanelBody({ display }: { display: AppliedGeometryDisplay }) {
             }
           />
           <Warning>
-            Processor is using default geometry. Configure and restart the
-            processor session to apply operator geometry.
+            Using default detection zones. Draw and save a counting line in
+            Configure to apply your own.
           </Warning>
         </>
       );

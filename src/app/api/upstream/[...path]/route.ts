@@ -7,6 +7,9 @@ import {
 import { listMemberships } from "@/lib/account/memberships";
 import { reportError } from "@/lib/error";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { resolveDemoResponse } from "@/lib/demo/router";
+import { coerceScene, DEMO_SCENE_COOKIE } from "@/lib/demo/scene";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -37,6 +40,16 @@ async function resolveAccountId(): Promise<string | null> {
 
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
+
+  // Demo mode: serve fixtures, no auth, no upstream. (src/lib/demo)
+  if (isDemoMode()) {
+    const url = new URL(req.url);
+    const scene = coerceScene(req.cookies.get(DEMO_SCENE_COOKIE)?.value);
+    const query = Object.fromEntries(url.searchParams.entries());
+    return NextResponse.json(
+      resolveDemoResponse("/" + path.join("/"), query, scene) ?? {},
+    );
+  }
 
   // Reject path-traversal segments before URL parsing normalizes them away.
   // The upstream API only exposes /v1/*; an authenticated user escaping the

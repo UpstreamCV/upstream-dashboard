@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signInAction, type LoginState } from "@/app/(auth)/login/actions";
@@ -55,10 +56,18 @@ export function LoginFormNext() {
   return (
     <form action={formAction} className="flex flex-col gap-4 sm:gap-5">
       <div className="text-center mb-1 sm:mb-2">
-        <h1 className="text-white font-bold text-[clamp(2rem,5vw,3rem)]">
+        <Image
+          src="/dashboard/upstream-logo.png"
+          alt="Upstream"
+          width={64}
+          height={64}
+          priority
+          className="mx-auto mb-3 h-14 w-14 object-contain drop-shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
+        />
+        <h1 className="text-white font-bold text-[clamp(2rem,5vw,3rem)] [text-shadow:0_1px_14px_rgba(0,0,0,0.22)]">
           Welcome
         </h1>
-        <p className="mt-1 text-white/70 font-bold text-[clamp(0.95rem,1.6vw,1.25rem)]">
+        <p className="mt-1 text-white/90 font-bold text-[clamp(0.95rem,1.6vw,1.25rem)] [text-shadow:0_1px_10px_rgba(0,0,0,0.18)]">
           to the Upstream Dashboard
         </p>
       </div>

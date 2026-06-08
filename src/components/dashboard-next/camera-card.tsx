@@ -29,7 +29,8 @@ function formatSpec(c: Camera): string {
     parts.push(`${c.default_width}×${c.default_height}`);
   if (c.default_fps) parts.push(`${c.default_fps} fps`);
   if (c.default_codec) parts.push(c.default_codec);
-  if (c.default_bitrate_kbps) parts.push(`${c.default_bitrate_kbps} kbps`);
+  // Bitrate is intentionally omitted here — it overflows the card's value
+  // column and truncates; it's shown in full on the camera Settings tab.
   return parts.length ? parts.join(" · ") : "—";
 }
 
@@ -45,9 +46,14 @@ function Row({ label, value }: { label: string; value: string }) {
 export function CameraCard({
   camera,
   agentName,
+  previewSrc,
 }: {
   camera: Camera;
   agentName: string;
+  // Optional still for the thumbnail slot. Demo mode supplies the warehouse
+  // frame so the card reads as a real camera; prod omits it and keeps the
+  // lightweight placeholder (no per-card snapshot fetch — see below).
+  previewSrc?: string;
 }) {
   return (
     <article className="dn-tile flex flex-col gap-[clamp(0.7rem,1.3vw,1.05rem)] p-[clamp(1.1rem,1.8vw,1.75rem)]">
@@ -58,12 +64,19 @@ export function CameraCard({
           <LatestFrameCardNext /> (poll on a 7 s cadence with the real
           `signed_url`). Future work could batch-resolve thumbnails behind a
           single list endpoint. */}
-      <div className="aspect-video w-full overflow-hidden rounded-xl bg-[rgba(0,0,0,0.06)] grid place-items-center">
-        <Video
-          className="h-7 w-7 text-[var(--dn-text-50)]"
-          strokeWidth={1.75}
-          aria-hidden
-        />
+      <div
+        className="aspect-video w-full overflow-hidden rounded-xl bg-[rgba(0,0,0,0.06)] bg-cover bg-center grid place-items-center"
+        style={
+          previewSrc ? { backgroundImage: `url(${previewSrc})` } : undefined
+        }
+      >
+        {previewSrc ? null : (
+          <Video
+            className="h-7 w-7 text-[var(--dn-text-50)]"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+        )}
       </div>
 
       <header className="flex items-start justify-between gap-3">
@@ -91,7 +104,7 @@ export function CameraCard({
       <dl className="flex flex-col gap-1 text-[clamp(0.78rem,1vw,0.95rem)]">
         <Row label="Agent" value={agentName} />
         <Row label="Defaults" value={formatSpec(camera)} />
-        <Row label="Latency" value={camera.default_latency_mode} />
+        <Row label="Tuning" value={camera.default_latency_mode} />
         <Row label="Added" value={camera.created_at.slice(0, 10)} />
       </dl>
 

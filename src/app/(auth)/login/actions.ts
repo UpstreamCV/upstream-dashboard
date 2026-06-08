@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { safeNextPath } from "@/lib/safe-next";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isDemoMode } from "@/lib/demo/demo-mode";
 
 export type LoginState = {
   error?: string;
@@ -15,6 +16,12 @@ export async function signInAction(
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const next = String(formData.get("next") ?? "/dashboard");
+
+  // Demo mode: accept any credentials and land on the Cameras page (empty at
+  // the `adding` start) so the recording opens straight on the connect beat.
+  if (isDemoMode()) {
+    redirect("/dashboard/cameras");
+  }
 
   if (!email || !password) {
     return { error: "Email and password are required." };
