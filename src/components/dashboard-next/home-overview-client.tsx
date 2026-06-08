@@ -5,6 +5,7 @@ import { UsageMeter } from "./usage-meter";
 import { agentState } from "./agent-card";
 import { TOKEN_EXPIRING_WINDOW_MS, tokenStatus } from "./tokens-table";
 import { useUpstreamList } from "@/lib/api/use-list";
+import { isDemoMode } from "@/lib/demo/demo-mode";
 import type {
   AccountLimits,
   AccountSummary,
@@ -41,6 +42,8 @@ export function HomeOverviewClient({
   initialTokens: ApiToken[];
   initialLimits: AccountLimits;
 }) {
+  const demo = isDemoMode();
+
   const summary =
     useUpstreamList<DashboardSummary>("/v1/dashboard/summary", {
       fallbackData: initialSummary,
@@ -191,14 +194,14 @@ export function HomeOverviewClient({
               value={concurrent}
               max={limits.max_concurrent_sessions}
             />
-            {/* Minutes used is ILLUSTRATIVE for now — upstream-api-server
-                exposes the cap (`monthly_minutes_quota`) but no aggregate of
-                minutes consumed this month. Until that endpoint exists we
-                render `—` instead of `0`, which would falsely suggest the
-                account is at zero usage. */}
+            {/* Minutes used is ILLUSTRATIVE — upstream-api-server exposes the
+                cap (`monthly_minutes_quota`) but no aggregate of minutes
+                consumed this month, so prod renders `—` (not `0`, which would
+                falsely read as zero usage). The demo shows a representative
+                figure so the tile reads finished. */}
             <UsageMeter
               label="Minutes"
-              value={null}
+              value={demo ? 12_480 : null}
               max={limits.monthly_minutes_quota}
             />
           </div>

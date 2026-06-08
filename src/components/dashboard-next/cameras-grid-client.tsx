@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
+import { Plus } from "lucide-react";
 import { CameraCard } from "./camera-card";
 import { StatCard } from "./stat-card";
 import { useUpstreamList } from "@/lib/api/use-list";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { AddCameraPanel } from "@/lib/demo/add-camera-panel";
 import type {
   Agent,
   AgentListResponse,
@@ -22,9 +26,14 @@ export function CamerasGridClient({
   initialCameras: Camera[];
   initialAgents: Agent[];
 }) {
+  const demo = isDemoMode();
+  const [showAdd, setShowAdd] = useState(false);
+
   const cameras =
     useUpstreamList<CameraListResponse>("/v1/cameras", {
       fallbackData: { cameras: initialCameras },
+      // In demo mode poll fast so the camera appears right after the add flow.
+      refreshInterval: demo ? 1500 : undefined,
     }).data?.cameras ?? initialCameras;
 
   const agents =
@@ -60,11 +69,23 @@ export function CamerasGridClient({
       {cameras.length === 0 ? (
         <div className="dn-tile p-[clamp(1.5rem,3vw,2.5rem)] text-center">
           <p className="font-bold text-[clamp(1rem,1.4vw,1.3rem)]">
-            No cameras registered yet
+            {demo ? "Connect your first camera" : "No cameras registered yet"}
           </p>
           <p className="mt-2 text-[var(--dn-text-50)] text-[clamp(0.85rem,1vw,1rem)]">
-            Once an upstream-agent registers a camera, it will appear here.
+            {demo
+              ? "Install the agent on a camera host — it registers and appears here automatically."
+              : "Once an upstream-agent registers a camera, it will appear here."}
           </p>
+          {demo ? (
+            <button
+              type="button"
+              onClick={() => setShowAdd(true)}
+              className="dn-btn dn-glow-soft mt-5 inline-flex items-center gap-2 rounded-full px-4 py-2 font-bold"
+            >
+              <Plus className="relative z-10 h-4 w-4" />
+              <span className="relative z-10">Add camera</span>
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
@@ -73,10 +94,13 @@ export function CamerasGridClient({
               key={c.id}
               camera={c}
               agentName={agentNames[c.agent_id] ?? c.agent_id.slice(0, 8)}
+              previewSrc={demo ? "/demo/dock-frame.jpg" : undefined}
             />
           ))}
         </div>
       )}
+
+      {showAdd ? <AddCameraPanel onClose={() => setShowAdd(false)} /> : null}
     </>
   );
 }

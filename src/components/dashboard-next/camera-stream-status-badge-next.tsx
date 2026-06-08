@@ -7,6 +7,7 @@ import {
   type PlayerStateEventDetail,
   type PlayerStateKind,
 } from "@/components/stream/player-state-event";
+import { isDemoMode } from "@/lib/demo/demo-mode";
 
 // Light-theme port of src/components/stream/camera-stream-status-badge.tsx.
 //
@@ -73,8 +74,13 @@ export function CameraStreamStatusBadgeNext({
     return () => window.removeEventListener(PLAYER_STATE_EVENT, handler);
   }, [cameraId]);
 
+  // In demo mode there's no WHEP handshake, so don't bridge "streaming" →
+  // "connecting" (the player loops a local clip; no `connected` event arrives
+  // on the cameras list at all). Just show the DB status.
   const display: Display =
-    initialStatus === "streaming" && playerKind !== "connected"
+    !isDemoMode() &&
+    initialStatus === "streaming" &&
+    playerKind !== "connected"
       ? "connecting"
       : initialStatus;
 

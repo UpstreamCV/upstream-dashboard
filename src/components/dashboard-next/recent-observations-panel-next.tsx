@@ -17,6 +17,7 @@ import {
   OBSERVATION_TYPES,
   summarizeObservation,
 } from "@/lib/perception/summarize-observation";
+import { ObservationSummaryTiles } from "./observation-summary-tiles";
 
 const SELECT_CLASS =
   "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
@@ -119,7 +120,10 @@ export function RecentObservationsPanelNext({
     : "No processor observations recorded for this camera yet.";
 
   return (
-    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
+    <div className="space-y-4 md:space-y-5">
+      <ObservationSummaryTiles observations={observations} />
+
+      <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
@@ -289,6 +293,7 @@ export function RecentObservationsPanelNext({
           <p className="mt-3 text-sm text-[var(--dn-text-50)]">{emptyMessage}</p>
         </div>
       )}
+      </div>
     </div>
   );
 }

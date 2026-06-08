@@ -4,6 +4,9 @@ import { ShellBackdrop } from "@/components/dashboard-next/shell-backdrop";
 import { SidebarNext } from "@/components/nav/sidebar-next";
 import { TopbarNext } from "@/components/nav/topbar-next";
 import { getActiveAccount } from "@/lib/account/active";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { DemoStepper } from "@/lib/demo/demo-stepper";
+import { getDemoScene } from "@/lib/demo/scene-cookie";
 
 // Authed shell for the redesign. The (app) route group adds NO URL segment —
 // (app)/page.tsx still resolves to /dashboard-next — it exists purely so this
@@ -15,6 +18,7 @@ export default async function DashboardNextAppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const { user, activeAccount } = await getActiveAccount();
   const name = user.email?.split("@")[0] ?? activeAccount.accountName;
+  const demoScene = isDemoMode() ? await getDemoScene() : null;
 
   return (
     // h-dvh + overflow-hidden locks the shell to exactly the viewport so the
@@ -25,7 +29,7 @@ export default async function DashboardNextAppLayout({
       <ShellBackdrop />
       <CursorGlow />
       <div className="relative z-10 flex h-full flex-col gap-3 md:gap-5 p-3 md:p-5">
-        <TopbarNext name={name} />
+        <TopbarNext name={name} demoScene={demoScene} />
         <div className="flex-1 flex gap-3 md:gap-5 min-h-0">
           <SidebarNext />
           <main className="dn-panel flex-1 min-w-0 relative overflow-hidden">
@@ -33,6 +37,7 @@ export default async function DashboardNextAppLayout({
           </main>
         </div>
       </div>
+      {isDemoMode() && <DemoStepper />}
     </div>
   );
 }

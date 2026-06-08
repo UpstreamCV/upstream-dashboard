@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
+import { isDemoMode } from "@/lib/demo/demo-mode";
 
 // IMPORTANT: entries are matched as an exact path OR as a prefix-with-slash.
 // "/foo" opens every subpath under "/foo/…" too. That's intentional for nested
@@ -15,6 +16,10 @@ function isPublicPath(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  // Demo mode: no Supabase, no auth gating — let every route through so the
+  // recorded demo runs with no backend. (src/lib/demo)
+  if (isDemoMode()) return NextResponse.next({ request });
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

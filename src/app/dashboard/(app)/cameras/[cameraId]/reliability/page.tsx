@@ -1,6 +1,6 @@
 import { ReliabilityConfidenceTrendCard } from "@/components/dashboard-next/reliability-confidence-trend-card";
 import { ReliabilityFindingCard } from "@/components/dashboard-next/reliability-finding-card";
-import { ReliabilitySummaryCard } from "@/components/dashboard-next/reliability-summary-card";
+import { ReliabilityVerdictHero } from "@/components/dashboard-next/reliability-verdict-hero";
 import { getActiveAccount } from "@/lib/account/active";
 import {
   getReliabilityConfidenceTrend,
@@ -8,6 +8,10 @@ import {
   getReliabilitySummary,
 } from "@/lib/api/reliability";
 import type { ReliabilityFinding } from "@/lib/api/types";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { getDemoScene } from "@/lib/demo/scene-cookie";
+import { SceneSignalsCard } from "@/lib/demo/scene-signals-card";
+import { SuggestedFixesCard } from "@/lib/demo/suggested-fixes-card";
 
 // Reliability tab v1 (M4). Composes:
 //
@@ -31,6 +35,7 @@ export default async function CameraReliabilityPage({
 }) {
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
+  const demoScene = isDemoMode() ? await getDemoScene() : null;
 
   const [summary, openFindings, resolvedFindings, trend24h, trend7d] =
     await Promise.all([
@@ -62,18 +67,13 @@ export default async function CameraReliabilityPage({
 
   return (
     <div className="space-y-4 md:space-y-6 p-[clamp(0.5rem,1vw,1rem)]">
-      <header>
-        <h1 className="text-[clamp(1.3rem,2vw,1.8rem)] font-bold text-black">
-          Reliability
-        </h1>
-        <p className="mt-1 text-sm text-[var(--dn-text-50)]">
-          Camera reliability status and production CV warnings.
-        </p>
-      </header>
+      <ReliabilityVerdictHero summary={summary} />
 
-      <ReliabilitySummaryCard summary={summary} />
-
-      <ReliabilityConfidenceTrendCard trend24h={trend24h} trend7d={trend7d} />
+      {demoScene ? (
+        <SceneSignalsCard scene={demoScene} />
+      ) : (
+        <ReliabilityConfidenceTrendCard trend24h={trend24h} trend7d={trend7d} />
+      )}
 
       {processingDisabled ? <ProcessingDisabledHint /> : null}
 
@@ -88,6 +88,8 @@ export default async function CameraReliabilityPage({
           ))}
         </section>
       ) : null}
+
+      {demoScene && openFindings.length > 0 ? <SuggestedFixesCard /> : null}
 
       {resolvedFindings.length > 0 ? (
         <section className="space-y-3 md:space-y-4">
