@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowRight, ScanEye, Shapes, Sparkles, Zap } from "lucide-react";
-import { ModelDetectionCard } from "@/components/dashboard-next/model-detection-card";
 
 // Configure tab — landing page for camera configuration options. The geometry
 // card routes into the line / ROI drawing tools; additional configuration
@@ -60,9 +59,6 @@ export default async function CameraConfigurePage({
           <ArrowRight className="h-3.5 w-3.5" />
         </span>
       </Link>
-
-      {/* Model & Detection — inline interactive card (model select + thresholds) */}
-      <ModelDetectionCard cameraId={cameraId} />
 
       {/* Triggers & Effects — inert (non-navigating) card; feature not yet wired up */}
       <div className="group dn-tile flex items-center gap-4 p-[clamp(1.1rem,1.8vw,1.5rem)] transition hover:bg-[var(--dn-creek-mid)]/5 cursor-default">
