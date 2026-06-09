@@ -20,7 +20,12 @@ import {
   Undo2,
 } from "lucide-react";
 import { saveGeometryAction } from "@/app/dashboard/(app)/cameras/[cameraId]/configure/geometry/actions";
-import type { GeometryConfig, GeometryLine, LatestFrame } from "@/lib/api/types";
+import type {
+  GeometryConfig,
+  GeometryLine,
+  GeometryLineDirection,
+  LatestFrame,
+} from "@/lib/api/types";
 import {
   type GeometryValidationIssue,
   createGeometryValidationSummary,
@@ -39,6 +44,7 @@ import {
   editorStateToGeometryConfig,
   geometryConfigToEditorState,
   translateRoi,
+  updateLineDirection,
   updateLineLabel,
   updateRoiLabel,
   updateRoiPoint,
@@ -371,6 +377,15 @@ export function GeometryEditorPanel({
     [selected],
   );
 
+  const handleDirectionChange = useCallback(
+    (direction: GeometryLineDirection) => {
+      if (!selected || selected.kind !== "line") return;
+      setShapes((prev) => updateLineDirection(prev, selected.id, direction));
+      setDirty(true);
+    },
+    [selected],
+  );
+
   // --- toolbar actions -----------------------------------------------------
 
   const handleDelete = useCallback(() => {
@@ -517,6 +532,7 @@ export function GeometryEditorPanel({
         selected={selected}
         shapes={shapes}
         onLabelChange={handleLabelChange}
+        onDirectionChange={handleDirectionChange}
       />
 
       <Hint
@@ -752,10 +768,12 @@ function SelectedShapeCard({
   selected,
   shapes,
   onLabelChange,
+  onDirectionChange,
 }: {
   selected: SelectedGeometry;
   shapes: EditorShapesState;
   onLabelChange: (label: string) => void;
+  onDirectionChange: (direction: GeometryLineDirection) => void;
 }) {
   if (!selected) return null;
 
@@ -785,6 +803,9 @@ function SelectedShapeCard({
       <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
         · {geometrySummary}
       </span>
+      {line ? (
+        <DirectionToggle value={line.direction} onChange={onDirectionChange} />
+      ) : null}
       <label className="ml-auto flex flex-wrap items-center gap-2">
         <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
           Label
@@ -799,8 +820,63 @@ function SelectedShapeCard({
           className="min-w-[12rem] rounded-md border border-black/10 bg-white px-2 py-1 text-sm text-black focus:border-[var(--dn-creek-mid)] focus:outline-none"
         />
       </label>
+      {line ? (
+        <span className="w-full text-xs text-[var(--dn-text-50)]">
+          {directionHelp(line.direction)}
+        </span>
+      ) : null}
     </div>
   );
+}
+
+function DirectionToggle({
+  value,
+  onChange,
+}: {
+  value: GeometryLineDirection;
+  onChange: (direction: GeometryLineDirection) => void;
+}) {
+  const options: { key: GeometryLineDirection; label: string }[] = [
+    { key: "in", label: "In" },
+    { key: "out", label: "Out" },
+    { key: "any", label: "Any" },
+  ];
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+        Direction
+      </span>
+      <span className="inline-flex overflow-hidden rounded-full border border-black/10">
+        {options.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            aria-pressed={value === o.key}
+            onClick={() => onChange(o.key)}
+            className={clsx(
+              "px-2.5 py-1 text-sm transition",
+              value === o.key
+                ? "bg-[var(--dn-creek-mid)] font-bold text-white"
+                : "bg-white text-[var(--dn-text-50)] hover:bg-black/[0.04]",
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function directionHelp(direction: GeometryLineDirection): string {
+  switch (direction) {
+    case "in":
+      return "Counts people crossing into the bay.";
+    case "out":
+      return "Counts people crossing out of the bay.";
+    default:
+      return "Counts crossings in either direction.";
+  }
 }
 
 function ValidationList({ issues }: { issues: GeometryValidationIssue[] }) {

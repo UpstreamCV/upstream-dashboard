@@ -1,11 +1,19 @@
 import Image from "next/image";
 import { Search } from "lucide-react";
+import type { DemoScene } from "@/lib/demo/scene";
+import { DemoNotifications } from "@/lib/demo/demo-notifications";
 
 // Figma DashboardHome top bar — sits directly on the creek gradient (no panel).
 // Left: avatar + "Welcome back, {name}". Right: search + "Upstream Dashboard"
 // + the white Upstream mark. Server Component (display-only); auth comes from
 // the (app) layout which passes `name` down.
-export function TopbarNext({ name }: { name: string }) {
+export function TopbarNext({
+  name,
+  demoScene,
+}: {
+  name: string;
+  demoScene?: DemoScene | null;
+}) {
   const initial = name.trim().charAt(0).toUpperCase() || "U";
 
   return (
@@ -27,7 +35,9 @@ export function TopbarNext({ name }: { name: string }) {
         </h1>
       </div>
 
-      <div className="hidden sm:flex items-center gap-3 sm:gap-4 shrink-0">
+      <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+        {demoScene ? <DemoNotifications scene={demoScene} /> : null}
+        <div className="hidden sm:flex items-center gap-3 sm:gap-4">
         {/* Presentational — search isn't wired yet. WIRE-UP: lift to a client
             component with state + a results action when search lands. */}
         <div className="dn-glow-soft relative rounded-full">
@@ -43,7 +53,7 @@ export function TopbarNext({ name }: { name: string }) {
             style={{ width: "clamp(150px,18vw,260px)" }}
           />
         </div>
-        <span className="text-white/65 font-bold text-[clamp(1.05rem,2vw,1.85rem)] whitespace-nowrap">
+        <span className="text-white/80 font-bold text-[clamp(1.05rem,2vw,1.85rem)] whitespace-nowrap">
           Upstream Dashboard
         </span>
         <Image
@@ -52,12 +62,13 @@ export function TopbarNext({ name }: { name: string }) {
           width={64}
           height={64}
           priority
-          className="object-contain opacity-65"
+          className="object-contain opacity-85"
           style={{
             width: "clamp(40px,4.4vw,64px)",
             height: "clamp(40px,4.4vw,64px)",
           }}
         />
+        </div>
       </div>
     </header>
   );

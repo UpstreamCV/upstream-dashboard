@@ -9,6 +9,9 @@ import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { listStreamSessions } from "@/lib/api/stream-sessions";
 import type { Camera, StreamSession } from "@/lib/api/types";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { getDemoScene } from "@/lib/demo/scene-cookie";
+import { DemoFlow } from "@/lib/demo/demo-flow";
 
 // Camera detail layout — persistent header, tab strip, and Realtime listener.
 // Wraps the five tab segments (monitor/observations/configure/settings/
@@ -29,6 +32,7 @@ export default async function CameraDetailLayout({
 }) {
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
+  const demoScene = isDemoMode() ? await getDemoScene() : null;
 
   // getCamera (the 404 gate) and listStreamSessions both key off
   // (accountId, cameraId) and don't depend on each other, so run them
@@ -76,6 +80,8 @@ export default async function CameraDetailLayout({
           </p>
         </div>
       </header>
+
+      {demoScene ? <DemoFlow currentScene={demoScene} /> : null}
 
       <CameraDetailRealtimeNext
         cameraId={camera.id}

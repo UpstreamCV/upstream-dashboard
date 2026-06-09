@@ -60,10 +60,6 @@ export default async function CameraSettingsPage({
             className="text-[var(--dn-text-50)]"
           />
         </Row>
-        <p className="pt-3 text-xs text-[var(--dn-text-50)]">
-          Editing camera metadata isn&rsquo;t wired up here yet — for now,
-          update via the api-server directly.
-        </p>
       </div>
     </div>
   );

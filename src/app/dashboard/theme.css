@@ -186,8 +186,8 @@
 
 /* Translucent pill inputs on the login card. */
 .dashboard-next .dn-field {
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 9999px;
   color: #fff;
   backdrop-filter: blur(8px);
@@ -197,7 +197,7 @@
     background 0.15s ease;
 }
 .dashboard-next .dn-field::placeholder {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.85);
 }
 .dashboard-next .dn-field:focus {
   outline: none;

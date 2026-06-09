@@ -17,8 +17,8 @@ const TABS = [
   { label: "Monitor", segment: "monitor" },
   { label: "Observations", segment: "observations" },
   { label: "Configure", segment: "configure" },
-  { label: "Settings", segment: "settings" },
   { label: "Reliability", segment: "reliability" },
+  { label: "Settings", segment: "settings" },
 ] as const;
 
 export function CameraTabs({ cameraId }: { cameraId: string }) {
@@ -34,7 +34,13 @@ export function CameraTabs({ cameraId }: { cameraId: string }) {
         // Prefix match so sub-routes (e.g. /configure/geometry) keep their
         // parent tab highlighted. Safe today because no tab href is a prefix
         // of another tab href; revisit if a sibling tab grows that overlap.
-        const active = pathname === href || pathname.startsWith(`${href}/`);
+        // The bare camera root redirects to Monitor, so highlight Monitor there
+        // too (covers the pre-redirect frame / a deep link to the root).
+        const active =
+          pathname === href ||
+          pathname.startsWith(`${href}/`) ||
+          (tab.segment === "monitor" &&
+            pathname === `/dashboard/cameras/${cameraId}`);
         return (
           <Link
             key={tab.segment}
@@ -44,7 +50,7 @@ export function CameraTabs({ cameraId }: { cameraId: string }) {
               "rounded-full px-3 py-1.5 text-[clamp(0.78rem,1vw,0.92rem)] transition",
               active
                 ? "bg-white text-black font-bold dn-glow-soft"
-                : "text-white/70 hover:bg-white/10 hover:text-white",
+                : "text-white hover:bg-white/10",
             )}
           >
             {tab.label}

@@ -34,6 +34,7 @@ import {
   type PlayerStateKind,
 } from "@/components/stream/player-state-event";
 import { LiveStreamPlayerNext } from "./live-stream-player-next";
+import { isDemoMode } from "@/lib/demo/demo-mode";
 import { StatusDot, type DotStatus } from "./status-dot";
 import { usePageVisible } from "./use-page-visible";
 import {
@@ -53,6 +54,15 @@ import {
 // table isn't in the supabase_realtime publication in this environment), and
 // slowing the poll there would make the overlay LESS live, not more.
 const LIVE_OVERLAY_POLL_MS = 250;
+// Demo mode poll cadence. Demo perception fixtures are STATIC per scene — the
+// boxes/geometry never move between polls (only `observed_at` re-anchors, and
+// the demo overlay hardcodes its age label to "just now"), and every scene
+// transition already pushes fresh data via the stepper/demo-flow's
+// router.refresh() (which re-seeds `initialPerception`). So the live 250ms
+// cadence buys ZERO visual fidelity here while flooding the single-process dev
+// server (~4 req/s, forever) and measurably starving navigation. Poll slowly,
+// just to keep the SWR cache warm. Prod (non-demo) is untouched.
+const DEMO_OVERLAY_POLL_MS = 10_000;
 // A realtime row event seen within this window means the push path is actually
 // delivering (not merely SUBSCRIBED) -> the chip can honestly say "connected".
 const REALTIME_DELIVERING_WINDOW_MS = 8_000;
@@ -148,8 +158,8 @@ export function LivePerceptionOverlayNext({
   const session = useLiveDetectionSession(now);
   const liveDetectionsEnabled = session.status === "on";
   const isExpired = session.status === "expired";
-  // Boxes are only drawn while a session is actively on.
-  const detectionsActive = liveDetectionsEnabled;
+  // Demo mode drives detections from the scene (no manual session / WHEP signal).
+  const demo = isDemoMode();
 
   const pageVisible = usePageVisible();
 
@@ -166,7 +176,7 @@ export function LivePerceptionOverlayNext({
     window.addEventListener(PLAYER_STATE_EVENT, handler);
     return () => window.removeEventListener(PLAYER_STATE_EVENT, handler);
   }, [cameraId]);
-  const streamActive = playerKind === "connected";
+  const streamActive = demo || playerKind === "connected";
 
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>(null);
   // When the last realtime row event arrived (epoch ms), or null. Used to tell
@@ -180,12 +190,17 @@ export function LivePerceptionOverlayNext({
   // note above. (Not gated by freshness either — polling is how a stale overlay
   // recovers.)
   const shouldPoll =
-    liveDetectionsEnabled &&
-    !isExpired &&
-    processingEnabled &&
-    streamActive &&
-    pageVisible;
-  const refreshInterval = shouldPoll ? LIVE_OVERLAY_POLL_MS : 0;
+    demo ||
+    (liveDetectionsEnabled &&
+      !isExpired &&
+      processingEnabled &&
+      streamActive &&
+      pageVisible);
+  const refreshInterval = shouldPoll
+    ? demo
+      ? DEMO_OVERLAY_POLL_MS
+      : LIVE_OVERLAY_POLL_MS
+    : 0;
 
   const { data, error, isValidating, mutate } =
     useUpstreamList<LatestPerceptionResponse>(
@@ -196,8 +211,10 @@ export function LivePerceptionOverlayNext({
           ? { snapshot: initialPerception }
           : undefined,
         // Opt down from the shared 3s dedupe so the realtime cache writes and
-        // the fast fallback poll aren't coalesced.
-        dedupingInterval: 250,
+        // the fast fallback poll aren't coalesced. In demo there's no realtime
+        // and the slow keep-alive poll never needs sub-second resolution, so
+        // keep the default dedupe to coalesce any incidental duplicate keys.
+        dedupingInterval: demo ? undefined : 250,
       },
     );
 
@@ -208,6 +225,27 @@ export function LivePerceptionOverlayNext({
     ? null
     : (data?.snapshot ?? initialPerception ?? null);
   const errored = !missing && error != null;
+
+  // Demo: which clip to loop, read from the perception fixture's `source.clip` —
+  // "clean" (raw feed, no boxes) before detection is set up, then "weak" (baseline,
+  // while the issue is open) or "strong" (high-recall). The overlay re-renders on
+  // each poll, so it tracks the scene.
+  const rawClip = (record?.snapshot.source as { clip?: string } | undefined)?.clip;
+  const demoClip: "clean" | "weak" | "strong" | undefined = demo
+    ? rawClip === "clean"
+      ? "clean"
+      : rawClip === "weak"
+        ? "weak"
+        : "strong"
+    : undefined;
+
+  // In demo, detection is "set up" only once the operator saves a counting line —
+  // the fixture marks the pre-setup state with clip="clean". Until then, show a
+  // "not set up yet" panel rather than an active live-preview reporting 0 objects.
+  const demoConfigured = demo ? demoClip !== "clean" : true;
+  // The active overlay panel renders while a live session is on (real) or once
+  // detection is set up (demo).
+  const detectionsActive = (liveDetectionsEnabled || demo) && demoConfigured;
 
   const snapshot = record ? normalizeSnapshot(record.snapshot) : null;
   const dimsOk = snapshot != null && hasFrameDimensions(snapshot);
@@ -227,8 +265,8 @@ export function LivePerceptionOverlayNext({
     detectionsActive && snapshot && dimsOk ? (
       <PerceptionOverlaySvg
         snapshot={snapshot}
-        showBoxes={showBoxes}
-        showLabels={showLabels}
+        showBoxes={demo ? false : showBoxes}
+        showLabels={demo ? false : showLabels}
         showGeometry={showGeometry}
         minConfidence={minConfidence}
       />
@@ -243,8 +281,14 @@ export function LivePerceptionOverlayNext({
   const ageSeconds = record
     ? observedAtAgeSeconds(record.observed_at, now())
     : null;
-  const ageLabel = record ? formatOverlayAge(record.observed_at, now()) : null;
-  const isStale = ageSeconds !== null && ageSeconds > staleAfterSeconds;
+  // Demo snapshots are always "live" (the fixture re-anchors each poll); never
+  // surface a stale "Nh old" age from the fixed fixture timestamp.
+  const ageLabel = demo
+    ? "just now"
+    : record
+      ? formatOverlayAge(record.observed_at, now())
+      : null;
+  const isStale = !demo && ageSeconds !== null && ageSeconds > staleAfterSeconds;
   const processorOutputFresh = !isStale;
 
   // The single gate for holding a Supabase Realtime subscription open.
@@ -264,6 +308,7 @@ export function LivePerceptionOverlayNext({
   // the SWR cache (revalidate:false) so the overlay renders at the processor's
   // publish rate rather than the dedupe-throttled refetch rate.
   useEffect(() => {
+    if (demo) return; // demo mode: the fixture poll carries the overlay, no Supabase
     if (!shouldUseRealtime) return;
     let supabase: SupabaseClient | null = null;
     let channel: RealtimeChannel | null = null;
@@ -339,22 +384,26 @@ export function LivePerceptionOverlayNext({
       setLastRealtimeEventAt(null);
       if (supabase && channel) void supabase.removeChannel(channel);
     };
-  }, [shouldUseRealtime, cameraId, mutate, now]);
+  }, [shouldUseRealtime, cameraId, mutate, now, demo]);
 
   const realtimeDelivering =
     lastRealtimeEventAt !== null &&
     now() - lastRealtimeEventAt < REALTIME_DELIVERING_WINDOW_MS;
 
-  const connection = deriveOverlayConnectionState({
-    processingEnabled,
-    liveDetectionsEnabled,
-    isExpired,
-    streamActive,
-    isStale,
-    shouldUseRealtime,
-    realtimeStatus,
-    realtimeDelivering,
-  });
+  const connection = demo
+    ? demoConfigured
+      ? { mode: "connected" as const, label: "live preview" }
+      : { mode: "off" as const, label: "detection not set up" }
+    : deriveOverlayConnectionState({
+        processingEnabled,
+        liveDetectionsEnabled,
+        isExpired,
+        streamActive,
+        isStale,
+        shouldUseRealtime,
+        realtimeStatus,
+        realtimeDelivering,
+      });
 
   return (
     <>
@@ -363,9 +412,10 @@ export function LivePerceptionOverlayNext({
         cameraId={cameraId}
         approved={approved}
         overlay={svg}
+        demoClip={demoClip}
       />
 
-      <div className="dn-tile p-[clamp(1rem,1.6vw,1.3rem)]">
+      <div className="dn-tile mt-4 md:mt-6 p-[clamp(1rem,1.6vw,1.3rem)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
@@ -384,7 +434,10 @@ export function LivePerceptionOverlayNext({
                   {ageLabel ?? "live"} · {snapshot.objects.length} object
                   {snapshot.objects.length === 1 ? "" : "s"} · {geometryCount}{" "}
                   geometry
-                  {isValidating ? " · refreshing…" : ""}
+                  {/* In demo the overlay polls every 250ms over static per-scene
+                      data, so isValidating flips ~4x/s — surfacing it just flickers
+                      the panel. Hide the in-flight indicator in demo. */}
+                  {!demo && isValidating ? " · refreshing…" : ""}
                 </span>
               ) : null}
             </p>
@@ -425,20 +478,20 @@ export function LivePerceptionOverlayNext({
                 <button
                   type="button"
                   onClick={() => void mutate()}
-                  disabled={isValidating}
+                  disabled={!demo && isValidating}
                   className={PILL_BTN}
                 >
                   <RefreshCw
                     className={clsx(
                       "h-3.5 w-3.5",
-                      isValidating && "animate-spin",
+                      !demo && isValidating && "animate-spin",
                     )}
                   />
                   Refresh
                 </button>
               </>
             ) : null}
-            <LiveDetectionsControl session={session} />
+            {!demo && <LiveDetectionsControl session={session} />}
           </div>
         </div>
 
@@ -454,11 +507,13 @@ export function LivePerceptionOverlayNext({
             streamActive={streamActive}
             isStale={isStale}
           />
+        ) : demo ? (
+          <DemoNotConfiguredMessage />
         ) : (
           <SessionOffMessage status={session.status} />
         )}
 
-        <DetectionDisclaimer />
+        {demo && !demoConfigured ? null : <DetectionDisclaimer />}
       </div>
     </>
   );
@@ -527,14 +582,30 @@ function SessionOffMessage({ status }: { status: LiveSessionStatus }) {
 }
 
 /**
- * Always-visible, plain-language disclaimer (M5). The wording is deliberate: it
- * must make clear the processor analyzes the REAL stream and only the browser
- * box preview may lag — never that the processor is delayed or out of sync.
+ * Demo-only: shown on the Monitor tab before detection is set up (no counting
+ * line saved yet), so the panel doesn't claim to be detecting when nothing is
+ * configured.
+ */
+function DemoNotConfiguredMessage() {
+  return (
+    <p className="mt-2 text-sm text-[var(--dn-text-50)]">
+      No detection running yet. Draw a counting line in{" "}
+      <span className="font-medium text-black">Configure</span>{" "}and save it —
+      Upstream starts detecting as soon as it&rsquo;s set up.
+    </p>
+  );
+}
+
+/**
+ * Plain-language disclaimer (M5), shown while detection is active. The wording is
+ * deliberate: it must make clear the processor analyzes the REAL stream and only
+ * the browser box preview may lag — never that the processor is delayed or out of
+ * sync.
  */
 function DetectionDisclaimer() {
   return (
     <div className="mt-3 border-t border-black/5 pt-3 text-[clamp(0.78rem,0.9vw,0.85rem)] text-[var(--dn-text-50)]">
-      <p>Live detections show what UpStream is seeing from the camera.</p>
+      <p>Live detections show what Upstream is seeing from the camera.</p>
       <p className="mt-2">
         The boxes are drawn in your browser as a preview, so they may be
         slightly delayed compared with the video. This does not mean the
