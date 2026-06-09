@@ -5,8 +5,6 @@ import {
   SessionPanel,
   ValidationPanel,
 } from "@/components/dashboard-next/camera-panels";
-import { LatestFrameCardNext } from "@/components/dashboard-next/latest-frame-card-next";
-import { LatestFramePerceptionOverlayNext } from "@/components/dashboard-next/latest-frame-perception-overlay-next";
 import { LivePerceptionOverlayNext } from "@/components/dashboard-next/live-perception-overlay-next";
 import { LiveStreamPanelNext } from "@/components/dashboard-next/live-stream-panel-next";
 import { ReliabilityPanel } from "@/components/dashboard-next/reliability-panel";
@@ -18,7 +16,6 @@ import { getLatestPerception } from "@/lib/api/perception";
 import { getProcessingConfig } from "@/lib/api/processing-config";
 import { getLatestProcessorStatus } from "@/lib/api/processor-status";
 import { getReliabilitySummary } from "@/lib/api/reliability";
-import { getLatestFrame } from "@/lib/api/snapshots";
 import { listStreamSessions } from "@/lib/api/stream-sessions";
 import { listValidations } from "@/lib/api/validations";
 import { notFound } from "next/navigation";
@@ -57,14 +54,8 @@ export default async function CameraMonitorPage({
     throw err;
   }
 
-  const [
-    agent,
-    sessions,
-    latestFrame,
-    latestPerception,
-    reliabilitySummary,
-    processingConfig,
-  ] = await Promise.all([
+  const [agent, sessions, latestPerception, reliabilitySummary, processingConfig] =
+    await Promise.all([
       // 404 = agent removed; other errors bubble to the segment error boundary.
       getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
         (err) => {
@@ -77,10 +68,9 @@ export default async function CameraMonitorPage({
         cameraId: camera.id,
         limit: 1,
       }),
-      // getLatestFrame already returns null on 404 / snapshot_not_found.
-      getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
-      // getLatestPerception already returns null on 404 /
-      // perception_snapshot_not_found.
+      // Seeds the live perception overlay's initial boxes. (The standalone
+      // latest-frame card + its overlay were removed — redundant with the live
+      // stream — so the frame itself is no longer fetched here.)
       getLatestPerception({ accountId: activeAccountId, cameraId: camera.id }),
       // Reliability M0/M1-A — evaluates on read in the api-server. Returns
       // null on 404 so an unavailable endpoint doesn't crash the tab.
@@ -132,8 +122,11 @@ export default async function CameraMonitorPage({
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="space-y-4 md:space-y-6">
+      {/* Live stream is the hero; the operator-facing status sits beside it.
+          The redundant latest-frame card + its overlay were removed — the live
+          stream already shows the camera, so a second still view added nothing. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="lg:col-span-2">
           <LiveStreamPanelNext
             session={currentSession}
             renderStreaming={(session) => (
@@ -146,30 +139,21 @@ export default async function CameraMonitorPage({
               />
             )}
           />
-          {currentSession ? <SessionPanel session={currentSession} /> : null}
         </div>
-        <div>
-          <LatestFrameCardNext
-            cameraId={camera.id}
-            initialFrame={latestFrame}
-          />
+        {/* Status rail beside the stream — verdicts first, then the live session
+            (fills the column so it doesn't sit short next to the tall feed). */}
+        <div className="space-y-4 md:space-y-6">
+          <ReliabilityPanel summary={reliability} cameraId={camera.id} />
+          <AppliedGeometryPanel status={processorStatus} />
+          {currentSession ? <SessionPanel session={currentSession} /> : null}
         </div>
       </div>
 
-      <LatestFramePerceptionOverlayNext
-        cameraId={camera.id}
-        initialFrame={latestFrame}
-        initialPerception={latestPerception}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
-        {/* Reliability is the operator-facing roll-up; lead the meta-panel
-            grid with it so the verdict is the first thing on the row. */}
-        <ReliabilityPanel summary={reliability} cameraId={camera.id} />
-        <CameraMetaPanel camera={camera} />
+      {/* Condensed details row. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
         <AgentPanel agent={agent} />
+        <CameraMetaPanel camera={camera} />
         <ValidationPanel validation={latestValidation} />
-        <AppliedGeometryPanel status={processorStatus} />
       </div>
     </div>
   );

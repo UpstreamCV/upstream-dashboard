@@ -20,6 +20,8 @@ import {
   type GeometryValidationIssue,
   validateGeometryConfig,
 } from "@/lib/perception/geometry-schema";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { setDemoSceneAction } from "@/lib/demo/actions";
 
 export type SaveGeometryActionResult =
   | { ok: true; message: string; record: GeometryConfigRecord }
@@ -54,6 +56,26 @@ export async function saveGeometryAction(
     };
   }
   const config = parsed as GeometryConfig;
+
+  // Demo mode: don't call upstream — advance the narrative to "line-saved" and
+  // return the saved record so the toast + sidebar revision update fire as usual.
+  if (isDemoMode()) {
+    await setDemoSceneAction("line-saved");
+    revalidatePath(`/dashboard/cameras/${cameraId}/configure/geometry`);
+    return {
+      ok: true,
+      message: "Geometry saved.",
+      record: {
+        id: "60000000-0000-4000-8000-000000000061",
+        camera_id: cameraId,
+        revision: 1,
+        config,
+        is_default: false,
+        created_at: "2026-06-01T17:24:00Z",
+        updated_at: "2026-06-01T17:24:00Z",
+      },
+    };
+  }
 
   const { activeAccountId } = await getActiveAccount();
 

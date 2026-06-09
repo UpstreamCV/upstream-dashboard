@@ -78,8 +78,8 @@ describe("AppliedGeometryPanel", () => {
       />,
     );
     expect(html).toContain(">Default<");
-    expect(html).toContain("Processor is using default geometry");
-    expect(html).toContain("restart the processor session");
+    expect(html).toContain("Using default detection zones");
+    expect(html).toContain("save a counting line in");
     // No revision row on the default path (default has no operator revision).
     expect(html).not.toContain("Revision");
   });

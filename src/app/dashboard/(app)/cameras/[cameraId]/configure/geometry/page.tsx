@@ -8,6 +8,8 @@ import { UpstreamApiError } from "@/lib/api/errors";
 import { getCameraGeometryConfig } from "@/lib/api/geometry";
 import { getLatestFrame } from "@/lib/api/snapshots";
 import type { GeometryConfigRecord, LatestFrame } from "@/lib/api/types";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { AlertRuleCard } from "@/lib/demo/alert-rule-card";
 
 // P6-B1 — Latest-Frame Geometry Editor Foundation.
 //
@@ -67,7 +69,7 @@ export default async function CameraGeometryEditorPage({
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 md:gap-6 items-start">
-        <div>
+        <div className="space-y-4 md:space-y-6">
           {latestFrame ? (
             <GeometryEditorPanel
               cameraId={cameraId}
@@ -78,6 +80,7 @@ export default async function CameraGeometryEditorPage({
           ) : (
             <NoFrameEmptyState />
           )}
+          {isDemoMode() && latestFrame ? <AlertRuleCard /> : null}
         </div>
         <aside className="space-y-4">
           <StatusPanel record={record} />

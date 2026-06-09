@@ -4,10 +4,13 @@ import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { listMemberships, type Membership } from "./memberships";
+import { isDemoMode } from "@/lib/demo/demo-mode";
+import { ACCOUNT_ID, DEMO_MEMBERSHIP, DEMO_USER } from "@/lib/demo/fixtures";
 
 export const ACTIVE_ACCOUNT_COOKIE = "upstream_active_account";
 
 export async function getActiveAccountIdFromCookie(): Promise<string | null> {
+  if (isDemoMode()) return ACCOUNT_ID;
   const store = await cookies();
   return store.get(ACTIVE_ACCOUNT_COOKIE)?.value ?? null;
 }
@@ -47,6 +50,14 @@ export type ActiveAccountContext = {
  */
 export const getActiveAccount = cache(
   async (): Promise<ActiveAccountContext> => {
+  if (isDemoMode()) {
+    return {
+      user: DEMO_USER,
+      memberships: [DEMO_MEMBERSHIP],
+      activeAccountId: ACCOUNT_ID,
+      activeAccount: DEMO_MEMBERSHIP,
+    };
+  }
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },

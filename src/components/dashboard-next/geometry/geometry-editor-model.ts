@@ -317,6 +317,23 @@ export function updateLineLabel(
 }
 
 /**
+ * Replace a line's crossing direction (any | in | out). Preserves id, points,
+ * label, enabled. Unknown line id is a silent no-op.
+ */
+export function updateLineDirection(
+  state: EditorShapesState,
+  lineId: string,
+  direction: GeometryLine["direction"],
+): EditorShapesState {
+  return {
+    ...state,
+    lines: state.lines.map((line) =>
+      line.id === lineId ? { ...line, direction } : line,
+    ),
+  };
+}
+
+/**
  * Replace an ROI's label. Preserves id, points, type, enabled — same id
  * stability guarantee as updateLineLabel.
  */

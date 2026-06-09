@@ -380,7 +380,7 @@ describe("LivePerceptionOverlayNext — disclaimer", () => {
     const view = renderOverlay();
     const text = view.container.textContent ?? "";
     expect(text).toContain(
-      "Live detections show what UpStream is seeing from the camera.",
+      "Live detections show what Upstream is seeing from the camera.",
     );
     expect(text).toContain(
       "This does not mean the processor is delayed or out of sync",
