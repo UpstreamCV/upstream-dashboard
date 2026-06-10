@@ -63,7 +63,12 @@ const NAV: {
   { label: "Network", href: null, icon: Network },
   { label: "Billing", href: null, icon: CreditCard },
   { label: "Users", href: null, icon: Users },
-  { label: "Alerts", href: null, icon: Bell },
+  {
+    label: "Alerts",
+    href: "/dashboard/alerts",
+    match: /^\/dashboard\/alerts/,
+    icon: Bell,
+  },
   {
     label: "API Keys",
     href: "/dashboard/api-tokens",

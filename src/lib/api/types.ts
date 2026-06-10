@@ -737,3 +737,56 @@ export interface ConfigComparisonSummaryResponse {
   comparability_notes: string[];
   caveats: string[];
 }
+
+// --- Rules/Triggers M1 -------------------------------------------------------
+// Source: ../upstream-api-server/src/upstream_api/schemas/rules.py + alerts.py
+
+/** Rule types the api-server currently accepts on create. */
+export type RuleType =
+  | "line_crossing"
+  | "roi_occupancy"
+  | "zone_entered"
+  | "dwell_exceeded";
+
+export type RuleSeverity = "info" | "warning" | "critical";
+
+export interface Rule {
+  id: Uuid;
+  camera_id: Uuid;
+  name: string;
+  // Plain string (not RuleType) — the DB column is open vocabulary, so reads
+  // must tolerate types this build doesn't know yet.
+  rule_type: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  severity: string;
+  cooldown_seconds: number;
+  created_by: Uuid | null;
+  created_at: IsoDateTime;
+  updated_at: IsoDateTime;
+}
+
+export interface RuleListResponse {
+  rules: Rule[];
+}
+
+export type AlertStatus = "open" | "resolved";
+
+export interface Alert {
+  id: Uuid;
+  camera_id: Uuid;
+  rule_id: Uuid | null;
+  observation_id: Uuid | null;
+  severity: string;
+  status: string;
+  title: string;
+  message: string;
+  payload: Record<string, unknown>;
+  created_at: IsoDateTime;
+  read_at: IsoDateTime | null;
+  resolved_at: IsoDateTime | null;
+}
+
+export interface AlertListResponse {
+  alerts: Alert[];
+}
