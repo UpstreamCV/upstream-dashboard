@@ -4,6 +4,25 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-09 — Reliability (M10): "Reliability by Config" section from the M9 by-config API
+
+**Subject:** Add a config-aware reliability section to the camera Reliability tab: one card per applied processing-config group (readable label, status, caveat badge, mini sparkline, headline stats) from the new M9 `GET /v1/cameras/{id}/reliability/confidence-trend/by-config` endpoint, with client-side Classes/Status filters derived from the returned groups.
+
+**Why:** M9 (api-server) made reliability metrics config-aware — rollups now preserve applied-processing-config dimensions and a by-config trend read exists — but the dashboard had no surface for it. M10 makes "did config r4 do better than r3?" answerable from the Reliability tab without replacing the existing camera-level trend chart. Honesty held throughout: confidence threshold and selected classes are applied only where supported; model switching, tracker changes, processing FPS, and class-filtered line/ROI counts remain not live-applied, and the section says so.
+
+**What changed (dashboard only — no api-server/processor changes):**
+- `src/lib/api/types.ts` — `ProcessingConfigStatus`, `ConfidenceTrendConfigGroup`, `ConfidenceTrendByConfigResponse` (mirror the api-server contract; dimension fields nullable for pre-M8 history).
+- `src/lib/api/reliability.ts` — `getReliabilityConfidenceTrendByConfig()`: wraps the by-config endpoint with the supported filter params (`processing_config_revision/status`, `applied_selected_classes_key`, `applied_confidence_threshold`, `warning`) serialized only when set; same resilient null-on-any-error posture as the trend client so a missing M9 endpoint can never blank the tab.
+- `src/lib/perception/config-group-label.ts` — pure label helpers: `formatConfigGroupLabel` ("All classes · default confidence", "person · confidence 0.20", "unknown config", "No config metadata"), `formatConfigGroupStatus` ("partially applied · r4", "default config", "fallback default"), `hasAnalyticsCountsCaveat`, `isNoMetadataGroup`, `configGroupKey`.
+- `src/components/dashboard-next/reliability-by-config-card.tsx` — the new client card: 24h | 7d toggle (both ranges server-fetched, instant switch), unavailable/empty states, per-group cards with gap-aware mini sparkline + Latest avg / Low-conf ratio / Samples, a "line/ROI counts still all-class" badge when the group carries `selected_classes_analytics_counts_not_filtered`, "No samples for this config in the selected range." for zero-sample groups, and Classes/Status `<select>` filters whose options derive from the returned data (nothing hardcoded, all filtering client-side — no extra query params sent).
+- `src/app/dashboard/(app)/cameras/[cameraId]/reliability/page.tsx` — fetches by-config 24h+7d in the existing `Promise.all` and renders the section below the existing confidence-trend card (which is untouched).
+
+**Verification:** `npx tsc --noEmit`, `npm run lint`, `npm run test` — 30 files / 430 tests pass, including new suites: `reliability-by-config.test.ts` (endpoint/params/resilience), `config-group-label.test.ts` (label/status/caveat rules), `reliability-by-config-card.test.tsx` (12 render/behavior cases incl. filters, range toggle, caveat badge, no live-apply claims). Existing reliability/Model & Detection tests unchanged and passing.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/dashboard-next.md` (Reliability by Config subsection).
+
+---
+
 ## 2026-06-01 — Model & Detection (M6): tracker / confidence / processing-FPS controls
 
 **Subject:** Finish the Model & Detection editor — add dashboard controls for tracker, confidence threshold, and processing FPS (each defaulting to the runtime/model default), flip the validator from rejecting these fields to validating their bounds, and surface the saved values in the status panel.
