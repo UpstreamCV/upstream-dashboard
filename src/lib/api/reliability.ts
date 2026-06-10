@@ -139,6 +139,7 @@ export async function getReliabilityConfidenceTrendByConfig(opts: {
   appliedSelectedClassesKey?: string;
   appliedConfidenceThreshold?: number;
   warning?: string;
+  appliedProcessingFps?: number;
 }): Promise<ConfidenceTrendByConfigResponse | null> {
   const query: Record<string, string> = { range: opts.range ?? "24h" };
   if (opts.processingConfigRevision !== undefined) {
@@ -155,6 +156,9 @@ export async function getReliabilityConfidenceTrendByConfig(opts: {
   }
   if (opts.warning !== undefined) {
     query.warning = opts.warning;
+  }
+  if (opts.appliedProcessingFps !== undefined) {
+    query.applied_processing_fps = String(opts.appliedProcessingFps);
   }
   try {
     return await serverFetch<ConfidenceTrendByConfigResponse>(
