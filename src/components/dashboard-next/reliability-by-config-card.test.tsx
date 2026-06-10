@@ -41,6 +41,8 @@ function group(
     applied_model_key: "trafficcamnet_v1",
     applied_selected_classes_key: "all",
     applied_confidence_threshold: null,
+    requested_processing_fps: null,
+    applied_processing_fps: null,
     processing_config_warnings: null,
     summary: {
       point_count: points.length,
@@ -115,9 +117,9 @@ describe("ReliabilityByConfigCard", () => {
       />,
     );
     // "all" -> "All classes."; null threshold -> "default confidence".
-    expect(screen.getByText("All classes · default confidence")).toBeDefined();
+    expect(screen.getByText("All classes · default confidence · default FPS")).toBeDefined();
     // confidence 0.2 displays clearly.
-    expect(screen.getByText("person · confidence 0.20")).toBeDefined();
+    expect(screen.getByText("person · confidence 0.20 · default FPS")).toBeDefined();
   });
 
   test("partially_applied status renders calmly with revision", () => {
@@ -132,6 +134,24 @@ describe("ReliabilityByConfigCard", () => {
       <ReliabilityByConfigCard byConfig24h={response([PERSON_GROUP])} byConfig7d={null} />,
     );
     expect(screen.getByText("line/ROI counts still all-class")).toBeDefined();
+  });
+
+  test("applied fps shows in the group label", () => {
+    const fps_group = group({
+      applied_selected_classes_key: "all",
+      requested_processing_fps: 5,
+      applied_processing_fps: 5,
+      processing_config_warnings: ["processing_fps_output_cadence_only"],
+    });
+    render(<ReliabilityByConfigCard byConfig24h={response([fps_group])} byConfig7d={null} />);
+    expect(screen.getByText("All classes · default confidence · 5 FPS")).toBeDefined();
+    // M7E caveat badge rides along.
+    expect(screen.getByText("output cadence only")).toBeDefined();
+  });
+
+  test("no cadence badge without the M7E warning", () => {
+    render(<ReliabilityByConfigCard byConfig24h={response([group()])} byConfig7d={null} />);
+    expect(screen.queryByText("output cadence only")).toBeNull();
   });
 
   test("no caveat badge without the warning", () => {
@@ -172,8 +192,8 @@ describe("ReliabilityByConfigCard", () => {
     );
     const classSelect = screen.getByLabelText("Classes");
     fireEvent.change(classSelect, { target: { value: "person" } });
-    expect(screen.getByText("person · confidence 0.20")).toBeDefined();
-    expect(screen.queryByText("All classes · default confidence")).toBeNull();
+    expect(screen.getByText("person · confidence 0.20 · default FPS")).toBeDefined();
+    expect(screen.queryByText("All classes · default confidence · default FPS")).toBeNull();
   });
 
   test("range toggle switches to the 7d payload", () => {
@@ -183,10 +203,10 @@ describe("ReliabilityByConfigCard", () => {
         byConfig7d={response([PERSON_GROUP])}
       />,
     );
-    expect(screen.getByText("All classes · default confidence")).toBeDefined();
+    expect(screen.getByText("All classes · default confidence · default FPS")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "7d" }));
-    expect(screen.getByText("person · confidence 0.20")).toBeDefined();
-    expect(screen.queryByText("All classes · default confidence")).toBeNull();
+    expect(screen.getByText("person · confidence 0.20 · default FPS")).toBeDefined();
+    expect(screen.queryByText("All classes · default confidence · default FPS")).toBeNull();
   });
 
   test("does not claim model/tracker/FPS are live-applied", () => {
@@ -199,7 +219,11 @@ describe("ReliabilityByConfigCard", () => {
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/model (switch|change).{0,20}(live|applied)/i);
     expect(text).not.toMatch(/tracker.{0,20}(live|applied)/i);
-    expect(text).not.toMatch(/fps.{0,20}(live|applied|throttl)/i);
+    // M9.1: "5 FPS" labels are facts about applied output cadence — what must
+    // never appear is a GPU/inference-throttling claim.
+    expect(text).not.toMatch(/gpu/i);
+    expect(text).not.toMatch(/throttles? inference/i);
+    expect(text).not.toMatch(/reduces? (gpu|inference|cost)/i);
     // The standing caveat IS present.
     expect(text).toContain(
       "Line/ROI aggregate counts may still include all classes.",

@@ -16,6 +16,20 @@ import type { ConfidenceTrendConfigGroup } from "@/lib/api/types";
 export const SELECTED_CLASSES_ANALYTICS_WARNING =
   "selected_classes_analytics_counts_not_filtered";
 
+/** The M7E caveat code: processing_fps throttles the perception-snapshot
+ * output cadence only — inference keeps running at the source rate (no GPU
+ * saving) and event-driven observations are not throttled. */
+export const FPS_OUTPUT_CADENCE_WARNING = "processing_fps_output_cadence_only";
+
+/** Whether a group carries the M7E output-cadence-only caveat. */
+export function hasOutputCadenceCaveat(
+  group: Pick<ConfidenceTrendConfigGroup, "processing_config_warnings">,
+): boolean {
+  return (group.processing_config_warnings ?? []).includes(
+    FPS_OUTPUT_CADENCE_WARNING,
+  );
+}
+
 /** Whether a group carries the line/ROI all-class-counts caveat. */
 export function hasAnalyticsCountsCaveat(
   group: Pick<ConfidenceTrendConfigGroup, "processing_config_warnings">,
@@ -47,7 +61,7 @@ export function isNoMetadataGroup(
 }
 
 /**
- * Primary label: "<classes> · <confidence>".
+ * Primary label: "<classes> · <confidence> · <fps>".
  *
  * - classes key "all"      -> "All classes"
  * - classes key "person"   -> "person"
@@ -55,6 +69,8 @@ export function isNoMetadataGroup(
  *   metadata groups visibly rather than masquerading as a real config)
  * - null threshold         -> "default confidence"
  * - threshold 0.2          -> "confidence 0.20"
+ * - null applied fps       -> "default FPS" (M9.1)
+ * - applied fps 5          -> "5 FPS"
  * - all-null dimensions    -> "No config metadata" (pre-M8 history)
  */
 export function formatConfigGroupLabel(group: ConfidenceTrendConfigGroup): string {
@@ -70,7 +86,11 @@ export function formatConfigGroupLabel(group: ConfidenceTrendConfigGroup): strin
     group.applied_confidence_threshold == null
       ? "default confidence"
       : `confidence ${group.applied_confidence_threshold.toFixed(2)}`;
-  return `${classes} · ${confidence}`;
+  const fps =
+    group.applied_processing_fps == null
+      ? "default FPS"
+      : `${group.applied_processing_fps} FPS`;
+  return `${classes} · ${confidence} · ${fps}`;
 }
 
 /**
@@ -105,6 +125,8 @@ export function configGroupKey(group: ConfidenceTrendConfigGroup): string {
     group.applied_model_key ?? "∅",
     group.applied_selected_classes_key ?? "∅",
     group.applied_confidence_threshold ?? "∅",
+    group.requested_processing_fps ?? "∅",
+    group.applied_processing_fps ?? "∅",
     (group.processing_config_warnings ?? []).join("|"),
   ].join("·");
 }

@@ -8,6 +8,7 @@ import {
   formatConfigGroupLabel,
   formatConfigGroupStatus,
   hasAnalyticsCountsCaveat,
+  hasOutputCadenceCaveat,
   isNoMetadataGroup,
 } from "@/lib/perception/config-group-label";
 import type {
@@ -145,6 +146,7 @@ function distinct(values: string[]): string[] {
 
 function ConfigGroupCard({ group }: { group: ConfidenceTrendConfigGroup }) {
   const caveat = hasAnalyticsCountsCaveat(group);
+  const cadenceCaveat = hasOutputCadenceCaveat(group);
   const s = group.summary;
   const latestLowRatio = latestRated(group.points)?.low_confidence_ratio ?? null;
   return (
@@ -166,6 +168,18 @@ function ConfigGroupCard({ group }: { group: ConfidenceTrendConfigGroup }) {
             title="Selected class filters currently apply to supported per-object outputs; line/ROI aggregate counts are not class-filtered yet."
           >
             line/ROI counts still all-class
+          </span>
+        ) : null}
+        {cadenceCaveat ? (
+          <span
+            className={clsx(
+              "inline-flex items-center rounded-full border px-2 py-0.5",
+              "text-[11px] font-mono uppercase tracking-wider",
+              "border-black/10 text-[var(--dn-text-50)]",
+            )}
+            title="Processing FPS throttles the perception snapshot output cadence only — inference keeps running at the source rate (no GPU saving) and event observations are not throttled."
+          >
+            output cadence only
           </span>
         ) : null}
       </div>

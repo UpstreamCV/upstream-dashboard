@@ -4,6 +4,16 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-09 — Reliability (M10.1): show applied processing FPS in Reliability by Config
+
+**Subject:** Group labels gain an FPS segment ("All classes · confidence 0.10 · 5 FPS"; null → "default FPS"), an "output cadence only" badge appears when a group carries `processing_fps_output_cadence_only`, and the by-config types/client pick up the M9.1 `requested_processing_fps` / `applied_processing_fps` fields plus the optional `applied_processing_fps` filter param.
+
+**Why:** M7E applies `processing_fps` as perception-snapshot output cadence and M9.1 (api-server) made it a first-class reliability dimension; the cards should label it. Honesty preserved: the cadence badge tooltip states it does NOT reduce GPU/inference work; the honesty test now pins "no GPU/inference-throttling claims" explicitly (the old fps regex would false-positive against the legitimate "5 FPS" label adjacent to status text).
+
+**What changed:** `src/lib/api/types.ts` (+2 nullable fields), `src/lib/api/reliability.ts` (`appliedProcessingFps` filter param, sent only when set), `src/lib/perception/config-group-label.ts` (FPS label segment, `FPS_OUTPUT_CADENCE_WARNING`, `hasOutputCadenceCaveat`, key includes fps), `src/components/dashboard-next/reliability-by-config-card.tsx` (cadence badge). Tests updated/added; `npx tsc --noEmit` + `npm run test` (429) pass. The only lint error is the pre-existing demo-mode one.
+
+---
+
 ## 2026-06-09 — Reliability (M10): "Reliability by Config" section from the M9 by-config API
 
 **Subject:** Add a config-aware reliability section to the camera Reliability tab: one card per applied processing-config group (readable label, status, caveat badge, mini sparkline, headline stats) from the new M9 `GET /v1/cameras/{id}/reliability/confidence-trend/by-config` endpoint, with client-side Classes/Status filters derived from the returned groups.

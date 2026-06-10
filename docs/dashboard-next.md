@@ -488,6 +488,10 @@ Pieces:
   `"unknown"` key → "unknown config", all-null dimensions (pre-M8 history) →
   "No config metadata"; statuses humanised ("partially applied · r4",
   "default config", "fallback default").
+- M10.1: group labels include the applied FPS segment ("… · 5 FPS", null →
+  "default FPS"), with an "output cadence only" badge when the group carries
+  `processing_fps_output_cadence_only` (tooltip states it does not reduce
+  GPU/inference work).
 - `src/components/dashboard-next/reliability-by-config-card.tsx` — client card
   with the 24h | 7d toggle (both ranges server-fetched by the page, instant
   switch), per-group mini sparkline (gap-aware, same approach as the trend

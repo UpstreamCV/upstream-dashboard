@@ -2,8 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import type { ConfidenceTrendConfigGroup } from "@/lib/api/types";
 import {
+  FPS_OUTPUT_CADENCE_WARNING,
   SELECTED_CLASSES_ANALYTICS_WARNING,
   configGroupKey,
+  hasOutputCadenceCaveat,
   formatConfigGroupLabel,
   formatConfigGroupStatus,
   hasAnalyticsCountsCaveat,
@@ -20,6 +22,8 @@ function group(
     applied_model_key: "trafficcamnet_v1",
     applied_selected_classes_key: "all",
     applied_confidence_threshold: null,
+    requested_processing_fps: null,
+    applied_processing_fps: null,
     processing_config_warnings: null,
     points: [],
     summary: {
@@ -41,12 +45,16 @@ const NO_METADATA = group({
   applied_model_key: null,
   applied_selected_classes_key: null,
   applied_confidence_threshold: null,
+  requested_processing_fps: null,
+  applied_processing_fps: null,
   processing_config_warnings: null,
 });
 
 describe("formatConfigGroupLabel", () => {
   test('"all" classes + null threshold -> "All classes · default confidence"', () => {
-    expect(formatConfigGroupLabel(group())).toBe("All classes · default confidence");
+    expect(formatConfigGroupLabel(group())).toBe(
+      "All classes · default confidence · default FPS",
+    );
   });
 
   test('person-only with threshold 0.2 -> "person · confidence 0.20"', () => {
@@ -57,7 +65,7 @@ describe("formatConfigGroupLabel", () => {
           applied_confidence_threshold: 0.2,
         }),
       ),
-    ).toBe("person · confidence 0.20");
+    ).toBe("person · confidence 0.20 · default FPS");
   });
 
   test("multi-class key passes through as-is", () => {
@@ -68,7 +76,7 @@ describe("formatConfigGroupLabel", () => {
           applied_confidence_threshold: 0.2,
         }),
       ),
-    ).toBe("car,person · confidence 0.20");
+    ).toBe("car,person · confidence 0.20 · default FPS");
   });
 
   test('malformed metadata -> "unknown config"', () => {
@@ -79,6 +87,39 @@ describe("formatConfigGroupLabel", () => {
 
   test('all-null dimensions (pre-M8 history) -> "No config metadata"', () => {
     expect(formatConfigGroupLabel(NO_METADATA)).toBe("No config metadata");
+  });
+});
+
+describe("M9.1 FPS label segment", () => {
+  test("applied fps 5 renders as 5 FPS", () => {
+    expect(
+      formatConfigGroupLabel(
+        group({ requested_processing_fps: 5, applied_processing_fps: 5 }),
+      ),
+    ).toBe("All classes · default confidence · 5 FPS");
+  });
+
+  test("fps requested but not applied stays default FPS (honest)", () => {
+    expect(
+      formatConfigGroupLabel(
+        group({ requested_processing_fps: 5, applied_processing_fps: null }),
+      ),
+    ).toBe("All classes · default confidence · default FPS");
+  });
+
+  test("hasOutputCadenceCaveat detects the M7E warning", () => {
+    expect(
+      hasOutputCadenceCaveat(
+        group({ processing_config_warnings: [FPS_OUTPUT_CADENCE_WARNING] }),
+      ),
+    ).toBe(true);
+    expect(hasOutputCadenceCaveat(group())).toBe(false);
+  });
+
+  test("fps distinguishes group keys", () => {
+    expect(configGroupKey(group({ applied_processing_fps: 5 }))).not.toBe(
+      configGroupKey(group()),
+    );
   });
 });
 

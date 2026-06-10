@@ -656,6 +656,10 @@ export interface ConfidenceTrendConfigGroup {
   // Canonical key: "all", "person", "car,person" (sorted), or "unknown".
   applied_selected_classes_key: string | null;
   applied_confidence_threshold: number | null;
+  // M9.1: dedicated FPS dimensions (M7E output-cadence apply — cadence only,
+  // not inference FPS; no GPU-cost implication).
+  requested_processing_fps: number | null;
+  applied_processing_fps: number | null;
   // Producer warning codes, e.g. "selected_classes_analytics_counts_not_filtered".
   processing_config_warnings: string[] | null;
   points: ConfidenceTrendPoint[];
