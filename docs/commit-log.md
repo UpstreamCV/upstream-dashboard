@@ -4,6 +4,24 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Workflow Engine M2: workflow history page + run-aware rules/alerts
+
+**Subject:** Add the `/dashboard/workflows` history page and surface workflow runs across the rules page and alert inbox — the dashboard half of Workflow Engine M2 (Workflow Runs + Internal Event History). This is a Workflow Engine milestone, not a reliability milestone and not an alerts feature.
+
+**Why:** Upstream's long-term shape is a camera workflow engine, not an alerts product. M1 (the rules + alerts slice, retroactively "Workflow Engine M1") made rule matches send alerts; M2's api-server records every match as a `workflow_run` — including cooldown-suppressed matches that send no alert — with evidence and action outcome. The dashboard needs to show that system of record: what fired, on which camera, what observation caused it, what evidence was captured, and whether an alert was created or suppressed.
+
+**What changed:**
+- `src/app/dashboard/(app)/workflows/page.tsx` + `src/components/dashboard-next/workflows/workflow-runs-client.tsx` — account-wide history: All/Completed/Suppressed tabs (server-side status filter), 10s polling via `useUpstreamList`, status/trigger chips, camera + related-alert links, and a per-row `<details>` expand with the evidence payload, rule snapshot, and run ids (observations-panel pattern; no separate detail route needed).
+- `src/app/dashboard/(app)/cameras/[cameraId]/configure/rules/page.tsx` — server-rendered "Recent workflow runs" panel under the rule editor (last 8 runs for the camera, fetched in the existing `Promise.all`), making visible that rules are workflow executions, not just alert senders.
+- `src/components/dashboard-next/alerts/alerts-inbox-client.tsx` — alert rows with a `workflow_run_id` link back to the workflows page.
+- `src/lib/api/workflow-runs.ts` — `listWorkflowRuns`/`getWorkflowRun` serverFetch wrappers; `src/lib/api/types.ts` — `WorkflowRun`/`WorkflowRunAlertRef` types (open-vocabulary-tolerant reads) + `Alert.workflow_run_id`.
+- `src/lib/workflows/workflow-run-format.ts` — pure status/action-result/trigger label + chip helpers; unknown values echo through so a newer api-server can never blank the page.
+- `src/components/nav/sidebar-next.tsx` — "Workflows" nav entry (above Alerts).
+
+**Docs updated:** docs/commit-log.md. Contract source: `../upstream-api-server/docs/api-contracts.md` "Endpoints — Workflow Engine M2".
+
+**Testing/checks:** `npm run test` (479, includes new `workflow-run-format.test.ts`), `npx tsc --noEmit`, and a production `next build` (`/dashboard/workflows` compiles) all pass. The only lint error is the pre-existing demo-mode one. Demo-mode fixtures for `/v1/workflow-runs` not included — live-data only, same as the M1 rules/alerts pages. Deferred by design: multi-step sequencing UI, visual workflow builder, delivery channels, run review actions.
+
 ## 2026-06-10 — Rules/Triggers M1: per-camera rule editor + account alert inbox
 
 **Subject:** Wire the configure tab's "Triggers & Effects" placeholder to a real rule editor and add the `/dashboard/alerts` inbox, completing the dashboard half of Rules/Triggers M1 (the first milestone of the Rules/Triggers + Alerts product track — separate numbering from the reliability milestones).

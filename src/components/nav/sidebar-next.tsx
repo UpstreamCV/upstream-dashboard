@@ -18,6 +18,7 @@ import {
   Settings,
   Users,
   Video,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,6 +64,12 @@ const NAV: {
   { label: "Network", href: null, icon: Network },
   { label: "Billing", href: null, icon: CreditCard },
   { label: "Users", href: null, icon: Users },
+  {
+    label: "Workflows",
+    href: "/dashboard/workflows",
+    match: /^\/dashboard\/workflows/,
+    icon: Workflow,
+  },
   {
     label: "Alerts",
     href: "/dashboard/alerts",
