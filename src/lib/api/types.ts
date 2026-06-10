@@ -673,3 +673,62 @@ export interface ConfidenceTrendByConfigResponse {
   group_count: number;
   groups: ConfidenceTrendConfigGroup[];
 }
+
+// Model-config M11 — config comparison report card. DESCRIPTIVE only: the
+// backend returns factual directions/deltas and a neutral status, never a
+// verdict or recommendation; the UI must keep that posture.
+
+export type ConfigComparisonStatus =
+  | "comparable"
+  | "mixed_metrics"
+  | "inconclusive"
+  | "no_data";
+
+export type ConfigComparisonMode =
+  | "explicit"
+  | "latest_vs_previous"
+  | "recent_vs_prior"
+  | "none";
+
+export interface ConfigComparisonGroup {
+  group_key: string;
+  label: string;
+  processing_config_source: string | null;
+  processing_config_revision: number | null;
+  processing_config_status: string | null;
+  applied_model_key: string | null;
+  applied_selected_classes_key: string | null;
+  applied_confidence_threshold: number | null;
+  requested_processing_fps: number | null;
+  applied_processing_fps: number | null;
+  warnings: string[];
+  sample_count: number;
+  avg_confidence: number | null;
+  low_confidence_ratio: number | null;
+  latest_bucket_start: IsoDateTime | null;
+}
+
+export interface ConfigComparisonDeltas {
+  avg_confidence_delta: number | null;
+  avg_confidence_percent_delta: number | null;
+  low_confidence_ratio_delta: number | null;
+  sample_count_delta: number;
+  applied_processing_fps_delta: number | null;
+}
+
+export interface ConfigComparisonSummaryResponse {
+  camera_id: Uuid;
+  range: ConfidenceTrendRange;
+  generated_at: IsoDateTime;
+  comparison_mode: ConfigComparisonMode;
+  min_samples: number;
+  baseline: ConfigComparisonGroup | null;
+  candidate: ConfigComparisonGroup | null;
+  metric_deltas: ConfigComparisonDeltas | null;
+  comparison_status: ConfigComparisonStatus;
+  metric_directions: string[];
+  summary: string;
+  bullets: string[];
+  comparability_notes: string[];
+  caveats: string[];
+}

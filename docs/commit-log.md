@@ -4,6 +4,16 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-09 — Reliability (M11): "Config Comparison" report card
+
+**Subject:** Add a descriptive before/after config comparison section to the camera Reliability tab, fed by the new api-server `GET .../reliability/config-comparison-summary` endpoint: baseline vs candidate group panels (label + avg conf / low-conf ratio / samples), a neutral status chip (comparable / mixed metrics / inconclusive / no data), the backend's factual summary and bullets, comparability notes, and standing caveats, with the usual 24h | 7d toggle.
+
+**Why:** M9/M9.1 made reliability config-aware and M10/M10.1 showed per-config series; M11 closes the loop with a report card that states what changed between the latest and previous applied configs. Deliberately NOT a recommender: no "better/worse/best/recommended/caused" anywhere (a test pins this, distinguishing denials like "not … a recommendation" from claims), no GPU/inference claims (the FPS caveat explicitly denies them), and population-change honesty front-and-center (threshold/class changes → "mixed metrics" + notes).
+
+**What changed (dashboard only):** `src/lib/api/types.ts` (ConfigComparison* types), `src/lib/api/reliability.ts` (`getReliabilityConfigComparisonSummary`, resilient null-on-error, optional baseline/candidate/min_samples params sent only when set), `src/components/dashboard-next/reliability-config-comparison-card.tsx` (the card), reliability page (fetch both ranges in the existing `Promise.all`; rendered below Reliability by Config, hidden in demo mode). Tests: client suite + 8-case card suite. `npx tsc --noEmit` + `npm run test` (440) pass; the only lint error is the pre-existing demo-mode one.
+
+---
+
 ## 2026-06-09 — Reliability (M10.1): show applied processing FPS in Reliability by Config
 
 **Subject:** Group labels gain an FPS segment ("All classes · confidence 0.10 · 5 FPS"; null → "default FPS"), an "output cadence only" badge appears when a group carries `processing_fps_output_cadence_only`, and the by-config types/client pick up the M9.1 `requested_processing_fps` / `applied_processing_fps` fields plus the optional `applied_processing_fps` filter param.
