@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Zap } from "lucide-react";
+import { ChevronLeft, ListChecks, Zap } from "lucide-react";
+import { RelativeTime } from "@/components/data/relative-time";
 import { RulesPanel } from "@/components/dashboard-next/rules/rules-panel";
 import { getActiveAccount } from "@/lib/account/active";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { getCameraGeometryConfig } from "@/lib/api/geometry";
 import { listRules } from "@/lib/api/rules";
+import { listWorkflowRuns } from "@/lib/api/workflow-runs";
+import type { WorkflowRun } from "@/lib/api/types";
+import {
+  workflowRunActionResultLabel,
+  workflowRunStatusChipClass,
+  workflowRunStatusLabel,
+} from "@/lib/workflows/workflow-run-format";
 
 // Rules/Triggers M1 — per-camera rule editor behind the configure tab's
 // "Triggers & Effects" card.
@@ -28,11 +36,12 @@ export default async function CameraRulesPage({
   const canEdit =
     activeAccount.role === "owner" || activeAccount.role === "admin";
 
-  // Rules and geometry are independent reads keyed off (accountId, cameraId);
-  // fetch them concurrently. An unknown/cross-tenant camera 404s on the rules
-  // read. Geometry always resolves (the server synthesizes a probe default),
-  // so an empty lines/rois list just means "no shapes drawn yet".
-  const [rules, geometry] = await Promise.all([
+  // Rules, geometry, and recent runs are independent reads keyed off
+  // (accountId, cameraId); fetch them concurrently. An unknown/cross-tenant
+  // camera 404s on the rules read. Geometry always resolves (the server
+  // synthesizes a probe default), so an empty lines/rois list just means
+  // "no shapes drawn yet".
+  const [rules, geometry, recentRuns] = await Promise.all([
     listRules({ accountId: activeAccountId, cameraId }).catch((err) => {
       if (err instanceof UpstreamApiError && err.status === 404) {
         notFound();
@@ -40,6 +49,7 @@ export default async function CameraRulesPage({
       throw err;
     }),
     getCameraGeometryConfig({ accountId: activeAccountId, cameraId }),
+    listWorkflowRuns({ accountId: activeAccountId, cameraId, limit: 8 }),
   ]);
 
   const lines = geometry.config.lines.map((l) => ({
@@ -99,6 +109,62 @@ export default async function CameraRulesPage({
         rois={rois}
         canEdit={canEdit}
       />
+
+      <RecentWorkflowRuns runs={recentRuns} />
+    </div>
+  );
+}
+
+// Workflow Engine M2 — rules aren't just alert senders; every match is a
+// workflow execution. This server-rendered panel shows this camera's most
+// recent runs (including cooldown-suppressed ones) and links to the
+// account-wide history.
+function RecentWorkflowRuns({ runs }: { runs: WorkflowRun[] }) {
+  return (
+    <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="inline-flex items-center gap-2 text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
+          <ListChecks className="h-4 w-4" aria-hidden />
+          recent workflow runs
+        </p>
+        <Link
+          href="/dashboard/workflows"
+          className="text-xs font-bold text-[var(--dn-creek-deep)] underline hover:text-black"
+        >
+          View all workflows
+        </Link>
+      </div>
+      {runs.length === 0 ? (
+        <p className="mt-3 text-sm text-[var(--dn-text-50)]">
+          No runs yet for this camera. When a rule above matches a detection,
+          the execution is recorded here — whether or not an alert was sent.
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {runs.map((run) => (
+            <li
+              key={run.id}
+              className="flex flex-wrap items-center gap-2 text-sm"
+            >
+              <span
+                className={
+                  "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide " +
+                  workflowRunStatusChipClass(run.status)
+                }
+              >
+                {workflowRunStatusLabel(run.status)}
+              </span>
+              <span className="font-bold text-black">{run.title}</span>
+              <span className="text-[var(--dn-text-50)]">
+                {workflowRunActionResultLabel(run.action_result)}
+              </span>
+              <span className="font-mono text-xs text-[var(--dn-text-50)]">
+                <RelativeTime value={run.started_at} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

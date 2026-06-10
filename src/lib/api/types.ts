@@ -777,6 +777,9 @@ export interface Alert {
   camera_id: Uuid;
   rule_id: Uuid | null;
   observation_id: Uuid | null;
+  // M2: the workflow run whose action step created this alert. Null on
+  // alerts written before the workflow_runs migration.
+  workflow_run_id: Uuid | null;
   severity: string;
   status: string;
   title: string;
@@ -789,4 +792,47 @@ export interface Alert {
 
 export interface AlertListResponse {
   alerts: Alert[];
+}
+
+// --- Workflow Engine M2 ------------------------------------------------------
+// Source: ../upstream-api-server/src/upstream_api/schemas/workflow_runs.py
+
+/** Statuses the api-server currently writes/accepts as a filter. */
+export type WorkflowRunStatus =
+  | "active"
+  | "completed"
+  | "failed"
+  | "action_required"
+  | "suppressed";
+
+export interface WorkflowRunAlertRef {
+  id: Uuid;
+  status: string;
+  severity: string;
+}
+
+export interface WorkflowRun {
+  id: Uuid;
+  camera_id: Uuid | null;
+  rule_id: Uuid | null;
+  trigger_observation_id: Uuid | null;
+  // Open vocabulary on reads (workflow_type/trigger_type/action_result are
+  // open at the DB layer; status tolerates values a newer deploy writes).
+  workflow_type: string;
+  status: string;
+  title: string;
+  summary: string;
+  trigger_type: string;
+  action_result: string | null;
+  evidence: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  alert: WorkflowRunAlertRef | null;
+  started_at: IsoDateTime;
+  ended_at: IsoDateTime | null;
+  created_at: IsoDateTime;
+  updated_at: IsoDateTime;
+}
+
+export interface WorkflowRunListResponse {
+  runs: WorkflowRun[];
 }

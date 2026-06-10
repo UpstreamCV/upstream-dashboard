@@ -162,6 +162,17 @@ export function AlertsInboxClient({
                         <RelativeTime value={alert.resolved_at} />
                       </>
                     ) : null}
+                    {alert.workflow_run_id ? (
+                      <>
+                        {" · "}
+                        <Link
+                          href="/dashboard/workflows"
+                          className="underline hover:text-black"
+                        >
+                          workflow run
+                        </Link>
+                      </>
+                    ) : null}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
