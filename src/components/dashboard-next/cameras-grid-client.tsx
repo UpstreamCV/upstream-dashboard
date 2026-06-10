@@ -93,7 +93,11 @@ export function CamerasGridClient({
             <CameraCard
               key={c.id}
               camera={c}
-              agentName={agentNames[c.agent_id] ?? c.agent_id.slice(0, 8)}
+              agentName={
+                c.agent_id === null
+                  ? "unassigned"
+                  : (agentNames[c.agent_id] ?? c.agent_id.slice(0, 8))
+              }
               previewSrc={demo ? "/demo/dock-frame.jpg" : undefined}
             />
           ))}

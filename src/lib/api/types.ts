@@ -28,10 +28,14 @@ export type CameraStatus = "idle" | "streaming" | "error" | "disabled";
 export interface Camera {
   id: Uuid;
   account_id: Uuid;
-  agent_id: Uuid;
+  // Null for dashboard-created cameras no agent has claimed yet.
+  agent_id: Uuid | null;
   name: string;
   external_id: string | null;
   device_path: string | null;
+  // "webcam" | "rtsp" | future types; null for cameras registered before
+  // source types existed.
+  source_type: string | null;
   default_width: number | null;
   default_height: number | null;
   default_fps: number | null;
@@ -177,6 +181,7 @@ export interface AccountLimits {
   max_height: number;
   max_bitrate_kbps: number;
   allowed_codecs: string[];
+  allowed_stream_types: string[];
   monthly_minutes_quota: number;
   snapshot_storage_mb: number;
   created_at: IsoDateTime;

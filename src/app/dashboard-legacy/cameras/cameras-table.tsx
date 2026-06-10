@@ -53,8 +53,12 @@ export function CamerasTable({
       header: "Agent",
       cell: (c) => (
         <span className="text-ink-soft">
-          {agentNames[c.agent_id] ?? (
-            <span className="mono text-ink-mute">{c.agent_id.slice(0, 8)}…</span>
+          {c.agent_id === null ? (
+            <span className="mono text-ink-mute">unassigned</span>
+          ) : (
+            agentNames[c.agent_id] ?? (
+              <span className="mono text-ink-mute">{c.agent_id.slice(0, 8)}…</span>
+            )
           )}
         </span>
       ),
