@@ -1,9 +1,11 @@
+import { ReliabilityByConfigCard } from "@/components/dashboard-next/reliability-by-config-card";
 import { ReliabilityConfidenceTrendCard } from "@/components/dashboard-next/reliability-confidence-trend-card";
 import { ReliabilityFindingCard } from "@/components/dashboard-next/reliability-finding-card";
 import { ReliabilitySummaryCard } from "@/components/dashboard-next/reliability-summary-card";
 import { getActiveAccount } from "@/lib/account/active";
 import {
   getReliabilityConfidenceTrend,
+  getReliabilityConfidenceTrendByConfig,
   getReliabilityFindings,
   getReliabilitySummary,
 } from "@/lib/api/reliability";
@@ -32,31 +34,50 @@ export default async function CameraReliabilityPage({
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
 
-  const [summary, openFindings, resolvedFindings, trend24h, trend7d] =
-    await Promise.all([
-      getReliabilitySummary({ accountId: activeAccountId, cameraId }),
-      getReliabilityFindings({ accountId: activeAccountId, cameraId, status: "open" }),
-      getReliabilityFindings({
-        accountId: activeAccountId,
-        cameraId,
-        status: "resolved",
-        limit: RESOLVED_LIMIT,
-      }),
-      // M7/M8-A: both trend ranges are fetched server-side and handed to the
-      // client card, which toggles between them instantly. Both fetches are
-      // resilient (return null on any error), so a trend failure can never
-      // reject this Promise.all and blank the whole Reliability tab.
-      getReliabilityConfidenceTrend({
-        accountId: activeAccountId,
-        cameraId,
-        range: "24h",
-      }),
-      getReliabilityConfidenceTrend({
-        accountId: activeAccountId,
-        cameraId,
-        range: "7d",
-      }),
-    ]);
+  const [
+    summary,
+    openFindings,
+    resolvedFindings,
+    trend24h,
+    trend7d,
+    byConfig24h,
+    byConfig7d,
+  ] = await Promise.all([
+    getReliabilitySummary({ accountId: activeAccountId, cameraId }),
+    getReliabilityFindings({ accountId: activeAccountId, cameraId, status: "open" }),
+    getReliabilityFindings({
+      accountId: activeAccountId,
+      cameraId,
+      status: "resolved",
+      limit: RESOLVED_LIMIT,
+    }),
+    // M7/M8-A: both trend ranges are fetched server-side and handed to the
+    // client card, which toggles between them instantly. Both fetches are
+    // resilient (return null on any error), so a trend failure can never
+    // reject this Promise.all and blank the whole Reliability tab.
+    getReliabilityConfidenceTrend({
+      accountId: activeAccountId,
+      cameraId,
+      range: "24h",
+    }),
+    getReliabilityConfidenceTrend({
+      accountId: activeAccountId,
+      cameraId,
+      range: "7d",
+    }),
+    // M10: config-aware history (M9 by-config endpoint), same both-ranges +
+    // resilient-null posture as the trend above.
+    getReliabilityConfidenceTrendByConfig({
+      accountId: activeAccountId,
+      cameraId,
+      range: "24h",
+    }),
+    getReliabilityConfidenceTrendByConfig({
+      accountId: activeAccountId,
+      cameraId,
+      range: "7d",
+    }),
+  ]);
 
   const processingDisabled = wasJustDisabled(summary, resolvedFindings);
 
@@ -74,6 +95,8 @@ export default async function CameraReliabilityPage({
       <ReliabilitySummaryCard summary={summary} />
 
       <ReliabilityConfidenceTrendCard trend24h={trend24h} trend7d={trend7d} />
+
+      <ReliabilityByConfigCard byConfig24h={byConfig24h} byConfig7d={byConfig7d} />
 
       {processingDisabled ? <ProcessingDisabledHint /> : null}
 
