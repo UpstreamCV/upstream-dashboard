@@ -4,6 +4,24 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Rules/Triggers M1: per-camera rule editor + account alert inbox
+
+**Subject:** Wire the configure tab's "Triggers & Effects" placeholder to a real rule editor and add the `/dashboard/alerts` inbox, completing the dashboard half of Rules/Triggers M1 (the first milestone of the Rules/Triggers + Alerts product track — separate numbering from the reliability milestones).
+
+**Why:** The api-server now has `/v1/rules` (per-camera rules over processor observations: line crossing, ROI occupancy, zone entered, dwell exceeded) and `/v1/alerts` (the alerts matched rules raise, evaluated inline on observation ingest). This is the demo-closing UI: a user draws geometry, creates a rule on it, and sees the alert land in the inbox.
+
+**What changed:**
+- `src/app/dashboard/(app)/cameras/[cameraId]/configure/rules/` — rules page + Server Actions (`createRuleAction`, `setRuleEnabledAction`, `deleteRuleAction`; owner/admin gated, viewers read-only, defense-in-depth `validateRuleConfig` re-run server-side, mirroring the geometry action precedent). The page fetches rules + saved geometry concurrently so the editor's line/zone pickers offer drawn shapes by label instead of free-typed ids.
+- `src/components/dashboard-next/rules/rules-panel.tsx` — create form (type → target picker swaps line/ROI, per-type threshold inputs, severity, cooldown presets) + rule rows (severity chip, target summary via `ruleTargetLabel`, enable/disable toggle, delete).
+- `src/app/dashboard/(app)/alerts/` — inbox page + actions; `src/components/dashboard-next/alerts/alerts-inbox-client.tsx` polls `/v1/alerts?status=…` at the standard 10s via `useUpstreamList`, open/resolved tabs, unread accent + "new" chip, mark-read (any member) and resolve (owner/admin) with `mutate()` after each action.
+- `src/lib/api/rules.ts`, `src/lib/api/alerts.ts` — serverFetch wrappers; `src/lib/api/types.ts` — `Rule`/`Alert` types (`rule_type`/read fields tolerate open vocabulary).
+- `src/lib/rules/rule-config-schema.ts` — pure shared module mirroring the server's `validate_rule_config`, plus type labels/descriptions and the target-key/target-kind maps the editor drives off.
+- `src/app/dashboard/(app)/cameras/[cameraId]/configure/page.tsx` — Triggers & Effects card now navigates; `src/components/nav/sidebar-next.tsx` — Alerts nav entry wired to `/dashboard/alerts`.
+
+**Docs updated:** docs/commit-log.md. Contract source: `../upstream-api-server/docs/api-contracts.md` "Endpoints — Rules/Triggers M1".
+
+**Testing/checks:** `npm run test` (463, includes new `rule-config-schema.test.ts`), `npx tsc --noEmit`, and a production `next build` (both new routes compile) all pass. The only lint error is the pre-existing demo-mode one (`src/lib/demo/add-camera-panel.tsx`). Demo-mode fixtures for `/v1/rules` and `/v1/alerts` are not included — the new pages are live-data only for now.
+
 ## 2026-06-10 — Camera management: create/edit forms (web-configured cameras)
 
 **Subject:** Add dashboard camera create/edit so cameras are configured on the web and claimed by agents.

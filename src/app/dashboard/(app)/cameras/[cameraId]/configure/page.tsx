@@ -13,6 +13,7 @@ export default async function CameraConfigurePage({
   const { cameraId } = await params;
   const geometryHref = `/dashboard/cameras/${cameraId}/configure/geometry`;
   const detectionHref = `/dashboard/cameras/${cameraId}/configure/detection`;
+  const rulesHref = `/dashboard/cameras/${cameraId}/configure/rules`;
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -60,17 +61,21 @@ export default async function CameraConfigurePage({
         </span>
       </Link>
 
-      {/* Triggers & Effects — inert (non-navigating) card; feature not yet wired up */}
-      <div className="group dn-tile flex items-center gap-4 p-[clamp(1.1rem,1.8vw,1.5rem)] transition hover:bg-[var(--dn-creek-mid)]/5 cursor-default">
+      {/* Triggers & Effects — Rules/Triggers M1 rule editor */}
+      <Link
+        href={rulesHref}
+        className="group dn-tile flex items-center gap-4 p-[clamp(1.1rem,1.8vw,1.5rem)] transition hover:bg-[var(--dn-creek-mid)]/5"
+      >
         <Zap className="h-7 w-7 shrink-0 text-[var(--dn-creek-mid)]" aria-hidden />
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">Triggers &amp; Effects</h3>
-          <p className="mt-1 text-sm text-[var(--dn-text-50)]">Define rules that fire actions when observations match — alerts, webhooks, and more.</p>
+          <p className="mt-1 text-sm text-[var(--dn-text-50)]">Define rules that raise alerts when detections match — line crossings, ROI occupancy, zone entries, dwell time.</p>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dn-creek-mid)]/15 px-3 py-1.5 text-sm font-bold text-[var(--dn-creek-deep)]">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dn-creek-mid)]/15 px-3 py-1.5 text-sm font-bold text-[var(--dn-creek-deep)] transition group-hover:bg-[var(--dn-creek-mid)]/25">
           Configure
+          <ArrowRight className="h-3.5 w-3.5" />
         </span>
-      </div>
+      </Link>
 
       {/* More coming soon — greyed-out disabled card */}
       <div className="dn-tile flex items-center gap-4 p-[clamp(1.1rem,1.8vw,1.5rem)] opacity-60 cursor-default">
