@@ -500,6 +500,20 @@ Pieces:
   zero-sample groups, and Classes/Status filters whose options derive from the
   returned groups — nothing hardcoded, no extra query params sent.
 
+## Config Comparison (M11)
+
+Below Reliability by Config sits the "Config Comparison" report card — a
+DESCRIPTIVE before/after view from
+`GET /v1/cameras/{id}/reliability/config-comparison-summary`: baseline vs
+candidate group panels, a neutral status chip (`comparable` / `mixed metrics`
+/ `inconclusive` / `no data`), the backend's factual summary/bullets,
+comparability notes (threshold or class-set changes change the measured
+population), and standing caveats. It is a report card, not a recommender:
+the UI never says "better/worse/best/recommended/caused" (test-pinned, with
+denial phrases like "not … a recommendation" explicitly allowed), and the FPS
+caveat states output-cadence-only / no GPU reduction. Resilient null posture;
+hidden in demo mode.
+
 ## Token security
 
 The plaintext API token is shown exactly once at creation, then never again — neither stored nor logged. `src/components/dashboard-next/token-create-dialog-next.tsx` is the *only* component in the entire app that ever holds the plaintext (in its `secret` React state).

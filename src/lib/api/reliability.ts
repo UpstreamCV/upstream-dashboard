@@ -7,6 +7,7 @@ import type {
   ConfidenceTrendByConfigResponse,
   ConfidenceTrendRange,
   ConfidenceTrendResponse,
+  ConfigComparisonSummaryResponse,
   ProcessingConfigStatus,
   ReliabilityFinding,
   ReliabilityFindingsResponse,
@@ -167,6 +168,43 @@ export async function getReliabilityConfidenceTrendByConfig(opts: {
     );
   } catch (err) {
     reportError(err, { area: "reliability-confidence-trend-by-config" });
+    return null;
+  }
+}
+
+/**
+ * Config comparison report card (model-config M11): a DESCRIPTIVE
+ * before/after comparison of two applied-config groups. The backend returns
+ * factual directions/deltas and a neutral status — never a verdict or
+ * recommendation — and this client keeps the same resilient posture as the
+ * other trend reads: ALL errors degrade to `null` (with reportError) so a
+ * missing M11 endpoint can never blank the Reliability tab.
+ */
+export async function getReliabilityConfigComparisonSummary(opts: {
+  accountId: string;
+  cameraId: string;
+  range?: ConfidenceTrendRange;
+  baselineRevision?: number;
+  candidateRevision?: number;
+  minSamples?: number;
+}): Promise<ConfigComparisonSummaryResponse | null> {
+  const query: Record<string, string> = { range: opts.range ?? "24h" };
+  if (opts.baselineRevision !== undefined) {
+    query.baseline_revision = String(opts.baselineRevision);
+  }
+  if (opts.candidateRevision !== undefined) {
+    query.candidate_revision = String(opts.candidateRevision);
+  }
+  if (opts.minSamples !== undefined) {
+    query.min_samples = String(opts.minSamples);
+  }
+  try {
+    return await serverFetch<ConfigComparisonSummaryResponse>(
+      `/v1/cameras/${opts.cameraId}/reliability/config-comparison-summary`,
+      { accountId: opts.accountId, query },
+    );
+  } catch (err) {
+    reportError(err, { area: "reliability-config-comparison" });
     return null;
   }
 }

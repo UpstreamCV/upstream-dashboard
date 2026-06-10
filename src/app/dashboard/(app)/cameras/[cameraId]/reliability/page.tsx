@@ -1,4 +1,5 @@
 import { ReliabilityByConfigCard } from "@/components/dashboard-next/reliability-by-config-card";
+import { ReliabilityConfigComparisonCard } from "@/components/dashboard-next/reliability-config-comparison-card";
 import { ReliabilityConfidenceTrendCard } from "@/components/dashboard-next/reliability-confidence-trend-card";
 import { ReliabilityFindingCard } from "@/components/dashboard-next/reliability-finding-card";
 import { ReliabilityVerdictHero } from "@/components/dashboard-next/reliability-verdict-hero";
@@ -6,6 +7,7 @@ import { getActiveAccount } from "@/lib/account/active";
 import {
   getReliabilityConfidenceTrend,
   getReliabilityConfidenceTrendByConfig,
+  getReliabilityConfigComparisonSummary,
   getReliabilityFindings,
   getReliabilitySummary,
 } from "@/lib/api/reliability";
@@ -47,6 +49,8 @@ export default async function CameraReliabilityPage({
     trend7d,
     byConfig24h,
     byConfig7d,
+    comparison24h,
+    comparison7d,
   ] = await Promise.all([
     getReliabilitySummary({ accountId: activeAccountId, cameraId }),
     getReliabilityFindings({ accountId: activeAccountId, cameraId, status: "open" }),
@@ -82,6 +86,17 @@ export default async function CameraReliabilityPage({
       cameraId,
       range: "7d",
     }),
+    // M11: descriptive config comparison report card, same resilient posture.
+    getReliabilityConfigComparisonSummary({
+      accountId: activeAccountId,
+      cameraId,
+      range: "24h",
+    }),
+    getReliabilityConfigComparisonSummary({
+      accountId: activeAccountId,
+      cameraId,
+      range: "7d",
+    }),
   ]);
 
   const processingDisabled = wasJustDisabled(summary, resolvedFindings);
@@ -100,6 +115,15 @@ export default async function CameraReliabilityPage({
           telemetry visuals for the scripted scene card above. */}
       {demoScene ? null : (
         <ReliabilityByConfigCard byConfig24h={byConfig24h} byConfig7d={byConfig7d} />
+      )}
+
+      {/* M11: descriptive config comparison report card (not a recommender).
+          Hidden in demo mode like the other real-telemetry sections. */}
+      {demoScene ? null : (
+        <ReliabilityConfigComparisonCard
+          comparison24h={comparison24h}
+          comparison7d={comparison7d}
+        />
       )}
 
       {processingDisabled ? <ProcessingDisabledHint /> : null}
