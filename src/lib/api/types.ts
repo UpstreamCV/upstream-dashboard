@@ -630,3 +630,42 @@ export interface ConfidenceTrendResponse {
   points: ConfidenceTrendPoint[];
   summary: ConfidenceTrendSummary;
 }
+
+// Model-config M9/M10 — the same hourly confidence history split into one
+// series per APPLIED processing-config group, served by
+// GET /v1/cameras/{id}/reliability/confidence-trend/by-config. Dimension
+// fields are `null` for history recorded before the processor stamped
+// applied_processing_config (pre-M8) — those rows form their own "no config
+// metadata" group rather than being dropped. Honest-data note: grouped trends
+// show association under a config, not proven causation; nothing here implies
+// model/tracker/FPS apply or class-filtered line/ROI counts are live.
+
+// The processor resolver's status vocabulary (mirrors the api-server Literal).
+export type ProcessingConfigStatus =
+  | "applied"
+  | "partially_applied"
+  | "requested_not_applied"
+  | "applied_defaults"
+  | "fallback_default_on_error";
+
+export interface ConfidenceTrendConfigGroup {
+  processing_config_source: string | null;
+  processing_config_revision: number | null;
+  processing_config_status: string | null;
+  applied_model_key: string | null;
+  // Canonical key: "all", "person", "car,person" (sorted), or "unknown".
+  applied_selected_classes_key: string | null;
+  applied_confidence_threshold: number | null;
+  // Producer warning codes, e.g. "selected_classes_analytics_counts_not_filtered".
+  processing_config_warnings: string[] | null;
+  points: ConfidenceTrendPoint[];
+  summary: ConfidenceTrendSummary;
+}
+
+export interface ConfidenceTrendByConfigResponse {
+  camera_id: Uuid;
+  range: ConfidenceTrendRange;
+  bucket_size: "1h";
+  group_count: number;
+  groups: ConfidenceTrendConfigGroup[];
+}

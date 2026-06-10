@@ -4,8 +4,10 @@ import { reportError } from "@/lib/error";
 import { serverFetch } from "./server";
 import { UpstreamApiError } from "./errors";
 import type {
+  ConfidenceTrendByConfigResponse,
   ConfidenceTrendRange,
   ConfidenceTrendResponse,
+  ProcessingConfigStatus,
   ReliabilityFinding,
   ReliabilityFindingsResponse,
   ReliabilityStatus,
@@ -110,6 +112,57 @@ export async function getReliabilityConfidenceTrend(opts: {
     );
   } catch (err) {
     reportError(err, { area: "reliability-confidence-trend" });
+    return null;
+  }
+}
+
+/**
+ * Config-aware confidence history (model-config M9/M10): the same hourly
+ * history split into one series per applied-processing-config group, from
+ * `GET .../reliability/confidence-trend/by-config`.
+ *
+ * The optional filters map 1:1 onto the api-server's supported query params
+ * (anything omitted is simply not sent — never invent params). The M10 UI
+ * fetches unfiltered and filters client-side, but the params are wired so a
+ * future slice can push filtering server-side without a client change.
+ *
+ * Same resilience posture as `getReliabilityConfidenceTrend`: ALL errors
+ * degrade to `null` (with reportError) so a missing/failed by-config endpoint
+ * can never blank the Reliability tab — it is a non-essential enhancement.
+ */
+export async function getReliabilityConfidenceTrendByConfig(opts: {
+  accountId: string;
+  cameraId: string;
+  range?: ConfidenceTrendRange;
+  processingConfigRevision?: number;
+  processingConfigStatus?: ProcessingConfigStatus;
+  appliedSelectedClassesKey?: string;
+  appliedConfidenceThreshold?: number;
+  warning?: string;
+}): Promise<ConfidenceTrendByConfigResponse | null> {
+  const query: Record<string, string> = { range: opts.range ?? "24h" };
+  if (opts.processingConfigRevision !== undefined) {
+    query.processing_config_revision = String(opts.processingConfigRevision);
+  }
+  if (opts.processingConfigStatus !== undefined) {
+    query.processing_config_status = opts.processingConfigStatus;
+  }
+  if (opts.appliedSelectedClassesKey !== undefined) {
+    query.applied_selected_classes_key = opts.appliedSelectedClassesKey;
+  }
+  if (opts.appliedConfidenceThreshold !== undefined) {
+    query.applied_confidence_threshold = String(opts.appliedConfidenceThreshold);
+  }
+  if (opts.warning !== undefined) {
+    query.warning = opts.warning;
+  }
+  try {
+    return await serverFetch<ConfidenceTrendByConfigResponse>(
+      `/v1/cameras/${opts.cameraId}/reliability/confidence-trend/by-config`,
+      { accountId: opts.accountId, query },
+    );
+  } catch (err) {
+    reportError(err, { area: "reliability-confidence-trend-by-config" });
     return null;
   }
 }

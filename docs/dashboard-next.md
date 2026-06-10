@@ -456,6 +456,46 @@ The validator mirrors the authoritative server rules: model must exist + be enab
 
 No styling fields cross the wire. The persisted `CameraProcessingConfig` carries only data the api-server validates; the model picker's chrome, the checklist layout, the status-panel tints, and the `--dn-*` tokens are all dashboard-local. The registry's facts (supported classes, limitations, resource profile) are rendered verbatim from `ModelRegistryEntry`; the dashboard adds presentation, never invents detection facts.
 
+## Reliability by Config (M10)
+
+The camera Reliability tab gains a config-aware section under the existing
+confidence-trend card (which is unchanged): one card per **applied**
+processing-config group from the M9
+`GET /v1/cameras/{id}/reliability/confidence-trend/by-config` endpoint, so an
+operator can compare confidence trends across the configs the camera actually
+ran under (e.g. "person-only @ confidence 0.20, r4" vs "All classes · default
+confidence, r3").
+
+> **Honest status:** this section *reads* what was applied; it applies nothing.
+> Confidence threshold and selected classes are applied only where supported;
+> model switching, tracker changes, processing FPS, and class-filtered line/ROI
+> counts remain not live-applied. Groups whose warnings include
+> `selected_classes_analytics_counts_not_filtered` get a visible
+> "line/ROI counts still all-class" badge, and the section's standing note says
+> selected-class filters apply to per-object outputs only. Grouped trends show
+> association under a config, not proven causation.
+
+Pieces:
+
+- `src/lib/api/reliability.ts:getReliabilityConfidenceTrendByConfig` — same
+  resilient posture as the trend client (**all** errors → `null` +
+  `reportError`), so a missing/failed M9 endpoint degrades to an "unavailable"
+  body without blanking the tab. Supported filter params are wired
+  (revision/status/classes-key/threshold/warning) but the page fetches
+  unfiltered; the UI filters client-side.
+- `src/lib/perception/config-group-label.ts` — pure, theme-agnostic label
+  rules: `"all"` → "All classes", `null` threshold → "default confidence",
+  `"unknown"` key → "unknown config", all-null dimensions (pre-M8 history) →
+  "No config metadata"; statuses humanised ("partially applied · r4",
+  "default config", "fallback default").
+- `src/components/dashboard-next/reliability-by-config-card.tsx` — client card
+  with the 24h | 7d toggle (both ranges server-fetched by the page, instant
+  switch), per-group mini sparkline (gap-aware, same approach as the trend
+  card but local so that card stays untouched), Latest avg / Low-conf ratio /
+  Samples stats, "No samples for this config in the selected range." for
+  zero-sample groups, and Classes/Status filters whose options derive from the
+  returned groups — nothing hardcoded, no extra query params sent.
+
 ## Token security
 
 The plaintext API token is shown exactly once at creation, then never again — neither stored nor logged. `src/components/dashboard-next/token-create-dialog-next.tsx` is the *only* component in the entire app that ever holds the plaintext (in its `secret` React state).
