@@ -1,14 +1,17 @@
 import { notFound } from "next/navigation";
+import { CameraFormNext } from "@/components/dashboard-next/camera-form-next";
 import { CameraMetaPanel } from "@/components/dashboard-next/camera-panels";
 import { RelativeTime } from "@/components/data/relative-time";
 import { getActiveAccount } from "@/lib/account/active";
+import { getAccountLimits } from "@/lib/api/accounts";
 import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
 import type { Camera } from "@/lib/api/types";
+import { updateCameraAction } from "./actions";
 
-// Settings tab — read-only camera metadata. Editing this from the dashboard
-// is a separate ticket; today this is a clear surface for "what is this
-// camera configured as?" without overloading the Monitor tab.
+// Settings tab — camera metadata plus the edit form (owners/admins).
+// Stream settings are server-controlled: the form shows account caps inline
+// and the api-server re-validates the merged config on every save.
 
 export default async function CameraSettingsPage({
   params,
@@ -16,7 +19,7 @@ export default async function CameraSettingsPage({
   params: Promise<{ cameraId: string }>;
 }) {
   const { cameraId } = await params;
-  const { activeAccountId } = await getActiveAccount();
+  const { activeAccountId, activeAccount } = await getActiveAccount();
 
   let camera: Camera;
   try {
@@ -27,9 +30,26 @@ export default async function CameraSettingsPage({
     }
     throw err;
   }
+  const limits = await getAccountLimits({ accountId: activeAccountId });
+  const canEdit =
+    activeAccount.role === "owner" || activeAccount.role === "admin";
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+    <div className="space-y-4 md:space-y-6">
+      {canEdit ? (
+        <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)] space-y-3">
+          <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
+            configuration
+          </p>
+          <CameraFormNext
+            action={updateCameraAction}
+            limits={limits}
+            camera={camera}
+            submitLabel="Save changes"
+          />
+        </div>
+      ) : null}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
       <CameraMetaPanel camera={camera} />
       <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)] space-y-3">
         <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
@@ -42,7 +62,7 @@ export default async function CameraSettingsPage({
         </Row>
         <Row label="Agent id">
           <span className="font-mono text-xs text-[var(--dn-text-50)]">
-            {camera.agent_id}
+            {camera.agent_id ?? "unassigned"}
           </span>
         </Row>
         <Row label="Status">
@@ -60,6 +80,7 @@ export default async function CameraSettingsPage({
             className="text-[var(--dn-text-50)]"
           />
         </Row>
+      </div>
       </div>
     </div>
   );

@@ -57,12 +57,15 @@ export default async function CameraMonitorPage({
   const [agent, sessions, latestPerception, reliabilitySummary, processingConfig] =
     await Promise.all([
       // 404 = agent removed; other errors bubble to the segment error boundary.
-      getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
-        (err) => {
-          if (err instanceof UpstreamApiError && err.status === 404) return null;
-          throw err;
-        },
-      ),
+      // agent_id is null for dashboard-created cameras no agent has claimed.
+      camera.agent_id === null
+        ? Promise.resolve(null)
+        : getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
+            (err) => {
+              if (err instanceof UpstreamApiError && err.status === 404) return null;
+              throw err;
+            },
+          ),
       listStreamSessions({
         accountId: activeAccountId,
         cameraId: camera.id,

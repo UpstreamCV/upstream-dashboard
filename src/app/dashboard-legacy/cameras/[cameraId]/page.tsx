@@ -49,14 +49,17 @@ export default async function CameraDetailPage({
     await Promise.all([
       // 404 means the agent was removed; other errors should surface through
       // the page's error boundary instead of silently rendering "Agent not found".
-      getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
-        (err) => {
-          if (err instanceof UpstreamApiError && err.status === 404) {
-            return null;
-          }
-          throw err;
-        },
-      ),
+      // agent_id is null for dashboard-created cameras no agent has claimed.
+      camera.agent_id === null
+        ? Promise.resolve(null)
+        : getAgent({ accountId: activeAccountId, agentId: camera.agent_id }).catch(
+            (err) => {
+              if (err instanceof UpstreamApiError && err.status === 404) {
+                return null;
+              }
+              throw err;
+            },
+          ),
       listStreamSessions({
         accountId: activeAccountId,
         cameraId: camera.id,

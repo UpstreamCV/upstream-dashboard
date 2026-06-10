@@ -1,4 +1,5 @@
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
+import Link from "next/link";
 import { CamerasGridClient } from "@/components/dashboard-next/cameras-grid-client";
 import { getActiveAccount } from "@/lib/account/active";
 import { listAgents } from "@/lib/api/agents";
@@ -30,6 +31,14 @@ export default async function CamerasPage() {
             Cameras <span className="text-white/55">· {total}</span>
           </h1>
         </div>
+        <div className="flex items-center gap-3">
+        <Link
+          href="/dashboard/cameras/new"
+          className="dn-btn dn-glow-soft inline-flex items-center gap-2 rounded-full px-4 py-2 font-bold"
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          New camera
+        </Link>
         {/* Presentational — filtering isn't wired. WIRE-UP: lift the grid to a
             stateful client component with query state to filter by
             name/external_id/agent. */}
@@ -44,6 +53,7 @@ export default async function CamerasPage() {
             placeholder="Search cameras…"
             className="dn-field relative z-[1] w-full py-2 pl-9 pr-4 text-[clamp(0.85rem,1vw,1rem)]"
           />
+        </div>
         </div>
       </header>
 

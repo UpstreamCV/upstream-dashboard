@@ -4,6 +4,22 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Camera management: create/edit forms (web-configured cameras)
+
+**Subject:** Add dashboard camera create/edit so cameras are configured on the web and claimed by agents.
+
+**Why:** The agent smart flow makes the server the source of truth for stream config. That needs a way to author cameras from the dashboard: api-server now exposes `POST /v1/cameras` (creates unassigned, `agent_id = null`), `PATCH /v1/cameras/{id}`, and an agent claim flow; this commit is the UI half.
+
+**What changed:**
+- `src/app/dashboard/(app)/cameras/new/` — New-camera page + `createCameraAction` Server Action (owner/admin gated server-side, mirroring api-tokens). Normalizes the source field to the agent's `device_path` convention (`webcam:0` / `rtsp:<url>`).
+- `src/app/dashboard/(app)/cameras/[cameraId]/settings/` — settings tab gains the edit form (`updateCameraAction`, partial PATCH; api-server re-validates the merged config against limits).
+- `src/components/dashboard-next/camera-form-next.tsx` — shared create/edit form; account caps from `getAccountLimits()` render inline as input maxima and `limit_exceeded.*` server rejections surface verbatim. UX only — the api-server is the security boundary.
+- `src/app/dashboard/(app)/cameras/page.tsx` — "New camera" header button.
+- `src/lib/api/types.ts` — `Camera.source_type`, `Camera.agent_id` nullable (web-created cameras are unassigned until claimed), `AccountLimits.allowed_stream_types`.
+- Null-`agent_id` handling at every consumer: monitor page + legacy camera detail skip the `getAgent` fetch, grids/tables render "unassigned", settings identifiers row shows "unassigned". Demo fixtures gain the new fields.
+
+**Docs updated:** docs/commit-log.md.
+
 ## 2026-06-09 — Reliability (M11): "Config Comparison" report card
 
 **Subject:** Add a descriptive before/after config comparison section to the camera Reliability tab, fed by the new api-server `GET .../reliability/config-comparison-summary` endpoint: baseline vs candidate group panels (label + avg conf / low-conf ratio / samples), a neutral status chip (comparable / mixed metrics / inconclusive / no data), the backend's factual summary and bullets, comparability notes, and standing caveats, with the usual 24h | 7d toggle.
