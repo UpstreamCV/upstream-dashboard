@@ -35,6 +35,20 @@ describe("summarizeObservation — happy paths (all 7 types)", () => {
     expect(s).toContain("+1");
   });
 
+  test("line_crossing_object", () => {
+    const s = summarizeObservation(
+      obs("processor.line_crossing_object", {
+        line_label: "entry-line",
+        class_label: "person",
+        track_id: "7",
+        event_mode: "object_crossing",
+      }),
+    );
+    expect(s).toContain("entry-line");
+    expect(s).toContain("person crossed");
+    expect(s).toContain("track 7");
+  });
+
   test("roi_occupancy", () => {
     const s = summarizeObservation(
       obs("processor.roi_occupancy", {

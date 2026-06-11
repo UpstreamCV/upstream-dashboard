@@ -14,6 +14,7 @@ export const OBSERVATION_LIMITS: readonly number[] = [25, 50, 100];
 /** The seven known processor observation types — the filter dropdown options. */
 export const OBSERVATION_TYPES: readonly ObservationType[] = [
   "processor.line_crossing",
+  "processor.line_crossing_object",
   "processor.roi_occupancy",
   "processor.zone_entered",
   "processor.zone_exited",
@@ -72,6 +73,13 @@ export function summarizeObservation(obs: ObservationRecord): string {
       const cum = num(p, "cumulative_count");
       const delta = num(p, "count_delta");
       return `${where} — total ${cum ?? "?"} (+${delta ?? "?"})`;
+    }
+    case "processor.line_crossing_object": {
+      // Per-object crossing evidence (side task) — attribution, not counts.
+      const where = str(p, "line_label") ?? str(p, "line_id") ?? "line";
+      const who = str(p, "class_label") ?? "object";
+      const track = str(p, "track_id");
+      return `${where} — ${who} crossed${track ? ` (track ${track})` : ""}`;
     }
     case "processor.roi_occupancy": {
       const where = str(p, "roi_label") ?? str(p, "roi_id") ?? "ROI";

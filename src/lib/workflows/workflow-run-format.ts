@@ -62,6 +62,11 @@ export function workflowRunActionResultLabel(
  * "processor.line_crossing" → "Line crossing". Unknown types echo through.
  */
 export function workflowRunTriggerLabel(triggerType: string): string {
+  // Per-object line crossings map to the same rule family but deserve a
+  // distinct label so runs read honestly in the history.
+  if (triggerType === "processor.line_crossing_object") {
+    return "Line crossing (object)";
+  }
   const bare = triggerType.replace(/^processor\./, "");
   return isRuleType(bare) ? ruleTypeLabel(bare) : triggerType;
 }

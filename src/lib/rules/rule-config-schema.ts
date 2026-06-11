@@ -87,6 +87,11 @@ export const RULE_TYPE_TARGET_KEY: Record<RuleType, string> = {
 export const CLASS_FILTER_RULE_TYPES: ReadonlySet<RuleType> = new Set([
   "zone_entered",
   "dwell_exceeded",
+  // Per-object line crossing side task: the processor attributes
+  // crossings to tracked objects, so line rules can filter on them. A
+  // line rule using any per-object condition matches only per-object
+  // crossing events server-side (never the aggregate counts).
+  "line_crossing",
 ]);
 
 /**
@@ -96,6 +101,7 @@ export const CLASS_FILTER_RULE_TYPES: ReadonlySet<RuleType> = new Set([
 export const CONFIDENCE_FILTER_RULE_TYPES: ReadonlySet<RuleType> = new Set([
   "zone_entered",
   "dwell_exceeded",
+  "line_crossing",
 ]);
 
 const RULE_TYPE_LABELS: Record<RuleType, string> = {
@@ -224,7 +230,13 @@ export interface RuleConfigValidationIssue {
 }
 
 const ALLOWED_CONFIG_KEYS: Record<RuleType, ReadonlySet<string>> = {
-  line_crossing: new Set(["line_id", "schedule"]),
+  line_crossing: new Set([
+    "line_id",
+    "object_classes",
+    "require_track_id",
+    "min_confidence",
+    "schedule",
+  ]),
   roi_occupancy: new Set([
     "roi_id",
     "min_total_count",

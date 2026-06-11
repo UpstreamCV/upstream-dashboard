@@ -4,6 +4,16 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Per-object line crossing: line-rule conditions + new observation labels
+
+**Subject:** Expose object-class / require-tracked / min-confidence condition inputs on line-crossing rules, and label the new `processor.line_crossing_object` observation type across the dashboard.
+
+**Why:** The processor's "Per-Object Line Crossing Producer" side task emits per-object crossing evidence alongside the unchanged aggregate counts, and the api-server now accepts the three per-object conditions on line_crossing rules (matching only per-object events — plain line rules keep aggregate behavior, no double-fire). The rule form mirrors that availability; direction inputs remain absent (still deferred — only direction-rule names exist, not a_to_b).
+
+**What changed:** `src/lib/rules/rule-config-schema.ts` (line_crossing joins CLASS_FILTER/CONFIDENCE sets + allowed keys — the existing conditions UI lights up for line rules with no panel changes needed), `src/lib/api/types.ts` + `src/lib/perception/summarize-observation.ts` (new observation type in the filter list + "entry-line — person crossed (track 7)" summary), `src/lib/workflows/workflow-run-format.ts` ("Line crossing (object)" trigger label).
+
+**Testing/checks:** `npm run test` (530, +schema/label/summary cases), `npx tsc --noEmit`, production build all pass. Only lint error remains the pre-existing demo-mode one.
+
 ## 2026-06-10 — Payload-enrichment unlock: confidence + count-class rule inputs
 
 **Subject:** Add the two rule conditions unlocked by the processor's payload-enrichment side task — a "Min confidence" input on zone/dwell rules and a "Count class" selector on ROI occupancy rules.

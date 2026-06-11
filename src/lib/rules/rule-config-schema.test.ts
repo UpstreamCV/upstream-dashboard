@@ -67,6 +67,14 @@ describe("validateRuleConfig", () => {
     ["dwell_exceeded", { min_confidence: 0.5, object_classes: ["person"] }],
     ["roi_occupancy", { object_class: "person", min_total_count: 3 }],
     ["roi_occupancy", { object_class: "person", max_total_count: 2 }],
+    // --- per-object line crossing unlock ----------------------------------
+    ["line_crossing", { object_classes: ["person"] }],
+    ["line_crossing", { require_track_id: true }],
+    ["line_crossing", { min_confidence: 0.7 }],
+    [
+      "line_crossing",
+      { line_id: "line-1", object_classes: ["person"], min_confidence: 0.7 },
+    ],
   ] as const)("accepts valid %s config %j", (ruleType, config) => {
     expect(validateRuleConfig(ruleType, config)).toEqual([]);
   });
@@ -81,12 +89,8 @@ describe("validateRuleConfig", () => {
     ["dwell_exceeded", { min_duration_seconds: 0 }],
     ["dwell_exceeded", { min_duration_seconds: -5 }],
     ["nonsense_type", {}],
-    // --- M3: conditions rejected on types whose payloads can't prove
-    // them (mirrors the server's restriction) ---------------------------
-    ["line_crossing", { object_classes: ["person"] }],
-    ["line_crossing", { require_track_id: true }],
-    ["line_crossing", { direction: "a_to_b" }], // deferred — never produced
-    ["line_crossing", { min_confidence: 0.7 }], // no per-object attribution
+    // --- conditions rejected on types whose payloads can't prove them ---
+    ["line_crossing", { direction: "a_to_b" }], // still deferred — no true a_to_b
     ["roi_occupancy", { object_classes: ["person"] }], // use object_class (single)
     ["roi_occupancy", { min_confidence: 0.7 }], // counts have no confidence
     // --- payload-enrichment unlock: value validation ----------------------

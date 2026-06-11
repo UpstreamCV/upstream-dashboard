@@ -194,6 +194,7 @@ export interface AccountLimits {
 // break a read. This union is for the filter dropdown's known options.
 export type ObservationType =
   | "processor.line_crossing"
+  | "processor.line_crossing_object"
   | "processor.roi_occupancy"
   | "processor.zone_entered"
   | "processor.zone_exited"
