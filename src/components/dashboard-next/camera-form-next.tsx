@@ -58,7 +58,7 @@ export function CameraFormNext({
           defaultValue={camera?.name ?? ""}
           placeholder="Front Door"
           required
-          className="dn-field w-full px-3 py-2"
+          className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none"
         />
       </Field>
 
@@ -67,7 +67,7 @@ export function CameraFormNext({
           <select
             name="source_type"
             defaultValue={camera?.source_type ?? sourceTypes[0]}
-            className="dn-field w-full px-3 py-2"
+            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none"
           >
             {sourceTypes.map((t) => (
               <option key={t} value={t}>
@@ -84,7 +84,7 @@ export function CameraFormNext({
             name="device_path"
             defaultValue={camera?.device_path ?? ""}
             placeholder="webcam:0"
-            className="dn-field w-full px-3 py-2"
+            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none"
           />
         </Field>
       </div>
@@ -97,7 +97,7 @@ export function CameraFormNext({
             min={1}
             max={limits.max_width}
             defaultValue={camera?.default_width ?? 1280}
-            className="dn-field w-full px-3 py-2"
+            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none"
           />
         </Field>
         <Field label={`Height (max ${limits.max_height})`}>
@@ -107,7 +107,7 @@ export function CameraFormNext({
             min={1}
             max={limits.max_height}
             defaultValue={camera?.default_height ?? 720}
-            className="dn-field w-full px-3 py-2"
+            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none"
           />
         </Field>
         <Field label={`FPS (max ${limits.max_fps})`}>
@@ -117,7 +117,7 @@ export function CameraFormNext({
             min={1}
             max={limits.max_fps}
             defaultValue={camera?.default_fps ?? 30}
-            className="dn-field w-full px-3 py-2"
+            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none"
           />
         </Field>
         <Field label={`Bitrate kbps (max ${limits.max_bitrate_kbps})`}>
@@ -127,7 +127,7 @@ export function CameraFormNext({
             min={1}
             max={limits.max_bitrate_kbps}
             defaultValue={camera?.default_bitrate_kbps ?? 3000}
-            className="dn-field w-full px-3 py-2"
+            className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none"
           />
         </Field>
       </div>
