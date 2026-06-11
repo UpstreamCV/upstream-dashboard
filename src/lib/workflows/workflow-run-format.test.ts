@@ -65,6 +65,9 @@ describe("workflowRunTriggerLabel", () => {
     expect(workflowRunTriggerLabel("processor.line_crossing")).toBe(
       "Line crossing",
     );
+    expect(workflowRunTriggerLabel("processor.line_crossing_object")).toBe(
+      "Line crossing (object)",
+    );
     expect(workflowRunTriggerLabel("processor.dwell_exceeded")).toBe(
       "Dwell time exceeded",
     );
