@@ -747,7 +747,11 @@ export type RuleType =
   | "line_crossing"
   | "roi_occupancy"
   | "zone_entered"
-  | "dwell_exceeded";
+  | "dwell_exceeded"
+  // M4 time-based rules — evaluated by the periodic workflow evaluator,
+  // not the observation ingest path.
+  | "camera_offline"
+  | "no_detections_for";
 
 export type RuleSeverity = "info" | "warning" | "critical";
 

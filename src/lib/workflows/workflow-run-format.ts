@@ -67,6 +67,11 @@ export function workflowRunTriggerLabel(triggerType: string): string {
   if (triggerType === "processor.line_crossing_object") {
     return "Line crossing (object)";
   }
+  // M4 timer rules: trigger_type is "timer.<rule_type>".
+  if (triggerType.startsWith("timer.")) {
+    const bare = triggerType.slice("timer.".length);
+    return isRuleType(bare) ? `${ruleTypeLabel(bare)} (timer)` : triggerType;
+  }
   const bare = triggerType.replace(/^processor\./, "");
   return isRuleType(bare) ? ruleTypeLabel(bare) : triggerType;
 }

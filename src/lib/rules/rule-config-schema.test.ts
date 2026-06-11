@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   RULE_TYPES,
+  formatDurationShort,
   isRuleType,
   ruleConditionsLabel,
   ruleScheduleLabel,
   ruleTargetLabel,
   ruleTypeLabel,
   validateRuleConfig,
+  validateRuleCooldown,
 } from "./rule-config-schema";
 
 // Mirrors upstream-api-server's validate_rule_config tests — keep the two
@@ -23,8 +25,8 @@ describe("isRuleType / ruleTypeLabel", () => {
   });
 
   it("rejects unsupported types and echoes them through the label", () => {
-    expect(isRuleType("camera_offline")).toBe(false);
-    expect(ruleTypeLabel("camera_offline")).toBe("camera_offline");
+    expect(isRuleType("scene_changed")).toBe(false);
+    expect(ruleTypeLabel("scene_changed")).toBe("scene_changed");
   });
 });
 
@@ -67,6 +69,30 @@ describe("validateRuleConfig", () => {
     ["dwell_exceeded", { min_confidence: 0.5, object_classes: ["person"] }],
     ["roi_occupancy", { object_class: "person", min_total_count: 3 }],
     ["roi_occupancy", { object_class: "person", max_total_count: 2 }],
+    // --- M4 time-based rules ----------------------------------------------
+    ["camera_offline", { offline_for_seconds: 300 }],
+    [
+      "camera_offline",
+      {
+        offline_for_seconds: 300,
+        schedule: {
+          days: ["mon", "tue", "wed", "thu", "fri"],
+          start_time: "08:00",
+          end_time: "18:00",
+          timezone: "America/Denver",
+        },
+      },
+    ],
+    ["no_detections_for", { quiet_for_seconds: 1800 }],
+    ["no_detections_for", { quiet_for_seconds: 1800, object_classes: ["person"] }],
+    [
+      "no_detections_for",
+      {
+        quiet_for_seconds: 1800,
+        observation_types: ["processor.zone_entered"],
+        object_classes: ["person"],
+      },
+    ],
     // --- per-object line crossing unlock ----------------------------------
     ["line_crossing", { object_classes: ["person"] }],
     ["line_crossing", { require_track_id: true }],
@@ -100,6 +126,27 @@ describe("validateRuleConfig", () => {
     ["roi_occupancy", { object_class: "" }],
     ["roi_occupancy", { object_class: 7 }],
     ["zone_entered", { object_class: "person" }], // roi-only key
+    // --- M4 time-based rules ----------------------------------------------
+    ["camera_offline", {}], // duration required
+    ["camera_offline", { offline_for_seconds: 30 }], // below 60s floor
+    ["camera_offline", { offline_for_seconds: 604801 }],
+    ["camera_offline", { offline_for_seconds: "300" }],
+    ["camera_offline", { offline_for_seconds: 300, object_classes: ["person"] }],
+    ["no_detections_for", {}],
+    ["no_detections_for", { quiet_for_seconds: 0 }],
+    ["no_detections_for", { quiet_for_seconds: 1800, observation_types: [] }],
+    [
+      "no_detections_for",
+      { quiet_for_seconds: 1800, observation_types: ["processor.mock_detection"] },
+    ],
+    [
+      "no_detections_for",
+      {
+        quiet_for_seconds: 1800,
+        observation_types: ["processor.roi_occupancy"],
+        object_classes: ["person"],
+      },
+    ],
     // --- M3: value validation -------------------------------------------
     ["zone_entered", { object_classes: [] }],
     ["zone_entered", { object_classes: ["person", "person"] }],
@@ -312,8 +359,53 @@ describe("ruleTargetLabel", () => {
   });
 
   it("dashes out unknown rule types", () => {
-    expect(ruleTargetLabel({ rule_type: "camera_offline", config: {} })).toBe(
+    expect(ruleTargetLabel({ rule_type: "scene_changed", config: {} })).toBe(
       "—",
     );
+  });
+});
+
+describe("formatDurationShort", () => {
+  it.each([
+    [300, "5m"],
+    [5400, "1h 30m"],
+    [90, "1m 30s"],
+    [60, "1m"],
+    [3600, "1h"],
+    [0, "0s"],
+  ])("formats %ds as %s", (seconds, label) => {
+    expect(formatDurationShort(seconds)).toBe(label);
+  });
+});
+
+describe("validateRuleCooldown", () => {
+  it("rejects sub-minute cooldowns on timer rules", () => {
+    expect(validateRuleCooldown("camera_offline", 0).length).toBeGreaterThan(0);
+    expect(validateRuleCooldown("no_detections_for", 30).length).toBeGreaterThan(0);
+  });
+
+  it("accepts >= 60s on timer rules and anything on event rules", () => {
+    expect(validateRuleCooldown("camera_offline", 60)).toEqual([]);
+    expect(validateRuleCooldown("line_crossing", 0)).toEqual([]);
+  });
+});
+
+describe("timer rule target labels", () => {
+  it("labels camera_offline by its duration", () => {
+    expect(
+      ruleTargetLabel({
+        rule_type: "camera_offline",
+        config: { offline_for_seconds: 300 },
+      }),
+    ).toBe("offline > 5m");
+  });
+
+  it("labels no_detections_for by its quiet duration", () => {
+    expect(
+      ruleTargetLabel({
+        rule_type: "no_detections_for",
+        config: { quiet_for_seconds: 1800 },
+      }),
+    ).toBe("quiet > 30m");
   });
 });

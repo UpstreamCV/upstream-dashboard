@@ -73,6 +73,18 @@ describe("workflowRunTriggerLabel", () => {
     );
   });
 
+  it("labels M4 timer triggers", () => {
+    expect(workflowRunTriggerLabel("timer.camera_offline")).toBe(
+      "Camera offline (timer)",
+    );
+    expect(workflowRunTriggerLabel("timer.no_detections_for")).toBe(
+      "No activity detected (timer)",
+    );
+    expect(workflowRunTriggerLabel("timer.unknown_thing")).toBe(
+      "timer.unknown_thing",
+    );
+  });
+
   it("echoes unmapped trigger types unchanged", () => {
     expect(workflowRunTriggerLabel("processor.mock_detection")).toBe(
       "processor.mock_detection",

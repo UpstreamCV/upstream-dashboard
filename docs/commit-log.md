@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Workflow Engine M4: time-based rule authoring
+
+**Subject:** Add `camera_offline` and `no_detections_for` to the camera rule form — the first rules evaluated on a timer (api-server periodic evaluator) instead of per-observation.
+
+**What changed:** `src/lib/rules/rule-config-schema.ts` (new types + labels/descriptions, TIMER_RULE_TYPES, duration bounds + observation_types/class-attributing validation in lock-step with the server, `validateRuleCooldown` 60s floor, `formatDurationShort`, target labels "offline > 5m"/"quiet > 30m"; RULE_TYPE_TARGET gains a "camera" kind), `rules-panel.tsx` (geometry target picker hidden for timer rules; "Offline for"/"Quiet for" minute inputs; class chips shown for no_detections_for — which detections count as activity — while track/confidence inputs stay event-only; "Every match" cooldown option filtered out for timer rules with auto-bump on type switch; schedule/severity sections shared), `workflow-run-format.ts` ("Camera offline (timer)" trigger labels for `timer.*` runs), `types.ts` (RuleType union). Observation-type multi-select deliberately omitted from the form — the server default (all types, or class-attributing when classes are chosen) covers the real use cases without UI sprawl.
+
+**Testing/checks:** `npm run test` (556, +26 schema/duration/label cases; two stale tests that used camera_offline as an "unsupported type" example updated), `npx tsc --noEmit`, production build all pass. Only lint error remains the pre-existing demo-mode one.
+
 ## 2026-06-10 — Per-object line crossing: line-rule conditions + new observation labels
 
 **Subject:** Expose object-class / require-tracked / min-confidence condition inputs on line-crossing rules, and label the new `processor.line_crossing_object` observation type across the dashboard.
