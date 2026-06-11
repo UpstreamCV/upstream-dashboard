@@ -15,6 +15,7 @@ import {
   LogOut,
   Network,
   Radio,
+  ScrollText,
   Settings,
   Users,
   Video,
@@ -80,6 +81,12 @@ const NAV: {
     href: "/dashboard/alerts",
     match: /^\/dashboard\/alerts/,
     icon: Bell,
+  },
+  {
+    label: "Audit Logs",
+    href: "/dashboard/audit-logs",
+    match: /^\/dashboard\/audit-logs/,
+    icon: ScrollText,
   },
   {
     label: "API Keys",

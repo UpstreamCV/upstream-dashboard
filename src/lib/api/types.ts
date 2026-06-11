@@ -924,3 +924,30 @@ export interface UsageSummary {
     management_available: boolean;
   };
 }
+
+// --- Module 7 M3: tenant audit logs ------------------------------------------
+// Source: ../upstream-api-server/src/upstream_api/routers/audit_logs.py
+
+export interface AuditLogActor {
+  // user | system | stripe | internal (open vocabulary).
+  type: string;
+  user_id: Uuid | null;
+}
+
+export interface AuditLogItem {
+  id: Uuid;
+  created_at: IsoDateTime;
+  actor: AuditLogActor;
+  // Dotted verb, e.g. "camera.created", "billing.plan_changed".
+  event_type: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  summary: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogItem[];
+  // created_at keyset cursor — pass back as ?before= for the next page.
+  next_cursor: IsoDateTime | null;
+}
