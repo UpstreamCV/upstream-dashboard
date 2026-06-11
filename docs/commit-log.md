@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-11 — Module 7 M1: billing/usage page + home tile wiring
+
+**Subject:** Add `/dashboard/billing` (plan card, usage meters with state chips, near/at/over-limit banners, activity counts) and wire the home Plan & Usage tile to real data.
+
+**What changed:** `src/lib/api/usage.ts` (getUsageSummary), `types.ts` (UsageSummary), `src/lib/usage/usage-format.ts` (state labels, plain-English warning copy worst-first, period formatting) + vitest, `src/app/dashboard/(app)/billing/page.tsx` (Server Component; reuses UsageMeter/dn-tile; "Billing management coming soon" placeholder — Stripe is M2, no fake upgrade flow), sidebar Billing placeholder now links to the page, home page fetches the summary (catch → null so home survives a mid-deploy missing endpoint) and the Minutes meter shows real completed stream minutes (previously a documented `—` hole), View Billing CTA `#` → `/dashboard/billing`, `errors.ts` maps `limit_exceeded.monthly_minutes_quota` ("…Contact support or wait until your usage period resets."). Stream minutes labeled "completed" — active sessions count when they end. Processor minutes intentionally absent (not tracked).
+
+**Testing/checks:** `npm run test` (582, +6), `npx tsc --noEmit`, production build (route compiles) all pass. Only lint error remains the pre-existing demo-mode one.
+
 ## 2026-06-10 — Workflow Engine M5: sequence workflow builder + definitions list
 
 **Subject:** Add the form-based sequence builder (`/dashboard/workflows/new`) and a sequence-definitions section on the workflows page — workflows are now a top-level product object with the run history below them.

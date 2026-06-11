@@ -70,6 +70,8 @@ export function classify(code: string): ErrorCategory {
 }
 
 const FRIENDLY: Record<string, string> = {
+  "limit_exceeded.monthly_minutes_quota":
+    "You have reached your monthly streaming minutes quota. Contact support or wait until your usage period resets.",
   "limit_exceeded.max_cameras":
     "Camera slot limit reached. Free a camera or contact your administrator.",
   "limit_exceeded.max_concurrent_sessions":

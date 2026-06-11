@@ -62,7 +62,12 @@ const NAV: {
     icon: Radio,
   },
   { label: "Network", href: null, icon: Network },
-  { label: "Billing", href: null, icon: CreditCard },
+  {
+    label: "Billing",
+    href: "/dashboard/billing",
+    match: /^\/dashboard\/billing/,
+    icon: CreditCard,
+  },
   { label: "Users", href: null, icon: Users },
   {
     label: "Workflows",

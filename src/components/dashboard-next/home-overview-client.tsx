@@ -35,12 +35,16 @@ export function HomeOverviewClient({
   initialAgents,
   initialTokens,
   initialLimits,
+  streamMinutesUsed,
 }: {
   account: AccountSummary;
   initialSummary: DashboardSummary;
   initialAgents: Agent[];
   initialTokens: ApiToken[];
   initialLimits: AccountLimits;
+  // Completed stream minutes this period (null while the endpoint is
+  // unavailable; renders as an unknown meter, never a fake 0).
+  streamMinutesUsed: number | null;
 }) {
   const demo = isDemoMode();
 
@@ -173,7 +177,12 @@ export function HomeOverviewClient({
         actionLabel="View Sessions"
         actionHref="/dashboard/stream-sessions"
       />
-      <Tile title="Plan & Usage" span={2} actionLabel="View Billing" actionHref="#">
+      <Tile
+        title="Plan & Usage"
+        span={2}
+        actionLabel="View Billing"
+        actionHref="/dashboard/billing"
+      >
         <div className="flex flex-col gap-5">
           <div className="flex items-baseline gap-3">
             <span className="text-[clamp(1.75rem,4.5vw,2.75rem)] font-bold leading-none capitalize">
@@ -194,14 +203,12 @@ export function HomeOverviewClient({
               value={concurrent}
               max={limits.max_concurrent_sessions}
             />
-            {/* Minutes used is ILLUSTRATIVE — upstream-api-server exposes the
-                cap (`monthly_minutes_quota`) but no aggregate of minutes
-                consumed this month, so prod renders `—` (not `0`, which would
-                falsely read as zero usage). The demo shows a representative
-                figure so the tile reads finished. */}
+            {/* Completed stream minutes this period, from
+                /v1/usage/summary (Module 7 M1). Active sessions count once
+                they end. */}
             <UsageMeter
               label="Minutes"
-              value={demo ? 12_480 : null}
+              value={demo ? 12_480 : streamMinutesUsed}
               max={limits.monthly_minutes_quota}
             />
           </div>
