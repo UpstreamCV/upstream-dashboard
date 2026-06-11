@@ -104,6 +104,11 @@ export function RulesPanel({
   );
   const [classText, setClassText] = useState("");
   const [requireTrackId, setRequireTrackId] = useState(false);
+  // "" = no confidence floor (payload-enrichment unlock).
+  const [minConfidence, setMinConfidence] = useState("");
+  // "" = count all classes; otherwise the bounds apply to this class's
+  // object-attributed count (payload-enrichment unlock).
+  const [roiObjectClass, setRoiObjectClass] = useState("");
   // "" = no upper bound.
   const [maxTotalCount, setMaxTotalCount] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
@@ -140,6 +145,9 @@ export function RulesPanel({
       if (maxTotalCount !== "" && Number.isInteger(max) && max >= 1) {
         cfg.max_total_count = max;
       }
+      if (roiObjectClass.trim() !== "") {
+        cfg.object_class = roiObjectClass.trim();
+      }
     }
     if (ruleType === "dwell_exceeded" && minDurationSeconds > 0) {
       cfg.min_duration_seconds = minDurationSeconds;
@@ -147,6 +155,10 @@ export function RulesPanel({
     if (supportsClassFilter) {
       if (objectClasses.length > 0) cfg.object_classes = objectClasses;
       if (requireTrackId) cfg.require_track_id = true;
+      const conf = Number(minConfidence);
+      if (minConfidence !== "" && conf > 0 && conf <= 1) {
+        cfg.min_confidence = conf;
+      }
     }
     if (scheduleEnabled) {
       cfg.schedule = {
@@ -169,6 +181,8 @@ export function RulesPanel({
     supportsClassFilter,
     objectClasses,
     requireTrackId,
+    minConfidence,
+    roiObjectClass,
     scheduleEnabled,
     scheduleDays,
     scheduleStart,
@@ -180,10 +194,15 @@ export function RulesPanel({
     setRuleType(next);
     setTargetId(""); // a line id is meaningless for an ROI rule and vice versa
     if (!CLASS_FILTER_RULE_TYPES.has(next)) {
-      // Class/track conditions only exist where payloads can prove them.
+      // Class/track/confidence conditions only exist where payloads can
+      // prove them.
       setSelectedClasses(new Set());
       setClassText("");
       setRequireTrackId(false);
+      setMinConfidence("");
+    }
+    if (next !== "roi_occupancy") {
+      setRoiObjectClass("");
     }
   }
 
@@ -238,6 +257,8 @@ export function RulesPanel({
         setSelectedClasses(new Set());
         setClassText("");
         setRequireTrackId(false);
+        setMinConfidence("");
+        setRoiObjectClass("");
         setMaxTotalCount("");
         setScheduleEnabled(false);
         router.refresh();
@@ -360,6 +381,33 @@ export function RulesPanel({
                     disabled={pending}
                   />
                 </label>
+                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  Count class
+                  {classOptions.length > 0 ? (
+                    <select
+                      value={roiObjectClass}
+                      onChange={(e) => setRoiObjectClass(e.target.value)}
+                      className={SELECT_CLASS}
+                      disabled={pending}
+                    >
+                      <option value="">All classes</option>
+                      {classOptions.map((label) => (
+                        <option key={label} value={label}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={roiObjectClass}
+                      onChange={(e) => setRoiObjectClass(e.target.value)}
+                      placeholder="all classes"
+                      className={INPUT_CLASS + " w-32"}
+                      disabled={pending}
+                    />
+                  )}
+                </label>
               </>
             ) : null}
             {ruleType === "dwell_exceeded" ? (
@@ -475,6 +523,20 @@ export function RulesPanel({
                     disabled={pending}
                   />
                   Require tracked object
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  Min confidence (0–1, blank = any)
+                  <input
+                    type="number"
+                    min={0.05}
+                    max={1}
+                    step={0.05}
+                    value={minConfidence}
+                    onChange={(e) => setMinConfidence(e.target.value)}
+                    placeholder="0.70"
+                    className={INPUT_CLASS + " w-28"}
+                    disabled={pending}
+                  />
                 </label>
               </div>
             </div>

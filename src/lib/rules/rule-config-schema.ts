@@ -13,8 +13,16 @@
 //   cumulative counters with no per-object attribution; ROI counts are
 //   cross-class aggregates).
 // - min/max_total_count: roi_occupancy.
+// - min_confidence: zone_entered + dwell_exceeded — unlocked by the
+//   processor's payload-enrichment side task (per-object detection
+//   confidence stamped on zone/dwell events; omitted when the track wasn't
+//   detected in the triggering frame).
+// - object_class: roi_occupancy — the same side task populates class_counts
+//   from object-attributed ROI membership; the count bounds then apply to
+//   that class's count instead of the aggregate total.
 // - schedule: every rule type — evaluated inline from the observation time.
-// - min_confidence / direction: deferred — no payload carries them today.
+// - direction (and any line_crossing conditions): still deferred — line
+//   crossings remain cumulative counters with no per-object attribution.
 
 import type { Rule, RuleSeverity, RuleType } from "@/lib/api/types";
 
@@ -81,6 +89,15 @@ export const CLASS_FILTER_RULE_TYPES: ReadonlySet<RuleType> = new Set([
   "dwell_exceeded",
 ]);
 
+/**
+ * Rule types whose payloads can prove per-object detection confidence
+ * (payload-enrichment side task). Same set as the class filter today.
+ */
+export const CONFIDENCE_FILTER_RULE_TYPES: ReadonlySet<RuleType> = new Set([
+  "zone_entered",
+  "dwell_exceeded",
+]);
+
 const RULE_TYPE_LABELS: Record<RuleType, string> = {
   line_crossing: "Line crossing",
   roi_occupancy: "Objects in ROI",
@@ -124,10 +141,15 @@ export function ruleTargetLabel(rule: Pick<Rule, "rule_type" | "config">): strin
   if (rule.rule_type === "roi_occupancy") {
     const min = typeof cfg.min_total_count === "number" ? cfg.min_total_count : 1;
     const max = typeof cfg.max_total_count === "number" ? cfg.max_total_count : null;
+    // object_class scopes the count bounds to one class's count.
+    const noun =
+      typeof cfg.object_class === "string" && cfg.object_class.trim() !== ""
+        ? cfg.object_class
+        : `object${min === 1 && max === null ? "" : "s"}`;
     if (max !== null) {
-      parts.push(`${min}–${max} objects`);
+      parts.push(`${min}–${max} ${noun}`);
     } else {
-      parts.push(`≥ ${min} object${min === 1 ? "" : "s"}`);
+      parts.push(`≥ ${min} ${noun}`);
     }
   }
   if (
@@ -153,6 +175,9 @@ export function ruleConditionsLabel(
   }
   if (cfg.require_track_id === true) {
     parts.push("tracked only");
+  }
+  if (typeof cfg.min_confidence === "number") {
+    parts.push(`conf ≥ ${Math.round(cfg.min_confidence * 100)}%`);
   }
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -204,12 +229,14 @@ const ALLOWED_CONFIG_KEYS: Record<RuleType, ReadonlySet<string>> = {
     "roi_id",
     "min_total_count",
     "max_total_count",
+    "object_class",
     "schedule",
   ]),
   zone_entered: new Set([
     "zone_id",
     "object_classes",
     "require_track_id",
+    "min_confidence",
     "schedule",
   ]),
   dwell_exceeded: new Set([
@@ -217,6 +244,7 @@ const ALLOWED_CONFIG_KEYS: Record<RuleType, ReadonlySet<string>> = {
     "min_duration_seconds",
     "object_classes",
     "require_track_id",
+    "min_confidence",
     "schedule",
   ]),
 };
@@ -373,6 +401,24 @@ export function validateRuleConfig(
       field: "require_track_id",
       message: "require_track_id must be a boolean.",
     });
+  }
+  if ("min_confidence" in config) {
+    const value = config.min_confidence;
+    if (typeof value !== "number" || !(value > 0 && value <= 1)) {
+      issues.push({
+        field: "min_confidence",
+        message: "min_confidence must be a number between 0 (exclusive) and 1.",
+      });
+    }
+  }
+  if ("object_class" in config) {
+    const value = config.object_class;
+    if (typeof value !== "string" || value.trim() === "") {
+      issues.push({
+        field: "object_class",
+        message: "object_class must be a non-empty class name.",
+      });
+    }
   }
   if ("schedule" in config) {
     validateSchedule(config.schedule, issues);
