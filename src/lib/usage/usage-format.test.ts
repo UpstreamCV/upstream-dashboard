@@ -32,6 +32,16 @@ function summary(states: Partial<UsageSummary["states"]>): UsageSummary {
       stream_minutes: "ok",
       ...states,
     },
+    billing: {
+      provider: "stripe",
+      configured: false,
+      status: "none",
+      subscription_status: null,
+      current_period_start: null,
+      current_period_end: null,
+      cancel_at_period_end: false,
+      management_available: false,
+    },
   };
 }
 
@@ -93,5 +103,22 @@ describe("USAGE_STATE_LABELS", () => {
       "ok",
       "over_limit",
     ]);
+  });
+});
+
+describe("billing helpers", () => {
+  it("labels billing statuses", async () => {
+    const { billingStatusLabel } = await import("./usage-format");
+    expect(billingStatusLabel("active")).toBe("Active");
+    expect(billingStatusLabel("trialing")).toBe("Trial");
+    expect(billingStatusLabel("past_due")).toBe("Payment issue");
+    expect(billingStatusLabel("canceled")).toBe("Canceled");
+    expect(billingStatusLabel("none")).toBe("No subscription");
+    expect(billingStatusLabel("paused")).toBe("paused");
+  });
+
+  it("formats billing dates in UTC", async () => {
+    const { formatBillingDate } = await import("./usage-format");
+    expect(formatBillingDate("2026-07-01T00:00:00Z")).toBe("Jul 1, 2026");
   });
 });

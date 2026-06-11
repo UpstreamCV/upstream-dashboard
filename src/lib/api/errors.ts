@@ -70,6 +70,11 @@ export function classify(code: string): ErrorCategory {
 }
 
 const FRIENDLY: Record<string, string> = {
+  billing_not_configured:
+    "Billing isn't set up on this deployment yet. Contact support to change your plan.",
+  billing_no_customer:
+    "This account has no billing profile yet. Start an upgrade first.",
+  invalid_webhook_signature: "Webhook signature verification failed.",
   "limit_exceeded.monthly_minutes_quota":
     "You have reached your monthly streaming minutes quota. Contact support or wait until your usage period resets.",
   "limit_exceeded.max_cameras":

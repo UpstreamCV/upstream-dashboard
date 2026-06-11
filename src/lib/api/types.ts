@@ -908,4 +908,19 @@ export interface UsageSummary {
     active_streams: UsageState;
     stream_minutes: UsageState;
   };
+  // Module 7 M2 — no Stripe IDs are exposed, only states/capabilities.
+  billing: {
+    provider: "stripe";
+    // False when the deployment has no Stripe keys (dev/local).
+    configured: boolean;
+    // Derived: none | active | trialing | past_due | canceled.
+    status: string;
+    // Raw Stripe subscription status (null before first checkout).
+    subscription_status: string | null;
+    current_period_start: IsoDateTime | null;
+    current_period_end: IsoDateTime | null;
+    cancel_at_period_end: boolean;
+    // True when a Stripe customer exists — Manage Billing can open the Portal.
+    management_available: boolean;
+  };
 }
