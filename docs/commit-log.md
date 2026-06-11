@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-11 — Module 7 M3: audit logs page
+
+**Subject:** Add `/dashboard/audit-logs` — account-facing audit history (cameras, tokens, rules, workflows, billing, limit rejections) with category filter chips.
+
+**What changed:** `src/lib/api/audit-logs.ts` (list wrapper), `types.ts` (AuditLogItem/actor/list), `src/lib/audit/audit-format.ts` (event labels with graceful unknown-event fallback, category mapping, actor labels, ALLOWLIST-ONLY metadata preview — unknown metadata keys can never render) + vitest, `audit-logs-client.tsx` (filter chips All/Billing/Cameras/Tokens/Rules/Workflows/Limits over the server-fetched 100 most recent, empty states, category-colored event chips, relative timestamps), page + sidebar entry (ScrollText icon). Customer dashboard only — platform-admin auditing stays in the separate admin panel.
+
+**Testing/checks:** `npm run test` (591, +7), `npx tsc --noEmit`, production build (route compiles) all pass. Only lint error remains the pre-existing demo-mode one.
+
 ## 2026-06-11 — Module 7 M2: real Upgrade / Manage Billing via Stripe
 
 **Subject:** The billing page placeholder becomes real: Upgrade buttons → Stripe Checkout, Manage Billing → Stripe Customer Portal, billing status surfaced.
