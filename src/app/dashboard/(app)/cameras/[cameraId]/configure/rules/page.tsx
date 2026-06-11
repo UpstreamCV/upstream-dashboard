@@ -5,7 +5,9 @@ import { RelativeTime } from "@/components/data/relative-time";
 import { RulesPanel } from "@/components/dashboard-next/rules/rules-panel";
 import { getActiveAccount } from "@/lib/account/active";
 import { UpstreamApiError } from "@/lib/api/errors";
+import { getCameraProcessingConfig } from "@/lib/api/camera-processing-config";
 import { getCameraGeometryConfig } from "@/lib/api/geometry";
+import { listModels } from "@/lib/api/models";
 import { listRules } from "@/lib/api/rules";
 import { listWorkflowRuns } from "@/lib/api/workflow-runs";
 import type { WorkflowRun } from "@/lib/api/types";
@@ -41,16 +43,34 @@ export default async function CameraRulesPage({
   // camera 404s on the rules read. Geometry always resolves (the server
   // synthesizes a probe default), so an empty lines/rois list just means
   // "no shapes drawn yet".
-  const [rules, geometry, recentRuns] = await Promise.all([
-    listRules({ accountId: activeAccountId, cameraId }).catch((err) => {
-      if (err instanceof UpstreamApiError && err.status === 404) {
-        notFound();
-      }
-      throw err;
-    }),
-    getCameraGeometryConfig({ accountId: activeAccountId, cameraId }),
-    listWorkflowRuns({ accountId: activeAccountId, cameraId, limit: 8 }),
-  ]);
+  // The M3 class-filter options come from the camera's configured detection
+  // model: the model's supported classes, narrowed to selected_classes when
+  // the operator picked a subset. Both reads are best-effort — if either
+  // fails the form falls back to a free-text class input.
+  const [rules, geometry, recentRuns, models, processingConfig] =
+    await Promise.all([
+      listRules({ accountId: activeAccountId, cameraId }).catch((err) => {
+        if (err instanceof UpstreamApiError && err.status === 404) {
+          notFound();
+        }
+        throw err;
+      }),
+      getCameraGeometryConfig({ accountId: activeAccountId, cameraId }),
+      listWorkflowRuns({ accountId: activeAccountId, cameraId, limit: 8 }),
+      listModels({ accountId: activeAccountId }).catch(() => null),
+      getCameraProcessingConfig({ accountId: activeAccountId, cameraId }).catch(
+        () => null,
+      ),
+    ]);
+
+  const activeModel = models?.find(
+    (m) => m.model_key === processingConfig?.config.model_key,
+  );
+  const selectedClasses = processingConfig?.config.selected_classes ?? [];
+  const classOptions =
+    selectedClasses.length > 0
+      ? selectedClasses
+      : (activeModel?.supported_classes ?? []);
 
   const lines = geometry.config.lines.map((l) => ({
     id: l.id,
@@ -107,6 +127,7 @@ export default async function CameraRulesPage({
         initialRules={rules}
         lines={lines}
         rois={rois}
+        classOptions={classOptions}
         canEdit={canEdit}
       />
 

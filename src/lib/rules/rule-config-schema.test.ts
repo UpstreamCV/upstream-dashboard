@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   RULE_TYPES,
   isRuleType,
+  ruleConditionsLabel,
+  ruleScheduleLabel,
   ruleTargetLabel,
   ruleTypeLabel,
   validateRuleConfig,
@@ -34,6 +36,31 @@ describe("validateRuleConfig", () => {
     ["zone_entered", { zone_id: "z-1" }],
     ["dwell_exceeded", { zone_id: "z-1", min_duration_seconds: 90 }],
     ["dwell_exceeded", { min_duration_seconds: 90.5 }],
+    // --- M3 -----------------------------------------------------------
+    [
+      "zone_entered",
+      { object_classes: ["person", "forklift"], require_track_id: true },
+    ],
+    ["dwell_exceeded", { object_classes: ["person"], min_duration_seconds: 30 }],
+    ["roi_occupancy", { min_total_count: 2, max_total_count: 10 }],
+    ["roi_occupancy", { max_total_count: 1 }],
+    [
+      "line_crossing",
+      {
+        line_id: "line-1",
+        schedule: {
+          days: ["mon", "tue", "wed", "thu", "fri"],
+          start_time: "08:00",
+          end_time: "18:00",
+          timezone: "America/New_York",
+        },
+      },
+    ],
+    // Overnight window + default days are both valid.
+    [
+      "zone_entered",
+      { schedule: { start_time: "22:00", end_time: "06:00", timezone: "UTC" } },
+    ],
   ] as const)("accepts valid %s config %j", (ruleType, config) => {
     expect(validateRuleConfig(ruleType, config)).toEqual([]);
   });
@@ -48,10 +75,158 @@ describe("validateRuleConfig", () => {
     ["dwell_exceeded", { min_duration_seconds: 0 }],
     ["dwell_exceeded", { min_duration_seconds: -5 }],
     ["nonsense_type", {}],
+    // --- M3: conditions rejected on types whose payloads can't prove
+    // them (mirrors the server's restriction) ---------------------------
+    ["line_crossing", { object_classes: ["person"] }],
+    ["line_crossing", { require_track_id: true }],
+    ["line_crossing", { direction: "a_to_b" }], // deferred — never produced
+    ["zone_entered", { min_confidence: 0.7 }], // deferred — not in payloads
+    ["roi_occupancy", { object_classes: ["person"] }], // aggregate counts only
+    // --- M3: value validation -------------------------------------------
+    ["zone_entered", { object_classes: [] }],
+    ["zone_entered", { object_classes: ["person", "person"] }],
+    ["zone_entered", { object_classes: ["person", ""] }],
+    ["zone_entered", { object_classes: "person" }],
+    ["zone_entered", { require_track_id: "yes" }],
+    ["roi_occupancy", { max_total_count: 0 }],
+    ["roi_occupancy", { min_total_count: 5, max_total_count: 2 }],
+    // --- M3: schedule validation ------------------------------------------
+    ["line_crossing", { schedule: "always" }],
+    ["line_crossing", { schedule: { start_time: "08:00", end_time: "18:00" } }],
+    [
+      "line_crossing",
+      { schedule: { start_time: "8am", end_time: "18:00", timezone: "UTC" } },
+    ],
+    [
+      "line_crossing",
+      { schedule: { start_time: "08:00", end_time: "24:00", timezone: "UTC" } },
+    ],
+    [
+      "line_crossing",
+      { schedule: { start_time: "08:00", end_time: "08:00", timezone: "UTC" } },
+    ],
+    [
+      "line_crossing",
+      {
+        schedule: {
+          start_time: "08:00",
+          end_time: "18:00",
+          timezone: "Mars/Olympus",
+        },
+      },
+    ],
+    [
+      "line_crossing",
+      {
+        schedule: {
+          days: ["monday"],
+          start_time: "08:00",
+          end_time: "18:00",
+          timezone: "UTC",
+        },
+      },
+    ],
+    [
+      "line_crossing",
+      {
+        schedule: {
+          days: [],
+          start_time: "08:00",
+          end_time: "18:00",
+          timezone: "UTC",
+        },
+      },
+    ],
+    [
+      "line_crossing",
+      {
+        schedule: {
+          start_time: "08:00",
+          end_time: "18:00",
+          timezone: "UTC",
+          label: "work hours",
+        },
+      },
+    ],
   ] as const)("rejects invalid %s config %j", (ruleType, config) => {
     expect(
       validateRuleConfig(ruleType, config as Record<string, unknown>).length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("ruleConditionsLabel", () => {
+  it("returns null when no conditions are set", () => {
+    expect(ruleConditionsLabel({ config: {} })).toBeNull();
+  });
+
+  it("lists classes and track requirement", () => {
+    expect(
+      ruleConditionsLabel({
+        config: { object_classes: ["person", "forklift"], require_track_id: true },
+      }),
+    ).toBe("person, forklift · tracked only");
+  });
+
+  it("shows track requirement alone", () => {
+    expect(ruleConditionsLabel({ config: { require_track_id: true } })).toBe(
+      "tracked only",
+    );
+  });
+});
+
+describe("ruleScheduleLabel", () => {
+  it("returns null when no schedule is set", () => {
+    expect(ruleScheduleLabel({ config: {} })).toBeNull();
+  });
+
+  it("collapses consecutive days to a range", () => {
+    expect(
+      ruleScheduleLabel({
+        config: {
+          schedule: {
+            days: ["mon", "tue", "wed", "thu", "fri"],
+            start_time: "08:00",
+            end_time: "18:00",
+            timezone: "America/New_York",
+          },
+        },
+      }),
+    ).toBe("Mon–Fri 08:00–18:00 America/New_York");
+  });
+
+  it("lists non-consecutive days individually", () => {
+    expect(
+      ruleScheduleLabel({
+        config: {
+          schedule: {
+            days: ["mon", "fri"],
+            start_time: "22:00",
+            end_time: "06:00",
+            timezone: "UTC",
+          },
+        },
+      }),
+    ).toBe("Mon, Fri 22:00–06:00 UTC");
+  });
+
+  it("labels a no-days schedule as every day", () => {
+    expect(
+      ruleScheduleLabel({
+        config: {
+          schedule: { start_time: "08:00", end_time: "18:00", timezone: "UTC" },
+        },
+      }),
+    ).toBe("Every day 08:00–18:00 UTC");
+  });
+
+  it("degrades malformed schedules to a generic label, never throws", () => {
+    expect(ruleScheduleLabel({ config: { schedule: "always" } })).toBe(
+      "scheduled",
+    );
+    expect(ruleScheduleLabel({ config: { schedule: { days: ["mon"] } } })).toBe(
+      "scheduled",
+    );
   });
 });
 
