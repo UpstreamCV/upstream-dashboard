@@ -146,6 +146,8 @@ export function WorkflowRunsClient({
                       id: run.id,
                       workflow_type: run.workflow_type,
                       rule_id: run.rule_id,
+                      workflow_id: run.workflow_id,
+                      deadline_at: run.deadline_at,
                       trigger_observation_id: run.trigger_observation_id,
                       action_result: run.action_result,
                       evidence: run.evidence,

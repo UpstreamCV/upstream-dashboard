@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Workflow Engine M5: sequence workflow builder + definitions list
+
+**Subject:** Add the form-based sequence builder (`/dashboard/workflows/new`) and a sequence-definitions section on the workflows page — workflows are now a top-level product object with the run history below them.
+
+**What changed:** `src/lib/api/workflows.ts` (CRUD wrappers), `src/lib/workflows/sequence-config-schema.ts` (validator in lock-step with the server incl. per-event-type condition availability and the same-track/track-attributing constraint; `sequenceSummaryLabel` — "Zone entered (zone-a) → Line crossing (object) (line-b) within 30s · same object"), `src/app/dashboard/(app)/workflows/new/page.tsx` (camera chooser via ?camera= so geometry shapes + model classes load server-side), `sequence-workflow-form.tsx` (two step editors with event/shape/class/confidence pickers, within-seconds input, same-tracked-object toggle auto-disabled when either event type carries no track, on-timeout alert toggle + message, severity/cooldown, schedule section), `workflow-definitions-client.tsx` (list with enable/disable/delete), workflows page wiring, run detail expand gains workflow_id/deadline_at, `types.ts` (Workflow + run fields). Deliberately NOT a visual node editor.
+
+**Testing/checks:** `npm run test` (576, +20 sequence schema/summary cases), `npx tsc --noEmit`, production build (new route compiles) all pass. Only lint error remains the pre-existing demo-mode one.
+
 ## 2026-06-10 — Workflow Engine M4: time-based rule authoring
 
 **Subject:** Add `camera_offline` and `no_detections_for` to the camera rule form — the first rules evaluated on a timer (api-server periodic evaluator) instead of per-observation.

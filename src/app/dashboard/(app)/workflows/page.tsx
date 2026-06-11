@@ -1,7 +1,9 @@
+import { WorkflowDefinitionsClient } from "@/components/dashboard-next/workflows/workflow-definitions-client";
 import { WorkflowRunsClient } from "@/components/dashboard-next/workflows/workflow-runs-client";
 import { getActiveAccount } from "@/lib/account/active";
 import { listCameras } from "@/lib/api/cameras";
 import { listWorkflowRuns } from "@/lib/api/workflow-runs";
+import { listWorkflows } from "@/lib/api/workflows";
 
 // Workflow Engine M2 — the account-wide workflow history. Every rule match
 // is recorded here as a workflow run, INCLUDING cooldown-suppressed matches
@@ -13,11 +15,14 @@ import { listWorkflowRuns } from "@/lib/api/workflow-runs";
 // status filter per tab.
 
 export default async function WorkflowsPage() {
-  const { activeAccountId } = await getActiveAccount();
+  const { activeAccountId, activeAccount } = await getActiveAccount();
+  const canEdit =
+    activeAccount.role === "owner" || activeAccount.role === "admin";
 
-  const [runs, cameras] = await Promise.all([
+  const [runs, cameras, workflows] = await Promise.all([
     listWorkflowRuns({ accountId: activeAccountId, limit: 100 }),
     listCameras({ accountId: activeAccountId }),
+    listWorkflows({ accountId: activeAccountId }),
   ]);
 
   const cameraNames: Record<string, string> = {};
@@ -40,6 +45,12 @@ export default async function WorkflowsPage() {
           Suppressed runs are recorded too, even when no alert was sent.
         </p>
       </header>
+
+      <WorkflowDefinitionsClient
+        workflows={workflows}
+        cameraNames={cameraNames}
+        canEdit={canEdit}
+      />
 
       <WorkflowRunsClient initialRuns={runs} cameraNames={cameraNames} />
     </section>
