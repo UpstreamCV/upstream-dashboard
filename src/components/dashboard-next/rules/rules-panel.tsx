@@ -12,22 +12,32 @@ import {
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Rule, RuleSeverity, RuleType } from "@/lib/api/types";
 import {
+  CLASS_FILTER_RULE_TYPES,
   DEFAULT_COOLDOWN_SECONDS,
   RULE_SEVERITIES,
   RULE_TYPES,
   RULE_TYPE_TARGET,
   RULE_TYPE_TARGET_KEY,
+  SCHEDULE_DAYS,
+  type ScheduleDay,
+  ruleConditionsLabel,
+  ruleScheduleLabel,
   ruleTargetLabel,
   ruleTypeDescription,
   ruleTypeLabel,
   validateRuleConfig,
 } from "@/lib/rules/rule-config-schema";
 
-// Rules/Triggers M1 — the rule editor's brains. Owns the create-form state
-// and drives the Server Actions; the server page passes the saved geometry
-// shapes so targets are picked by label, never typed by id. The persistence
-// boundary: only {name, rule_type, config, severity, cooldown_seconds} is
-// ever sent — selection/draft state stays here.
+// Workflow Engine M1/M3 — the rule editor's brains. Owns the create-form
+// state and drives the Server Actions; the server page passes the saved
+// geometry shapes (targets picked by label, never typed by id) and the
+// camera's detection-model classes (M3 class filter options). The
+// persistence boundary: only {name, rule_type, config, severity,
+// cooldown_seconds} is ever sent — selection/draft state stays here.
+//
+// M3 conditions appear only on rule types whose observation payloads can
+// prove them (class/track → zone & dwell; count bounds → ROI occupancy;
+// schedule → all). The shared validator enforces the same restriction.
 
 const SELECT_CLASS =
   "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
@@ -62,6 +72,9 @@ interface RulesPanelProps {
   initialRules: Rule[];
   lines: ShapeOption[];
   rois: ShapeOption[];
+  // Class names from the camera's configured detection model; empty when no
+  // model is configured (the class filter falls back to free text).
+  classOptions: string[];
   canEdit: boolean;
 }
 
@@ -70,6 +83,7 @@ export function RulesPanel({
   initialRules,
   lines,
   rois,
+  classOptions,
   canEdit,
 }: RulesPanelProps) {
   const router = useRouter();
@@ -83,22 +97,118 @@ export function RulesPanel({
   const [minDurationSeconds, setMinDurationSeconds] = useState(60);
   const [severity, setSeverity] = useState<RuleSeverity>("warning");
   const [cooldown, setCooldown] = useState(DEFAULT_COOLDOWN_SECONDS);
+  // --- M3 conditions ---------------------------------------------------
+  // Empty selection / empty text = no class filter (match any class).
+  const [selectedClasses, setSelectedClasses] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [classText, setClassText] = useState("");
+  const [requireTrackId, setRequireTrackId] = useState(false);
+  // "" = no upper bound.
+  const [maxTotalCount, setMaxTotalCount] = useState("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleDays, setScheduleDays] = useState<Set<ScheduleDay>>(
+    () => new Set(["mon", "tue", "wed", "thu", "fri"]),
+  );
+  const [scheduleStart, setScheduleStart] = useState("08:00");
+  const [scheduleEnd, setScheduleEnd] = useState("18:00");
+  const [scheduleTz, setScheduleTz] = useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  );
 
   const targetOptions = RULE_TYPE_TARGET[ruleType] === "line" ? lines : rois;
+  const supportsClassFilter = CLASS_FILTER_RULE_TYPES.has(ruleType);
+
+  const objectClasses = useMemo(() => {
+    if (classOptions.length > 0) return [...selectedClasses];
+    return [
+      ...new Set(
+        classText
+          .split(",")
+          .map((c) => c.trim())
+          .filter((c) => c !== ""),
+      ),
+    ];
+  }, [classOptions.length, selectedClasses, classText]);
 
   const config = useMemo(() => {
     const cfg: Record<string, unknown> = {};
     if (targetId) cfg[RULE_TYPE_TARGET_KEY[ruleType]] = targetId;
-    if (ruleType === "roi_occupancy") cfg.min_total_count = minTotalCount;
+    if (ruleType === "roi_occupancy") {
+      cfg.min_total_count = minTotalCount;
+      const max = Number(maxTotalCount);
+      if (maxTotalCount !== "" && Number.isInteger(max) && max >= 1) {
+        cfg.max_total_count = max;
+      }
+    }
     if (ruleType === "dwell_exceeded" && minDurationSeconds > 0) {
       cfg.min_duration_seconds = minDurationSeconds;
     }
+    if (supportsClassFilter) {
+      if (objectClasses.length > 0) cfg.object_classes = objectClasses;
+      if (requireTrackId) cfg.require_track_id = true;
+    }
+    if (scheduleEnabled) {
+      cfg.schedule = {
+        // Full week = no day filter on the wire.
+        ...(scheduleDays.size > 0 && scheduleDays.size < 7
+          ? { days: SCHEDULE_DAYS.filter((d) => scheduleDays.has(d)) }
+          : {}),
+        start_time: scheduleStart,
+        end_time: scheduleEnd,
+        timezone: scheduleTz.trim(),
+      };
+    }
     return cfg;
-  }, [ruleType, targetId, minTotalCount, minDurationSeconds]);
+  }, [
+    ruleType,
+    targetId,
+    minTotalCount,
+    maxTotalCount,
+    minDurationSeconds,
+    supportsClassFilter,
+    objectClasses,
+    requireTrackId,
+    scheduleEnabled,
+    scheduleDays,
+    scheduleStart,
+    scheduleEnd,
+    scheduleTz,
+  ]);
 
   function handleTypeChange(next: RuleType) {
     setRuleType(next);
     setTargetId(""); // a line id is meaningless for an ROI rule and vice versa
+    if (!CLASS_FILTER_RULE_TYPES.has(next)) {
+      // Class/track conditions only exist where payloads can prove them.
+      setSelectedClasses(new Set());
+      setClassText("");
+      setRequireTrackId(false);
+    }
+  }
+
+  function toggleClass(label: string) {
+    setSelectedClasses((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }
+
+  function toggleDay(day: ScheduleDay) {
+    setScheduleDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) {
+        next.delete(day);
+      } else {
+        next.add(day);
+      }
+      return next;
+    });
   }
 
   function handleCreate() {
@@ -125,6 +235,11 @@ export function RulesPanel({
         toast.success(result.message);
         setName("");
         setTargetId("");
+        setSelectedClasses(new Set());
+        setClassText("");
+        setRequireTrackId(false);
+        setMaxTotalCount("");
+        setScheduleEnabled(false);
         router.refresh();
       } else {
         toast.error(result.message);
@@ -217,20 +332,35 @@ export function RulesPanel({
               </select>
             </label>
             {ruleType === "roi_occupancy" ? (
-              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
-                Min objects
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={minTotalCount}
-                  onChange={(e) =>
-                    setMinTotalCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))
-                  }
-                  className={INPUT_CLASS + " w-24"}
-                  disabled={pending}
-                />
-              </label>
+              <>
+                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  Min objects
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={minTotalCount}
+                    onChange={(e) =>
+                      setMinTotalCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))
+                    }
+                    className={INPUT_CLASS + " w-24"}
+                    disabled={pending}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  Max objects
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={maxTotalCount}
+                    onChange={(e) => setMaxTotalCount(e.target.value)}
+                    placeholder="none"
+                    className={INPUT_CLASS + " w-24"}
+                    disabled={pending}
+                  />
+                </label>
+              </>
             ) : null}
             {ruleType === "dwell_exceeded" ? (
               <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
@@ -290,6 +420,133 @@ export function RulesPanel({
               Create rule
             </button>
           </div>
+
+          {/* M3 conditions — only the inputs this rule type's observation
+              payloads can actually prove. */}
+          {supportsClassFilter ? (
+            <div className="mt-4 border-t border-black/10 pt-3">
+              <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
+                conditions
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                {classOptions.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-bold text-black/70">
+                      Object classes:
+                    </span>
+                    {classOptions.map((label) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => toggleClass(label)}
+                        className={
+                          "rounded-full border px-2.5 py-1 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                          (selectedClasses.has(label)
+                            ? "border-[var(--dn-creek-mid)] bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
+                            : "border-black/10 bg-white text-black/60 hover:border-[var(--dn-creek-mid)] hover:text-black")
+                        }
+                        disabled={pending}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <span className="text-xs text-[var(--dn-text-50)]">
+                      (none selected = any class)
+                    </span>
+                  </div>
+                ) : (
+                  <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                    Object classes (comma-separated, blank = any)
+                    <input
+                      type="text"
+                      value={classText}
+                      onChange={(e) => setClassText(e.target.value)}
+                      placeholder="person, forklift"
+                      className={INPUT_CLASS + " w-64"}
+                      disabled={pending}
+                    />
+                  </label>
+                )}
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
+                  <input
+                    type="checkbox"
+                    checked={requireTrackId}
+                    onChange={(e) => setRequireTrackId(e.target.checked)}
+                    disabled={pending}
+                  />
+                  Require tracked object
+                </label>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-4 border-t border-black/10 pt-3">
+            <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
+              <input
+                type="checkbox"
+                checked={scheduleEnabled}
+                onChange={(e) => setScheduleEnabled(e.target.checked)}
+                disabled={pending}
+              />
+              Only during a time window
+            </label>
+            {scheduleEnabled ? (
+              <div className="mt-2 flex flex-wrap items-end gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {SCHEDULE_DAYS.map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDay(day)}
+                      className={
+                        "rounded-full border px-2.5 py-1 text-xs font-bold capitalize transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                        (scheduleDays.has(day)
+                          ? "border-[var(--dn-creek-mid)] bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
+                          : "border-black/10 bg-white text-black/60 hover:border-[var(--dn-creek-mid)] hover:text-black")
+                      }
+                      disabled={pending}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  From
+                  <input
+                    type="time"
+                    value={scheduleStart}
+                    onChange={(e) => setScheduleStart(e.target.value)}
+                    className={INPUT_CLASS}
+                    disabled={pending}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  To
+                  <input
+                    type="time"
+                    value={scheduleEnd}
+                    onChange={(e) => setScheduleEnd(e.target.value)}
+                    className={INPUT_CLASS}
+                    disabled={pending}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  Timezone (IANA)
+                  <input
+                    type="text"
+                    value={scheduleTz}
+                    onChange={(e) => setScheduleTz(e.target.value)}
+                    className={INPUT_CLASS + " w-52"}
+                    disabled={pending}
+                  />
+                </label>
+                <span className="pb-1.5 text-xs text-[var(--dn-text-50)]">
+                  End before start wraps past midnight.
+                </span>
+              </div>
+            ) : null}
+          </div>
+
           <p className="mt-2 text-xs text-[var(--dn-text-50)]">
             {ruleTypeDescription(ruleType)}
           </p>
@@ -343,6 +600,10 @@ export function RulesPanel({
                 </div>
                 <p className="mt-1 text-sm text-[var(--dn-text-50)]">
                   {ruleTypeLabel(rule.rule_type)} · {ruleTargetLabel(rule)}
+                  {ruleConditionsLabel(rule)
+                    ? ` · ${ruleConditionsLabel(rule)}`
+                    : ""}
+                  {ruleScheduleLabel(rule) ? ` · ${ruleScheduleLabel(rule)}` : ""}
                   {rule.cooldown_seconds > 0
                     ? ` · cooldown ${rule.cooldown_seconds}s`
                     : " · fires on every match"}

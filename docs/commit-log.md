@@ -4,6 +4,21 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Workflow Engine M3: richer rule conditions in the rule editor
+
+**Subject:** Extend the camera rule form with M3 conditions — object-class filter chips, a require-tracked-object checkbox, min/max occupancy bounds, and a time-window schedule section — without raw JSON and without a visual builder.
+
+**Why:** Workflow Engine M3 makes one-step rules more expressive. The api-server only accepts a condition on rule types whose production observation payloads can prove it (class/track → zone & dwell; count bounds → ROI occupancy; schedule → all types, evaluated inline from the observation time). The form mirrors that exactly so users can't author never-matching rules; min_confidence and line-crossing direction are deferred pending processor payload changes and deliberately absent from the UI.
+
+**What changed:**
+- `src/lib/rules/rule-config-schema.ts` — validator extended in lock-step with the server (object_classes 1–20 unique, require_track_id boolean, max ≥ min, schedule HH:MM/distinct-times/IANA-timezone/day-key checks, per-type key restriction incl. rejecting deferred keys); new `ruleConditionsLabel` and `ruleScheduleLabel` (consecutive days collapse to "Mon–Fri"; malformed schedules degrade to "scheduled", never throw); `CLASS_FILTER_RULE_TYPES`, `SCHEDULE_DAYS` exports.
+- `src/components/dashboard-next/rules/rules-panel.tsx` — "Conditions" section for zone/dwell rules: class chips fed by the camera's detection model (free-text comma fallback when no model is configured), require-tracked checkbox; "Max objects" input beside min for ROI occupancy; "Only during a time window" section (day chips defaulting Mon–Fri, time inputs, IANA timezone prefilled from the browser, overnight-wrap hint). Rule rows now render conditions + schedule summaries. Class/track state clears when switching to a type that can't prove them.
+- `src/app/dashboard/(app)/cameras/[cameraId]/configure/rules/page.tsx` — fetches `listModels` + `getCameraProcessingConfig` (best-effort) to derive class options: selected_classes when set, else the active model's supported classes.
+
+**Docs updated:** docs/commit-log.md. Contract source: `../upstream-api-server/docs/api-contracts.md` "Workflow Engine M3".
+
+**Testing/checks:** `npm run test` (514, +35 schema/label cases), `npx tsc --noEmit`, production `next build` all pass. The only lint error is the pre-existing demo-mode one.
+
 ## 2026-06-10 — Workflow Engine M2: workflow history page + run-aware rules/alerts
 
 **Subject:** Add the `/dashboard/workflows` history page and surface workflow runs across the rules page and alert inbox — the dashboard half of Workflow Engine M2 (Workflow Runs + Internal Event History). This is a Workflow Engine milestone, not a reliability milestone and not an alerts feature.
