@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-11 — fix: camera form inputs invisible (login pill style inside white tiles)
+
+**Subject:** Camera create/settings form text rendered white-on-white — visible only when highlighted.
+
+**What changed:** `camera-form-next.tsx`'s 7 inputs/selects used `.dn-field`, the LOGIN card's translucent pill (white text/placeholder, designed for the dark green shell). Inside the white `dn-tile` on `/dashboard/cameras/new` and camera settings, that's invisible text. Swapped to the established light-theme form style (white bg, black text, black/10 border, creek focus ring — same as rules-panel/sequence-form). The other `.dn-field` usages (topbar + page-header search bars) sit on the shell backdrop and are intentionally unchanged.
+
+**Testing/checks:** `npm run test` (591), `npx tsc --noEmit`, production build all pass.
+
 ## 2026-06-11 — Module 7 M3: audit logs page
 
 **Subject:** Add `/dashboard/audit-logs` — account-facing audit history (cameras, tokens, rules, workflows, billing, limit rejections) with category filter chips.
