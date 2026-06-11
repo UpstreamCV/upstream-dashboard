@@ -1,9 +1,12 @@
 import { AlertTriangle, CreditCard, Gauge } from "lucide-react";
+import { BillingActionsClient } from "@/components/dashboard-next/billing-actions-client";
 import { UsageMeter } from "@/components/dashboard-next/usage-meter";
 import { getActiveAccount } from "@/lib/account/active";
 import { getUsageSummary } from "@/lib/api/usage";
 import {
   USAGE_STATE_LABELS,
+  billingStatusLabel,
+  formatBillingDate,
   formatUsagePeriod,
   usageWarnings,
 } from "@/lib/usage/usage-format";
@@ -53,9 +56,12 @@ function CountCard({ label, value, hint }: { label: string; value: number; hint:
 }
 
 export default async function BillingPage() {
-  const { activeAccountId } = await getActiveAccount();
+  const { activeAccountId, activeAccount } = await getActiveAccount();
   const summary = await getUsageSummary({ accountId: activeAccountId });
   const warnings = usageWarnings(summary);
+  const canEdit =
+    activeAccount.role === "owner" || activeAccount.role === "admin";
+  const billing = summary.billing;
 
   return (
     <div className="space-y-4 md:space-y-6 p-[clamp(1rem,2vw,1.75rem)]">
@@ -95,14 +101,30 @@ export default async function BillingPage() {
           <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-black/60">
             {summary.plan.status}
           </span>
+          {billing.configured && billing.status !== "none" ? (
+            <span
+              className={
+                "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide " +
+                (billing.status === "past_due"
+                  ? "bg-red-700/10 text-red-700"
+                  : billing.status === "canceled"
+                    ? "bg-black/[0.06] text-black/50"
+                    : "bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]")
+              }
+            >
+              {billingStatusLabel(billing.status)}
+            </span>
+          ) : null}
         </div>
         <p className="mt-2 text-sm text-[var(--dn-text-50)]">
           Usage period: {formatUsagePeriod(summary.period)} (UTC calendar month)
+          {billing.current_period_end &&
+          (billing.status === "active" || billing.status === "trialing") &&
+          !billing.cancel_at_period_end
+            ? ` · renews ${formatBillingDate(billing.current_period_end)}`
+            : ""}
         </p>
-        <p className="mt-3 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2 text-sm text-[var(--dn-text-50)]">
-          Billing management coming soon. Plan changes are handled by the
-          Upstream team for now — contact support to adjust limits.
-        </p>
+        <BillingActionsClient billing={billing} canEdit={canEdit} />
       </section>
 
       <section className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">

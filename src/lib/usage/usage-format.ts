@@ -77,3 +77,33 @@ export function formatUsagePeriod(period: UsageSummary["period"]): string {
     });
   return `${fmt(start, false)} – ${fmt(end, true)}`;
 }
+
+// --- Module 7 M2: billing display helpers -----------------------------------
+
+/** Chip label for the derived billing status. */
+export function billingStatusLabel(status: string): string {
+  switch (status) {
+    case "active":
+      return "Active";
+    case "trialing":
+      return "Trial";
+    case "past_due":
+      return "Payment issue";
+    case "canceled":
+      return "Canceled";
+    case "none":
+      return "No subscription";
+    default:
+      return status;
+  }
+}
+
+/** "Jul 1, 2026" — for cancel/renewal notices. */
+export function formatBillingDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}

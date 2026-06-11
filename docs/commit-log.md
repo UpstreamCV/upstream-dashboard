@@ -4,6 +4,14 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-11 — Module 7 M2: real Upgrade / Manage Billing via Stripe
+
+**Subject:** The billing page placeholder becomes real: Upgrade buttons → Stripe Checkout, Manage Billing → Stripe Customer Portal, billing status surfaced.
+
+**What changed:** `src/lib/api/billing.ts` (checkout/portal session wrappers), billing `actions.ts` (Server Actions returning the Stripe-hosted URL; client navigates via location.assign so errors keep the toast path), `billing-actions-client.tsx` (Upgrade Starter/Pro when unsubscribed, Manage Billing when subscribed or a customer exists, payment-issue banner on past_due, cancel-at-period-end notice with date, viewer read-only note, "payments handled by Stripe" privacy line), billing page (billing status chip next to plan, "renews <date>" on the period line, placeholder replaced — but still rendered verbatim when `billing.configured` is false so keyless deployments keep working), `types.ts` UsageSummary.billing block, `errors.ts` (+billing_not_configured / billing_no_customer / invalid_webhook_signature), usage-format helpers (billingStatusLabel, formatBillingDate) + tests.
+
+**Testing/checks:** `npm run test` (584, +2), `npx tsc --noEmit`, production build all pass. Only lint error remains the pre-existing demo-mode one.
+
 ## 2026-06-11 — Module 7 M1: billing/usage page + home tile wiring
 
 **Subject:** Add `/dashboard/billing` (plan card, usage meters with state chips, near/at/over-limit banners, activity counts) and wire the home Plan & Usage tile to real data.
