@@ -31,7 +31,42 @@ export const RULE_TYPES: RuleType[] = [
   "roi_occupancy",
   "zone_entered",
   "dwell_exceeded",
+  "camera_offline",
+  "no_detections_for",
 ];
+
+/**
+ * M4 time-based rules: evaluated by the api-server's periodic workflow
+ * evaluator, not per-observation. Their cooldown is the RE-FIRE interval
+ * while the condition persists, so it must be >= 60s (no "every match").
+ */
+export const TIMER_RULE_TYPES: ReadonlySet<RuleType> = new Set([
+  "camera_offline",
+  "no_detections_for",
+]);
+export const MIN_TIMER_COOLDOWN_SECONDS = 60;
+export const MIN_TIMER_DURATION_SECONDS = 60;
+export const MAX_TIMER_DURATION_SECONDS = 604_800;
+
+/** Observation types a no_detections_for rule may watch. */
+export const NO_DETECTIONS_OBSERVATION_TYPES = [
+  "processor.line_crossing",
+  "processor.line_crossing_object",
+  "processor.roi_occupancy",
+  "processor.zone_entered",
+  "processor.zone_exited",
+  "processor.dwell_started",
+  "processor.dwell_updated",
+  "processor.dwell_exceeded",
+] as const;
+const CLASS_ATTRIBUTING_OBSERVATION_TYPES = new Set([
+  "processor.line_crossing_object",
+  "processor.zone_entered",
+  "processor.zone_exited",
+  "processor.dwell_started",
+  "processor.dwell_updated",
+  "processor.dwell_exceeded",
+]);
 
 export const RULE_SEVERITIES: RuleSeverity[] = ["info", "warning", "critical"];
 
@@ -67,16 +102,21 @@ export interface RuleSchedule {
   timezone: string; // IANA
 }
 
-/** Which geometry shape kind a rule type targets, for the editor's picker. */
-export const RULE_TYPE_TARGET: Record<RuleType, "line" | "roi"> = {
+/**
+ * Which kind of target a rule type points at, for the editor's picker.
+ * "camera" = the whole camera (M4 timer rules have no geometry target).
+ */
+export const RULE_TYPE_TARGET: Record<RuleType, "line" | "roi" | "camera"> = {
   line_crossing: "line",
   roi_occupancy: "roi",
   zone_entered: "roi",
   dwell_exceeded: "roi",
+  camera_offline: "camera",
+  no_detections_for: "camera",
 };
 
 /** The config key carrying the optional shape filter, per rule type. */
-export const RULE_TYPE_TARGET_KEY: Record<RuleType, string> = {
+export const RULE_TYPE_TARGET_KEY: Partial<Record<RuleType, string>> = {
   line_crossing: "line_id",
   roi_occupancy: "roi_id",
   zone_entered: "zone_id",
@@ -109,6 +149,8 @@ const RULE_TYPE_LABELS: Record<RuleType, string> = {
   roi_occupancy: "Objects in ROI",
   zone_entered: "Zone entered",
   dwell_exceeded: "Dwell time exceeded",
+  camera_offline: "Camera offline",
+  no_detections_for: "No activity detected",
 };
 
 const RULE_TYPE_DESCRIPTIONS: Record<RuleType, string> = {
@@ -118,6 +160,10 @@ const RULE_TYPE_DESCRIPTIONS: Record<RuleType, string> = {
   zone_entered: "Fires when a tracked object enters a zone (ROI).",
   dwell_exceeded:
     "Fires when a tracked object stays in a zone (ROI) past a duration.",
+  camera_offline:
+    "Fires when the camera has no active stream and no heartbeat for the duration.",
+  no_detections_for:
+    "Fires when a streaming camera produces no matching detections for the duration.",
 };
 
 export function isRuleType(value: string): value is RuleType {
@@ -140,7 +186,16 @@ export function ruleTypeDescription(ruleType: RuleType): string {
 export function ruleTargetLabel(rule: Pick<Rule, "rule_type" | "config">): string {
   const cfg = rule.config;
   if (!isRuleType(rule.rule_type)) return "—";
+  if (rule.rule_type === "camera_offline") {
+    const secs = cfg.offline_for_seconds;
+    return typeof secs === "number" ? `offline > ${formatDurationShort(secs)}` : "offline";
+  }
+  if (rule.rule_type === "no_detections_for") {
+    const secs = cfg.quiet_for_seconds;
+    return typeof secs === "number" ? `quiet > ${formatDurationShort(secs)}` : "quiet";
+  }
   const targetKey = RULE_TYPE_TARGET_KEY[rule.rule_type];
+  if (targetKey === undefined) return "—";
   const target = typeof cfg[targetKey] === "string" ? (cfg[targetKey] as string) : null;
   const kind = RULE_TYPE_TARGET[rule.rule_type] === "line" ? "line" : "zone";
   const parts: string[] = [target ? `${kind} ${target}` : `any ${kind}`];
@@ -224,6 +279,43 @@ export function ruleScheduleLabel(rule: Pick<Rule, "config">): string | null {
   return `${dayPart} ${s.start_time}–${s.end_time}${tz}`;
 }
 
+/** "300" → "5m", "5400" → "1h 30m", "90" → "1m 30s". */
+export function formatDurationShort(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0s";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const sec = Math.floor(seconds % 60);
+  const parts: string[] = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (sec > 0 && h === 0) parts.push(`${sec}s`);
+  return parts.length > 0 ? parts.join(" ") : "0s";
+}
+
+/**
+ * Timer rules re-fire per cooldown while the condition persists — cooldown
+ * 0 ("every match") would fire on every evaluator tick. Mirrors the
+ * server's validate_rule_cooldown.
+ */
+export function validateRuleCooldown(
+  ruleType: string,
+  cooldownSeconds: number,
+): RuleConfigValidationIssue[] {
+  if (
+    isRuleType(ruleType) &&
+    TIMER_RULE_TYPES.has(ruleType) &&
+    cooldownSeconds < MIN_TIMER_COOLDOWN_SECONDS
+  ) {
+    return [
+      {
+        field: "cooldown_seconds",
+        message: `Cooldown must be at least ${MIN_TIMER_COOLDOWN_SECONDS}s for time-based rules.`,
+      },
+    ];
+  }
+  return [];
+}
+
 export interface RuleConfigValidationIssue {
   field: string;
   message: string;
@@ -257,6 +349,13 @@ const ALLOWED_CONFIG_KEYS: Record<RuleType, ReadonlySet<string>> = {
     "object_classes",
     "require_track_id",
     "min_confidence",
+    "schedule",
+  ]),
+  camera_offline: new Set(["offline_for_seconds", "schedule"]),
+  no_detections_for: new Set([
+    "quiet_for_seconds",
+    "observation_types",
+    "object_classes",
     "schedule",
   ]),
 };
@@ -431,6 +530,57 @@ export function validateRuleConfig(
         message: "object_class must be a non-empty class name.",
       });
     }
+  }
+  for (const key of ["offline_for_seconds", "quiet_for_seconds"] as const) {
+    if (allowed.has(key) && TIMER_RULE_TYPES.has(ruleType) && !(key in config)) {
+      issues.push({ field: key, message: `${key} is required.` });
+    }
+    if (key in config) {
+      const value = config[key];
+      if (
+        typeof value !== "number" ||
+        !Number.isInteger(value) ||
+        value < MIN_TIMER_DURATION_SECONDS ||
+        value > MAX_TIMER_DURATION_SECONDS
+      ) {
+        issues.push({
+          field: key,
+          message: `${key} must be between ${MIN_TIMER_DURATION_SECONDS} and ${MAX_TIMER_DURATION_SECONDS} seconds.`,
+        });
+      }
+    }
+  }
+  if ("observation_types" in config) {
+    const types = config.observation_types;
+    const valid =
+      Array.isArray(types) &&
+      types.length > 0 &&
+      new Set(types).size === types.length &&
+      types.every(
+        (t) =>
+          typeof t === "string" &&
+          (NO_DETECTIONS_OBSERVATION_TYPES as readonly string[]).includes(t),
+      );
+    if (!valid) {
+      issues.push({
+        field: "observation_types",
+        message: "observation_types must be unique known processor types.",
+      });
+    }
+  }
+  if (
+    ruleType === "no_detections_for" &&
+    "object_classes" in config &&
+    Array.isArray(config.observation_types) &&
+    config.observation_types.some(
+      (t) => typeof t === "string" && !CLASS_ATTRIBUTING_OBSERVATION_TYPES.has(t),
+    )
+  ) {
+    issues.push({
+      field: "object_classes",
+      message:
+        "Class filters require observation types that carry class labels.",
+    });
   }
   if ("schedule" in config) {
     validateSchedule(config.schedule, issues);

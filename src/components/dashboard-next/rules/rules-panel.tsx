@@ -14,6 +14,8 @@ import type { Rule, RuleSeverity, RuleType } from "@/lib/api/types";
 import {
   CLASS_FILTER_RULE_TYPES,
   DEFAULT_COOLDOWN_SECONDS,
+  MIN_TIMER_COOLDOWN_SECONDS,
+  TIMER_RULE_TYPES,
   RULE_SEVERITIES,
   RULE_TYPES,
   RULE_TYPE_TARGET,
@@ -111,6 +113,9 @@ export function RulesPanel({
   const [roiObjectClass, setRoiObjectClass] = useState("");
   // "" = no upper bound.
   const [maxTotalCount, setMaxTotalCount] = useState("");
+  // M4 timer durations, in MINUTES in the UI (seconds on the wire).
+  const [offlineForMinutes, setOfflineForMinutes] = useState(5);
+  const [quietForMinutes, setQuietForMinutes] = useState(30);
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleDays, setScheduleDays] = useState<Set<ScheduleDay>>(
     () => new Set(["mon", "tue", "wed", "thu", "fri"]),
@@ -121,8 +126,13 @@ export function RulesPanel({
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   );
 
-  const targetOptions = RULE_TYPE_TARGET[ruleType] === "line" ? lines : rois;
+  const targetKind = RULE_TYPE_TARGET[ruleType];
+  const targetOptions = targetKind === "line" ? lines : rois;
+  const isTimerRule = TIMER_RULE_TYPES.has(ruleType);
   const supportsClassFilter = CLASS_FILTER_RULE_TYPES.has(ruleType);
+  // no_detections_for filters by class too (which detections count as
+  // activity) but has no track/confidence conditions.
+  const showClassChips = supportsClassFilter || ruleType === "no_detections_for";
 
   const objectClasses = useMemo(() => {
     if (classOptions.length > 0) return [...selectedClasses];
@@ -138,7 +148,15 @@ export function RulesPanel({
 
   const config = useMemo(() => {
     const cfg: Record<string, unknown> = {};
-    if (targetId) cfg[RULE_TYPE_TARGET_KEY[ruleType]] = targetId;
+    const targetKey = RULE_TYPE_TARGET_KEY[ruleType];
+    if (targetId && targetKey) cfg[targetKey] = targetId;
+    if (ruleType === "camera_offline") {
+      cfg.offline_for_seconds = Math.max(1, offlineForMinutes) * 60;
+    }
+    if (ruleType === "no_detections_for") {
+      cfg.quiet_for_seconds = Math.max(1, quietForMinutes) * 60;
+      if (objectClasses.length > 0) cfg.object_classes = objectClasses;
+    }
     if (ruleType === "roi_occupancy") {
       cfg.min_total_count = minTotalCount;
       const max = Number(maxTotalCount);
@@ -178,6 +196,8 @@ export function RulesPanel({
     minTotalCount,
     maxTotalCount,
     minDurationSeconds,
+    offlineForMinutes,
+    quietForMinutes,
     supportsClassFilter,
     objectClasses,
     requireTrackId,
@@ -193,13 +213,19 @@ export function RulesPanel({
   function handleTypeChange(next: RuleType) {
     setRuleType(next);
     setTargetId(""); // a line id is meaningless for an ROI rule and vice versa
-    if (!CLASS_FILTER_RULE_TYPES.has(next)) {
-      // Class/track/confidence conditions only exist where payloads can
-      // prove them.
+    if (!CLASS_FILTER_RULE_TYPES.has(next) && next !== "no_detections_for") {
       setSelectedClasses(new Set());
       setClassText("");
+    }
+    if (!CLASS_FILTER_RULE_TYPES.has(next)) {
+      // Track/confidence conditions only exist where payloads prove them.
       setRequireTrackId(false);
       setMinConfidence("");
+    }
+    if (TIMER_RULE_TYPES.has(next) && cooldown < MIN_TIMER_COOLDOWN_SECONDS) {
+      // Timer rules re-fire per cooldown; "every match" would fire every
+      // evaluator tick.
+      setCooldown(DEFAULT_COOLDOWN_SECONDS);
     }
     if (next !== "roi_occupancy") {
       setRoiObjectClass("");
@@ -334,24 +360,62 @@ export function RulesPanel({
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
-              {RULE_TYPE_TARGET[ruleType] === "line" ? "Line" : "Zone (ROI)"}
-              <select
-                value={targetId}
-                onChange={(e) => setTargetId(e.target.value)}
-                className={SELECT_CLASS}
-                disabled={pending}
-              >
-                <option value="">
-                  Any {RULE_TYPE_TARGET[ruleType] === "line" ? "line" : "zone"}
-                </option>
-                {targetOptions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label || s.id}
+            {targetKind !== "camera" ? (
+              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                {targetKind === "line" ? "Line" : "Zone (ROI)"}
+                <select
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                  className={SELECT_CLASS}
+                  disabled={pending}
+                >
+                  <option value="">
+                    Any {targetKind === "line" ? "line" : "zone"}
                   </option>
-                ))}
-              </select>
-            </label>
+                  {targetOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label || s.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {ruleType === "camera_offline" ? (
+              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                Offline for (minutes)
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={offlineForMinutes}
+                  onChange={(e) =>
+                    setOfflineForMinutes(
+                      Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                    )
+                  }
+                  className={INPUT_CLASS + " w-28"}
+                  disabled={pending}
+                />
+              </label>
+            ) : null}
+            {ruleType === "no_detections_for" ? (
+              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                Quiet for (minutes)
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={quietForMinutes}
+                  onChange={(e) =>
+                    setQuietForMinutes(
+                      Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                    )
+                  }
+                  className={INPUT_CLASS + " w-28"}
+                  disabled={pending}
+                />
+              </label>
+            ) : null}
             {ruleType === "roi_occupancy" ? (
               <>
                 <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
@@ -451,7 +515,9 @@ export function RulesPanel({
                 className={SELECT_CLASS}
                 disabled={pending}
               >
-                {COOLDOWN_OPTIONS.map((o) => (
+                {COOLDOWN_OPTIONS.filter(
+                  (o) => !isTimerRule || o.value >= MIN_TIMER_COOLDOWN_SECONDS,
+                ).map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -471,7 +537,7 @@ export function RulesPanel({
 
           {/* M3 conditions — only the inputs this rule type's observation
               payloads can actually prove. */}
-          {supportsClassFilter ? (
+          {showClassChips ? (
             <div className="mt-4 border-t border-black/10 pt-3">
               <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
                 conditions
@@ -515,29 +581,33 @@ export function RulesPanel({
                     />
                   </label>
                 )}
-                <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
-                  <input
-                    type="checkbox"
-                    checked={requireTrackId}
-                    onChange={(e) => setRequireTrackId(e.target.checked)}
-                    disabled={pending}
-                  />
-                  Require tracked object
-                </label>
-                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
-                  Min confidence (0–1, blank = any)
-                  <input
-                    type="number"
-                    min={0.05}
-                    max={1}
-                    step={0.05}
-                    value={minConfidence}
-                    onChange={(e) => setMinConfidence(e.target.value)}
-                    placeholder="0.70"
-                    className={INPUT_CLASS + " w-28"}
-                    disabled={pending}
-                  />
-                </label>
+                {supportsClassFilter ? (
+                  <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
+                    <input
+                      type="checkbox"
+                      checked={requireTrackId}
+                      onChange={(e) => setRequireTrackId(e.target.checked)}
+                      disabled={pending}
+                    />
+                    Require tracked object
+                  </label>
+                ) : null}
+                {supportsClassFilter ? (
+                  <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                    Min confidence (0–1, blank = any)
+                    <input
+                      type="number"
+                      min={0.05}
+                      max={1}
+                      step={0.05}
+                      value={minConfidence}
+                      onChange={(e) => setMinConfidence(e.target.value)}
+                      placeholder="0.70"
+                      className={INPUT_CLASS + " w-28"}
+                      disabled={pending}
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
           ) : null}
