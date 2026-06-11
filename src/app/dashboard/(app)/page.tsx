@@ -3,6 +3,7 @@ import { getActiveAccount } from "@/lib/account/active";
 import { listAgents } from "@/lib/api/agents";
 import { listTokens } from "@/lib/api/api-tokens";
 import { getAccount, getAccountLimits } from "@/lib/api/accounts";
+import { getUsageSummary } from "@/lib/api/usage";
 import { getDashboardSummary } from "@/lib/api/dashboard";
 
 // Dashboard-next Home. Server-fetches every datum in parallel, then hands it
@@ -20,12 +21,14 @@ import { getDashboardSummary } from "@/lib/api/dashboard";
 export default async function DashboardNextHome() {
   const { activeAccountId } = await getActiveAccount();
 
-  const [summary, agents, tokens, account, limits] = await Promise.all([
+  const [summary, agents, tokens, account, limits, usage] = await Promise.all([
     getDashboardSummary({ accountId: activeAccountId }),
     listAgents({ accountId: activeAccountId }),
     listTokens(activeAccountId),
     getAccount({ accountId: activeAccountId }),
     getAccountLimits({ accountId: activeAccountId }),
+    // Home stays up even if the usage endpoint is unavailable mid-deploy.
+    getUsageSummary({ accountId: activeAccountId }).catch(() => null),
   ]);
 
   return (
@@ -35,6 +38,7 @@ export default async function DashboardNextHome() {
       initialAgents={agents}
       initialTokens={tokens}
       initialLimits={limits}
+      streamMinutesUsed={usage?.usage.stream_minutes ?? null}
     />
   );
 }

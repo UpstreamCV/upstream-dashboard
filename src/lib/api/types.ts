@@ -870,3 +870,42 @@ export interface Workflow {
 export interface WorkflowListResponse {
   workflows: Workflow[];
 }
+
+// --- Module 7 M1: usage summary ---------------------------------------------
+// Source: ../upstream-api-server/src/upstream_api/schemas/usage.py
+
+export type UsageState = "ok" | "near_limit" | "at_limit" | "over_limit";
+
+export interface UsageSummary {
+  plan: {
+    key: string;
+    label: string;
+    status: string;
+  };
+  period: {
+    start: IsoDateTime;
+    end: IsoDateTime;
+  };
+  limits: {
+    max_cameras: number;
+    max_concurrent_sessions: number;
+    monthly_minutes_quota: number;
+    allowed_stream_types: string[];
+  };
+  usage: {
+    cameras: number;
+    active_streams: number;
+    // Completed stream minutes only (session_ended events) — active
+    // sessions are not counted until they end.
+    stream_minutes: number;
+    workflow_runs: number;
+    alerts: number;
+    rules: number;
+    workflows: number;
+  };
+  states: {
+    cameras: UsageState;
+    active_streams: UsageState;
+    stream_minutes: UsageState;
+  };
+}
