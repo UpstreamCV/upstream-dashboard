@@ -820,6 +820,8 @@ export interface WorkflowRun {
   id: Uuid;
   camera_id: Uuid | null;
   rule_id: Uuid | null;
+  // M5: set on sequence runs (null on simple/timer rule runs).
+  workflow_id: Uuid | null;
   trigger_observation_id: Uuid | null;
   // Open vocabulary on reads (workflow_type/trigger_type/action_result are
   // open at the DB layer; status tolerates values a newer deploy writes).
@@ -832,6 +834,8 @@ export interface WorkflowRun {
   evidence: Record<string, unknown>;
   payload: Record<string, unknown>;
   alert: WorkflowRunAlertRef | null;
+  // M5: when an active sequence run times out (null otherwise).
+  deadline_at: IsoDateTime | null;
   started_at: IsoDateTime;
   ended_at: IsoDateTime | null;
   created_at: IsoDateTime;
@@ -840,4 +844,29 @@ export interface WorkflowRun {
 
 export interface WorkflowRunListResponse {
   runs: WorkflowRun[];
+}
+
+// --- Workflow Engine M5 ------------------------------------------------------
+// Source: ../upstream-api-server/src/upstream_api/schemas/workflows.py
+
+export type WorkflowType = "sequence";
+
+export interface Workflow {
+  id: Uuid;
+  camera_id: Uuid;
+  name: string;
+  description: string | null;
+  // Plain string — the DB column is open vocabulary.
+  workflow_type: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  severity: string;
+  cooldown_seconds: number;
+  created_by: Uuid | null;
+  created_at: IsoDateTime;
+  updated_at: IsoDateTime;
+}
+
+export interface WorkflowListResponse {
+  workflows: Workflow[];
 }
