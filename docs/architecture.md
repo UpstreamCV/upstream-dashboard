@@ -142,7 +142,7 @@ The camera detail page renders live video via `<LiveStreamPanel>` whenever the c
 - Agent detail page (`getAgent()` exists in `src/lib/api/agents.ts` but no route consumes it yet).
 - Stream-session detail page (`getStreamSession()` likewise).
 - Team management (invite / role change), billing, snapshot recording history.
-- Real-time via Supabase channels for general resource lists (cameras, agents, sessions, tokens) — polling is good enough today. The one exception is the camera detail page, which uses a Realtime subscription on `stream_sessions` to drive sub-second state transitions; both `/dashboard` (light) and `/dashboard-legacy` (dark) versions exist on distinct channel names (`camera:…` vs `legacy-camera:…`; see `docs/dashboard-next.md` "Realtime channel naming convention").
+- Real-time via Supabase channels for general resource lists (cameras, agents, sessions, tokens) — polling is good enough today. The exceptions are the camera detail page, which uses a Realtime subscription on `stream_sessions` to drive sub-second state transitions (both `/dashboard` and `/dashboard-legacy` versions exist on distinct channel names — `camera:…` vs `legacy-camera:…`; see `docs/dashboard-next.md` "Realtime channel naming convention"), and the live detection overlay, which additionally opens a WebSocket to the `perception-fanout` sidecar for 10–15 Hz bounding-box frames (token minted by `POST /v1/cameras/{id}/perception/stream-token` through the proxy; see `docs/dashboard-next.md` "Perception-fanout WS hot path").
 - Password reset / email change UI (the `createSupabaseBrowserClient` factory in `src/lib/supabase/client.ts` is kept around for this; nothing imports it yet).
 
 ## Source-of-truth pointers

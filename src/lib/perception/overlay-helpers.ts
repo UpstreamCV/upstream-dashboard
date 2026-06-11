@@ -299,6 +299,42 @@ export function perceptionRecordFromRealtimeRow(
   };
 }
 
+// --- perception-fanout WS message mapping ------------------------------------
+
+/**
+ * Build a ``LatestPerceptionRecord`` from a perception-fanout WS ``snapshot``
+ * frame (see ``src/lib/perception/perception-ws-client.ts``). Same role as
+ * ``perceptionRecordFromRealtimeRow`` for the Supabase path: lets the live
+ * overlay write each 10–15 Hz frame straight into the SWR cache so the SVG
+ * renderer is reused unchanged.
+ *
+ * The WS envelope has no DB row id (the hot path never touches the DB), so a
+ * synthetic ``ws:<camera_id>:<seq>`` id keeps records distinguishable, and
+ * ``updated_at`` mirrors ``observed_at``. Returns ``null`` when the envelope
+ * lacks identity/timestamp fields — the caller just drops that frame (the
+ * next one is ≤100ms away).
+ */
+export function perceptionRecordFromWsMessage(
+  msg: unknown,
+): LatestPerceptionRecord | null {
+  if (!isRecord(msg) || msg.type !== "snapshot") return null;
+  const cameraId = nonEmptyStr(msg.camera_id);
+  const observedAt = nonEmptyStr(msg.observed_at);
+  const seq = finiteNum(msg.seq);
+  if (cameraId === null || observedAt === null || seq === null) return null;
+  const snapshot = isRecord(msg.snapshot) ? msg.snapshot : {};
+  return {
+    id: `ws:${cameraId}:${seq}`,
+    camera_id: cameraId,
+    stream_session_id: nonEmptyStr(msg.stream_session_id) ?? "",
+    processor_id: nonEmptyStr(msg.processor_id),
+    package_id: nonEmptyStr(msg.package_id),
+    observed_at: observedAt,
+    updated_at: observedAt,
+    snapshot: snapshot as unknown as LatestPerceptionRecord["snapshot"],
+  };
+}
+
 // --- age / staleness ---------------------------------------------------------
 
 /** Seconds between ``observedAt`` and ``now``. ``null`` when the input is
@@ -432,6 +468,7 @@ export type OverlayConnectionMode =
   | "stream_inactive"
   | "processor_stale"
   | "connecting"
+  | "ws_connected"
   | "connected"
   | "reconnecting"
   | "fallback_polling";
@@ -443,6 +480,7 @@ const OVERLAY_CONNECTION_LABELS: Record<OverlayConnectionMode, string> = {
   stream_inactive: "Stream inactive",
   processor_stale: "Processor stale",
   connecting: "Connecting",
+  ws_connected: "Live stream connected",
   connected: "Realtime connected",
   reconnecting: "Reconnecting",
   fallback_polling: "Fallback polling",
@@ -461,6 +499,11 @@ export interface ConnectionStateInput {
   // supabase_realtime publication in this environment); in that case the poll
   // fallback is what's really driving the overlay, so we say so.
   realtimeDelivering: boolean;
+  // Whether the perception-fanout WS hot path delivered a frame recently.
+  // Mirrors realtimeDelivering: "connected" claims require evidence of actual
+  // frames, never just an open socket. Wins over the Realtime modes — when
+  // both paths deliver, the WS path (10–15 Hz) is the one driving the overlay.
+  wsDelivering: boolean;
 }
 
 /**
@@ -484,6 +527,9 @@ function pickConnectionMode(i: ConnectionStateInput): OverlayConnectionMode {
   if (!i.processingEnabled) return "processing_disabled";
   if (!i.streamActive) return "stream_inactive";
   if (i.isStale) return "processor_stale";
+  // The WS hot path delivering frames outranks every Realtime state: it is
+  // strictly fresher (10–15 Hz vs ~1 Hz) and carries the overlay on its own.
+  if (i.wsDelivering) return "ws_connected";
   if (i.shouldUseRealtime) {
     if (i.realtimeStatus === "SUBSCRIBED") {
       // Subscribed AND actually receiving events -> truly live. Subscribed but
