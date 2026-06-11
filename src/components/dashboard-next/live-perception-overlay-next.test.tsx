@@ -21,6 +21,11 @@ const h = vi.hoisted(() => ({
       | ((payload: { new: unknown; errors?: unknown }) => void)
       | null,
   },
+  ws: {
+    connectCalls: 0,
+    closeCalls: 0,
+    onSnapshot: null as ((msg: unknown) => void) | null,
+  },
   useUpstreamListMock: vi.fn(),
   mutateSpy: vi.fn(),
 }));
@@ -68,6 +73,30 @@ vi.mock("@/lib/supabase/client-lazy", () => ({
       h.realtime.removeCalls += 1;
     },
   }),
+}));
+
+// Controllable perception-fanout WS client: records connect/close calls and
+// exposes onSnapshot so tests can push hot-path frames. The real client is
+// covered by src/lib/perception/perception-ws-client.test.ts.
+vi.mock("@/lib/perception/perception-ws-client", () => ({
+  connectPerceptionStream: (opts: { onSnapshot: (msg: unknown) => void }) => {
+    h.ws.connectCalls += 1;
+    h.ws.onSnapshot = opts.onSnapshot;
+    return {
+      close: () => {
+        h.ws.closeCalls += 1;
+        h.ws.onSnapshot = null;
+      },
+    };
+  },
+}));
+
+vi.mock("@/lib/api/perception-stream", () => ({
+  fetchPerceptionStreamToken: vi.fn(async () => ({
+    token: "test-token",
+    ws_url: "ws://127.0.0.1:18990/v1/subscribe",
+    expires_at: "2026-06-11T18:00:00Z",
+  })),
 }));
 
 const { LivePerceptionOverlayNext } = await import(
@@ -185,6 +214,9 @@ beforeEach(() => {
   h.realtime.removeCalls = 0;
   h.realtime.statusCb = null;
   h.realtime.changeHandler = null;
+  h.ws.connectCalls = 0;
+  h.ws.closeCalls = 0;
+  h.ws.onSnapshot = null;
   h.useUpstreamListMock.mockReset();
   h.mutateSpy.mockReset();
   setHookData(undefined);
@@ -372,6 +404,93 @@ describe("LivePerceptionOverlayNext — connection chip", () => {
     const calls = h.useUpstreamListMock.mock.calls;
     const lastOpts = calls[calls.length - 1][1] as { refreshInterval: number };
     expect(lastOpts.refreshInterval).toBe(250);
+  });
+});
+
+describe("LivePerceptionOverlayNext — perception-fanout WS hot path", () => {
+  function emitWsFrame(cameraId = "cam-1", seq = 7): void {
+    act(() =>
+      h.ws.onSnapshot?.({
+        type: "snapshot",
+        seq,
+        camera_id: cameraId,
+        stream_session_id: "ssn-1",
+        processor_id: "proc-1",
+        package_id: "pkg-1",
+        observed_at: new Date(NOW).toISOString(),
+        snapshot: snap([PERSON]),
+      }),
+    );
+  }
+
+  test("connects under the same gate as Realtime and closes on unmount", async () => {
+    const view = renderOverlay();
+    expect(h.ws.connectCalls).toBe(0);
+    turnOn();
+    await flushRealtime();
+    expect(h.ws.connectCalls).toBe(0); // session on, stream not connected yet
+    connectPlayer();
+    await flushRealtime();
+    expect(h.ws.connectCalls).toBe(1);
+    view.unmount();
+    expect(h.ws.closeCalls).toBe(1);
+  });
+
+  test("a WS frame writes a synthetic record straight into the SWR cache", async () => {
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    await flushRealtime();
+    emitWsFrame();
+    expect(h.mutateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        snapshot: expect.objectContaining({ id: "ws:cam-1:7" }),
+      }),
+      { revalidate: false },
+    );
+  });
+
+  test("ignores WS frames for a different camera", async () => {
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    await flushRealtime();
+    emitWsFrame("cam-OTHER");
+    expect(h.mutateSpy).not.toHaveBeenCalled();
+  });
+
+  test("chip says Live stream connected while WS frames arrive", async () => {
+    const view = renderOverlay();
+    turnOn();
+    connectPlayer();
+    await flushRealtime();
+    emitWsFrame();
+    expect(view.container.textContent).toContain("Live stream connected");
+  });
+
+  test("poll downshifts to keep-warm while WS delivers, restores 250ms when silent", async () => {
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    await flushRealtime();
+
+    const lastInterval = () => {
+      const calls = h.useUpstreamListMock.mock.calls;
+      return (calls[calls.length - 1][1] as { refreshInterval: number })
+        .refreshInterval;
+    };
+    expect(lastInterval()).toBe(250);
+
+    emitWsFrame();
+    expect(lastInterval()).toBe(2000);
+
+    // WS goes silent: once the delivering window passes, the next render
+    // computes wsDelivering=false and the fast poll resumes.
+    act(() => {
+      vi.setSystemTime(new Date(NOW + 3_000));
+    });
+    act(() => h.realtime.statusCb?.("SUBSCRIBED")); // any re-render trigger
+    expect(lastInterval()).toBe(250);
   });
 });
 
