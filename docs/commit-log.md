@@ -4,6 +4,16 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-10 — Payload-enrichment unlock: confidence + count-class rule inputs
+
+**Subject:** Add the two rule conditions unlocked by the processor's payload-enrichment side task — a "Min confidence" input on zone/dwell rules and a "Count class" selector on ROI occupancy rules.
+
+**Why:** The processor now stamps per-object `confidence` onto zone/dwell observations and populates object-attributed `class_counts` on ROI occupancy; the api-server accepts `min_confidence` (zone_entered/dwell_exceeded) and `object_class` (roi_occupancy) in rule config. The form mirrors availability exactly — line-crossing rules still show neither (cumulative counters have no per-object attribution; deferred honestly).
+
+**What changed:** `src/lib/rules/rule-config-schema.ts` (validator keys + value checks in lock-step with the server; `CONFIDENCE_FILTER_RULE_TYPES`; `ruleConditionsLabel` renders "conf ≥ 70%"; `ruleTargetLabel` scopes count bounds to the class — "2–5 person"), `src/components/dashboard-next/rules/rules-panel.tsx` (Min confidence number input beside the tracked-object checkbox; Count class select fed by the camera's model classes with free-text fallback; state resets on type switch and after create).
+
+**Testing/checks:** `npm run test` (528, +14 schema/label cases), `npx tsc --noEmit`, production build all pass. Only lint error remains the pre-existing demo-mode one.
+
 ## 2026-06-10 — Workflow Engine M3: richer rule conditions in the rule editor
 
 **Subject:** Extend the camera rule form with M3 conditions — object-class filter chips, a require-tracked-object checkbox, min/max occupancy bounds, and a time-window schedule section — without raw JSON and without a visual builder.

@@ -61,6 +61,12 @@ describe("validateRuleConfig", () => {
       "zone_entered",
       { schedule: { start_time: "22:00", end_time: "06:00", timezone: "UTC" } },
     ],
+    // --- payload-enrichment unlock ---------------------------------------
+    ["zone_entered", { min_confidence: 0.7 }],
+    ["zone_entered", { min_confidence: 1 }],
+    ["dwell_exceeded", { min_confidence: 0.5, object_classes: ["person"] }],
+    ["roi_occupancy", { object_class: "person", min_total_count: 3 }],
+    ["roi_occupancy", { object_class: "person", max_total_count: 2 }],
   ] as const)("accepts valid %s config %j", (ruleType, config) => {
     expect(validateRuleConfig(ruleType, config)).toEqual([]);
   });
@@ -80,8 +86,16 @@ describe("validateRuleConfig", () => {
     ["line_crossing", { object_classes: ["person"] }],
     ["line_crossing", { require_track_id: true }],
     ["line_crossing", { direction: "a_to_b" }], // deferred — never produced
-    ["zone_entered", { min_confidence: 0.7 }], // deferred — not in payloads
-    ["roi_occupancy", { object_classes: ["person"] }], // aggregate counts only
+    ["line_crossing", { min_confidence: 0.7 }], // no per-object attribution
+    ["roi_occupancy", { object_classes: ["person"] }], // use object_class (single)
+    ["roi_occupancy", { min_confidence: 0.7 }], // counts have no confidence
+    // --- payload-enrichment unlock: value validation ----------------------
+    ["zone_entered", { min_confidence: 0 }],
+    ["zone_entered", { min_confidence: 1.5 }],
+    ["zone_entered", { min_confidence: "0.7" }],
+    ["roi_occupancy", { object_class: "" }],
+    ["roi_occupancy", { object_class: 7 }],
+    ["zone_entered", { object_class: "person" }], // roi-only key
     // --- M3: value validation -------------------------------------------
     ["zone_entered", { object_classes: [] }],
     ["zone_entered", { object_classes: ["person", "person"] }],
@@ -173,6 +187,14 @@ describe("ruleConditionsLabel", () => {
       "tracked only",
     );
   });
+
+  it("renders the confidence floor as a percentage", () => {
+    expect(
+      ruleConditionsLabel({
+        config: { object_classes: ["person"], min_confidence: 0.7 },
+      }),
+    ).toBe("person · conf ≥ 70%");
+  });
 });
 
 describe("ruleScheduleLabel", () => {
@@ -253,6 +275,21 @@ describe("ruleTargetLabel", () => {
         config: { roi_id: "roi-2", min_total_count: 3 },
       }),
     ).toBe("zone roi-2 · ≥ 3 objects");
+  });
+
+  it("scopes the occupancy bounds to a count class when set", () => {
+    expect(
+      ruleTargetLabel({
+        rule_type: "roi_occupancy",
+        config: { min_total_count: 2, max_total_count: 5, object_class: "person" },
+      }),
+    ).toBe("any zone · 2–5 person");
+    expect(
+      ruleTargetLabel({
+        rule_type: "roi_occupancy",
+        config: { min_total_count: 3, object_class: "car" },
+      }),
+    ).toBe("any zone · ≥ 3 car");
   });
 
   it("defaults the occupancy threshold to 1", () => {
