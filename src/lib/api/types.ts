@@ -290,6 +290,18 @@ export interface LatestPerceptionResponse {
   snapshot: LatestPerceptionRecord;
 }
 
+/**
+ * Response of `POST /v1/cameras/{id}/perception/stream-token` — short-lived
+ * credentials for the perception-fanout WS hot path (10–15 Hz detection
+ * overlays). `ws_url` is the full browser-reachable subscribe endpoint; the
+ * client appends `?token=...`. The token must never be logged or persisted.
+ */
+export interface PerceptionStreamTokenResponse {
+  token: string;
+  ws_url: string;
+  expires_at: IsoDateTime;
+}
+
 // --- Camera Geometry Config (P6-A) ------------------------------------------
 // Dashboard-authored ROI/line geometry for one camera. *Processing geometry
 // only* — presentation (colors, strokes, fill) stays frontend-owned. The

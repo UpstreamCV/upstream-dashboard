@@ -177,6 +177,26 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 **Docs updated:** `docs/commit-log.md` (this entry), `docs/dashboard-next.md` (Reliability by Config subsection).
 
 ---
+## 2026-06-11 — Review cleanup: share isRecord between perception modules
+
+**Subject:** Export `isRecord` from `overlay-helpers.ts` and import it in `perception-ws-client.ts` instead of keeping a private duplicate (post-deploy code-review finding). No behavior change; 420 tests, lint, tsc all green.
+
+## 2026-06-11 — Perception-fanout WS hot path: live detection overlay at 10–15 Hz
+
+**Subject:** Add a third, fastest tier to the live perception overlay: a WebSocket to the new `perception-fanout` sidecar (`upstream-streaming-server`) that delivers detection snapshots at 10–15 Hz, with the existing 250 ms poll + Supabase Realtime kept verbatim as the fallback ladder.
+
+**Why:** the overlay was capped at ~1–3 fps because every frame rode the DB-backed path (processor POST → Supabase upsert → WAL → Realtime/poll). The sidecar relays frames with no DB on the path; the DB path stays the durable record, so a deployment without the sidecar (or a dead sidecar) behaves exactly as before — the token endpoint 503s and the client stops quietly.
+
+**What changed:**
+- New `src/lib/perception/perception-ws-client.ts` — framework-free WS client (mirrors `whep-client.ts`): `connectPerceptionStream({getToken, onSnapshot, onStatus})` → `{close()}`. Jittered 500 ms→8 s backoff; a delivered frame resets the ladder; close 1000 (`bye(token_expired)`) and 4401 re-mint the token with no backoff penalty; `getToken` resolving `null` = permanently unavailable for this handle (503/404), thrown = transient (retried). Defensive `parsePerceptionWsSnapshot` never throws.
+- New `src/lib/api/perception-stream.ts` — client-safe token fetch (`POST /v1/cameras/{id}/perception/stream-token` via `proxyFetch`); deliberately NOT in `api/perception.ts` (`server-only`). Zero new `NEXT_PUBLIC_*` envs — `ws_url` arrives in the token response. New `PerceptionStreamTokenResponse` in `api/types.ts`.
+- `src/lib/perception/overlay-helpers.ts` — `perceptionRecordFromWsMessage()` (synthetic id `ws:<camera_id>:<seq>`, `updated_at` mirrors `observed_at`); `ConnectionStateInput.wsDelivering`; new chip mode `ws_connected` ("Live stream connected") that outranks the Realtime modes but never the session/stream/staleness blockers.
+- `src/components/dashboard-next/live-perception-overlay-next.tsx` — WS effect gated by the SAME `computeRealtimeGate` as Realtime (skipped in demo mode); each frame `mutate({snapshot}, {revalidate:false})` into the SWR cache (identical to the Realtime handler — `overlay-svg.tsx` untouched). **Poll downshift:** while a WS frame arrived within 2 s (`WS_DELIVERING_WINDOW_MS`), `refreshInterval` relaxes 250 ms → 2 s (`WS_KEEPWARM_POLL_MS`); WS silence restores the 250 ms floor within ~2 s. This is the one sanctioned exception to "never slow the poll" — `wsDelivering` is evidence of delivered data, unlike a merely-SUBSCRIBED channel. Chip maps gain `ws_connected` (green).
+- `AGENTS.md` — the WS hot path documented as the second sanctioned push channel (auth at mint time via the proxy; token never logged/persisted/in app state).
+
+**Tests:** new `perception-ws-client.test.ts` (16 cases: mocked global WebSocket — connect/snapshot/ignored frames, token rotation on 1000/4401 without backoff growth, `null`-token permanent stop, transient mint retry, bounded exponential backoff + reset-on-frame, close-during-mint, no-callbacks-after-close); `overlay-helpers.test.ts` extended (`perceptionRecordFromWsMessage` matrix, `ws_connected` priority/blocker tests); `live-perception-overlay-next.test.tsx` extended (gate parity with Realtime, cache write, camera filter, chip copy, poll downshift + restore). Full suite: 420 passed; changed files lint clean (`src/lib/demo/add-camera-panel.tsx` has a pre-existing unrelated lint error); `tsc --noEmit` clean.
+
+**Docs updated:** `docs/dashboard-next.md` (Perception-fanout WS hot path section under `LivePerceptionOverlayNext`), `docs/architecture.md` (out-of-scope realtime bullet), `AGENTS.md`, this entry. Cross-repo: `upstream-streaming-server/docs/perception-fanout.md` is the wire-contract source of truth; the api-server entry documents the token endpoint.
 
 ## 2026-06-01 — Model & Detection (M6): tracker / confidence / processing-FPS controls
 

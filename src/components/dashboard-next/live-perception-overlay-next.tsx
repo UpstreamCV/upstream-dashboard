@@ -23,10 +23,13 @@ import {
   normalizeSnapshot,
   observedAtAgeSeconds,
   perceptionRecordFromRealtimeRow,
+  perceptionRecordFromWsMessage,
   selectOverlayObjects,
   type OverlayConnectionMode,
   type RealtimeStatus,
 } from "@/lib/perception/overlay-helpers";
+import { connectPerceptionStream } from "@/lib/perception/perception-ws-client";
+import { fetchPerceptionStreamToken } from "@/lib/api/perception-stream";
 import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
 import {
   PLAYER_STATE_EVENT,
@@ -66,6 +69,16 @@ const DEMO_OVERLAY_POLL_MS = 10_000;
 // A realtime row event seen within this window means the push path is actually
 // delivering (not merely SUBSCRIBED) -> the chip can honestly say "connected".
 const REALTIME_DELIVERING_WINDOW_MS = 8_000;
+// A perception-fanout WS frame seen within this window means the 10-15 Hz hot
+// path is carrying the overlay. Short on purpose: the moment the WS goes
+// silent the 250ms poll must resume, and the gap between "last frame" and
+// "poll back at full speed" is bounded by this window + one keep-warm tick.
+const WS_DELIVERING_WINDOW_MS = 2_000;
+// Poll cadence while the WS hot path is delivering. The poll never stops (it
+// is how the overlay recovers if the WS dies between renders) but at 15 Hz
+// push there is no point also polling at 4 req/s — downshift to a keep-warm
+// tick and let the WS frames drive the cache.
+const WS_KEEPWARM_POLL_MS = 2_000;
 
 // Default age after which the snapshot is considered stale. A live processor
 // publishes every ~0.3-1s, so anything older than ~10s almost certainly means
@@ -93,6 +106,7 @@ const MODE_DOT: Record<OverlayConnectionMode, DotStatus> = {
   stream_inactive: "yellow",
   processor_stale: "yellow",
   connecting: "yellow",
+  ws_connected: "green",
   connected: "green",
   reconnecting: "yellow",
   fallback_polling: "yellow",
@@ -107,6 +121,7 @@ const MODE_TEXT: Record<OverlayConnectionMode, string> = {
   stream_inactive: TEXT_WARN,
   processor_stale: TEXT_WARN,
   connecting: TEXT_WARN,
+  ws_connected: TEXT_GREEN,
   connected: TEXT_GREEN,
   reconnecting: TEXT_WARN,
   fallback_polling: TEXT_WARN,
@@ -184,11 +199,20 @@ export function LivePerceptionOverlayNext({
   const [lastRealtimeEventAt, setLastRealtimeEventAt] = useState<number | null>(
     null,
   );
+  // When the last perception-fanout WS frame arrived (epoch ms), or null.
+  // Recomputed every render — at 10-15 Hz the frames themselves are the
+  // renders, so this stays current while the hot path is alive.
+  const [lastWsMessageAt, setLastWsMessageAt] = useState<number | null>(null);
+  const wsDelivering =
+    lastWsMessageAt !== null && now() - lastWsMessageAt < WS_DELIVERING_WINDOW_MS;
 
   // Polling is gated to an active session (no boxes wanted ⇒ no requests), but
   // runs fast whenever active. NOT slowed by realtime status — see the cadence
   // note above. (Not gated by freshness either — polling is how a stale overlay
-  // recovers.)
+  // recovers.) The one downshift: while the WS hot path is demonstrably
+  // delivering frames, drop to a keep-warm tick — unlike a merely-SUBSCRIBED
+  // realtime channel, `wsDelivering` is evidence of actual data, and the next
+  // keep-warm poll restores the 250ms cadence within ~2s if the WS goes quiet.
   const shouldPoll =
     demo ||
     (liveDetectionsEnabled &&
@@ -199,7 +223,9 @@ export function LivePerceptionOverlayNext({
   const refreshInterval = shouldPoll
     ? demo
       ? DEMO_OVERLAY_POLL_MS
-      : LIVE_OVERLAY_POLL_MS
+      : wsDelivering
+        ? WS_KEEPWARM_POLL_MS
+        : LIVE_OVERLAY_POLL_MS
     : 0;
 
   const { data, error, isValidating, mutate } =
@@ -386,6 +412,48 @@ export function LivePerceptionOverlayNext({
     };
   }, [shouldUseRealtime, cameraId, mutate, now, demo]);
 
+  // Perception-fanout WS hot path (10-15 Hz), gated by the SAME gate as
+  // Realtime — any gate closing tears the socket down. Purely additive: the
+  // Realtime subscription and the poll keep running (poll downshifted while
+  // frames arrive), so a dead sidecar degrades to exactly today's behavior.
+  // Each frame is written straight into the SWR cache (revalidate:false),
+  // identical to the Realtime handler — the SVG overlay renders unchanged,
+  // just at the processor's publish rate instead of ~1 Hz.
+  useEffect(() => {
+    if (demo) return; // demo mode: fixture polls carry the overlay, no sidecar
+    if (!shouldUseRealtime) return;
+    const handle = connectPerceptionStream({
+      getToken: async () => {
+        try {
+          const res = await fetchPerceptionStreamToken(cameraId);
+          return { token: res.token, wsUrl: res.ws_url };
+        } catch (err) {
+          if (
+            err instanceof UpstreamApiError &&
+            (err.status === 503 || err.status === 404)
+          ) {
+            // 503 perception_stream_not_configured (deployment has no
+            // sidecar) or 404 (camera/membership gone): permanent for this
+            // session — stop quietly and let Realtime + polling carry on.
+            return null;
+          }
+          // Transient (network blip, 5xx): the client backs off and retries.
+          throw err;
+        }
+      },
+      onSnapshot: (msg) => {
+        const rec = perceptionRecordFromWsMessage(msg);
+        if (!rec || rec.camera_id !== cameraId) return;
+        setLastWsMessageAt(now());
+        void mutate({ snapshot: rec }, { revalidate: false });
+      },
+    });
+    return () => {
+      handle.close();
+      setLastWsMessageAt(null);
+    };
+  }, [shouldUseRealtime, cameraId, mutate, now, demo]);
+
   const realtimeDelivering =
     lastRealtimeEventAt !== null &&
     now() - lastRealtimeEventAt < REALTIME_DELIVERING_WINDOW_MS;
@@ -403,6 +471,7 @@ export function LivePerceptionOverlayNext({
         shouldUseRealtime,
         realtimeStatus,
         realtimeDelivering,
+        wsDelivering,
       });
 
   return (
