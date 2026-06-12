@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Boxes, RefreshCw, Radio, Spline, Tag } from "lucide-react";
 import clsx from "clsx";
 import { UpstreamApiError } from "@/lib/api/errors";
@@ -31,6 +31,7 @@ import {
 import { connectPerceptionStream } from "@/lib/perception/perception-ws-client";
 import { fetchPerceptionStreamToken } from "@/lib/api/perception-stream";
 import { PerceptionOverlaySvg } from "@/lib/perception/overlay-svg";
+import { useSmoothedDetections } from "@/lib/perception/use-smoothed-detections";
 import {
   PLAYER_STATE_EVENT,
   type PlayerStateEventDetail,
@@ -273,18 +274,39 @@ export function LivePerceptionOverlayNext({
   // detection is set up (demo).
   const detectionsActive = (liveDetectionsEnabled || demo) && demoConfigured;
 
-  const snapshot = record ? normalizeSnapshot(record.snapshot) : null;
+  // Memoized on the SWR record identity: a cache write (WS frame / Realtime
+  // row / poll) produces a new selection array; mere re-renders do not. The
+  // smoothing hook keys its animation effect on this identity.
+  const snapshot = useMemo(
+    () => (record ? normalizeSnapshot(record.snapshot) : null),
+    [record],
+  );
   const dimsOk = snapshot != null && hasFrameDimensions(snapshot);
 
-  const overlayObjects =
-    snapshot && dimsOk
-      ? selectOverlayObjects(
-          snapshot.objects,
-          snapshot.frameWidth,
-          snapshot.frameHeight,
-          minConfidence,
-        )
-      : [];
+  const overlayObjects = useMemo(
+    () =>
+      snapshot && hasFrameDimensions(snapshot)
+        ? selectOverlayObjects(
+            snapshot.objects,
+            snapshot.frameWidth,
+            snapshot.frameHeight,
+            minConfidence,
+          )
+        : [],
+    [snapshot, minConfidence],
+  );
+
+  // Display-only smoothing of the detection boxes (lerp toward the latest
+  // raw targets + a short fading grace window for briefly-missed tracks).
+  // The raw snapshot stays the source of truth everywhere else — counts,
+  // messages, and analytics all read the unsmoothed data. Disabled in demo
+  // (boxes are hidden there) and whenever boxes are off.
+  const smoothingEnabled = detectionsActive && !demo && showBoxes && dimsOk;
+  const displayObjects = useSmoothedDetections(
+    overlayObjects,
+    smoothingEnabled,
+    now,
+  );
 
   // Only draw boxes while a live-detections session is active.
   const svg =
@@ -295,6 +317,7 @@ export function LivePerceptionOverlayNext({
         showLabels={demo ? false : showLabels}
         showGeometry={showGeometry}
         minConfidence={minConfidence}
+        objects={smoothingEnabled ? displayObjects : undefined}
       />
     ) : null;
 
