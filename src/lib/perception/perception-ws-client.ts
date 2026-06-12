@@ -25,6 +25,8 @@
  * The token must never be logged; it only ever appears in the WS URL.
  */
 
+import { isRecord } from "./overlay-helpers";
+
 const INITIAL_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 8000;
 
@@ -52,10 +54,6 @@ export interface PerceptionWsSnapshot {
   package_id: string | null;
   observed_at: string;
   snapshot: Record<string, unknown>;
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
 /**

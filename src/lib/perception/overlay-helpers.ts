@@ -44,7 +44,9 @@ export const OVERLAY_COLORS = {
 
 // --- low-level coercion ------------------------------------------------------
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+/** Plain-object type guard. Exported for the other perception modules
+ * (e.g. perception-ws-client.ts) so the repo has one copy. */
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 

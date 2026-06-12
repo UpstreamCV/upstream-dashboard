@@ -4,6 +4,10 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-11 — Review cleanup: share isRecord between perception modules
+
+**Subject:** Export `isRecord` from `overlay-helpers.ts` and import it in `perception-ws-client.ts` instead of keeping a private duplicate (post-deploy code-review finding). No behavior change; 420 tests, lint, tsc all green.
+
 ## 2026-06-11 — Perception-fanout WS hot path: live detection overlay at 10–15 Hz
 
 **Subject:** Add a third, fastest tier to the live perception overlay: a WebSocket to the new `perception-fanout` sidecar (`upstream-streaming-server`) that delivers detection snapshots at 10–15 Hz, with the existing 250 ms poll + Supabase Realtime kept verbatim as the fallback ladder.
