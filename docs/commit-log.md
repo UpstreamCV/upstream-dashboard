@@ -4,6 +4,17 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-12 - fix(tokens): correct the agent install snippet (real CLI)
+
+The token-creation dialogs showed `upstream-agent init --token …` /
+`upstream-agent start …` — commands that don't exist. The console script
+is `upstream`, and tokens are entered via the shell's hidden `login`
+prompt (never a CLI flag, which would land the plaintext in shell
+history). Both dialogs (dashboard + legacy) now show the real flow; the
+unused token interpolation was removed from the snippet. Part of the
+agent update M2 slice (the api-server/bootstrap + agent notify work
+lives in those repos).
+
 ## 2026-06-12 - fix(overlay): newer-wins snapshot ordering (the periodic hitch)
 
 **Why:** the overlay's SWR cache has three racing writers — WS hot path
