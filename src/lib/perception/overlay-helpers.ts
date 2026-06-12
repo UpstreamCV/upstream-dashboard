@@ -337,6 +337,42 @@ export function perceptionRecordFromWsMessage(
   };
 }
 
+// --- newer-wins snapshot ordering ---------------------------------------------
+//
+// The overlay's SWR cache has three racing writers: the perception-fanout WS
+// (freshest, 6-15 Hz), Supabase Realtime rows (~1 Hz cold path), and the
+// poll (250 ms, or a 2 s keep-warm tick while the WS delivers). Without an
+// ordering guard, every keep-warm poll / Realtime row can replace a fresher
+// WS frame with OLDER data — the smoothed boxes then rubber-band backward
+// until the next WS frame (the periodic "small lag"). Rule: a record only
+// applies when its observed_at is strictly newer than what's displayed.
+// Older data is never better, and recovery is unaffected (recovery data is
+// newer by definition).
+
+/** True when ``incoming`` should replace ``current``: no current record, or
+ * a strictly newer parseable ``observed_at``. Equal timestamps keep the
+ * current record (a cold row mirroring the same processor snapshot must not
+ * churn the cache); an unparseable incoming timestamp never replaces. */
+export function isNewerPerceptionRecord(
+  incoming: LatestPerceptionRecord,
+  current: LatestPerceptionRecord | null | undefined,
+): boolean {
+  if (current == null) return true;
+  const incomingMs = Date.parse(incoming.observed_at);
+  if (!Number.isFinite(incomingMs)) return false;
+  const currentMs = Date.parse(current.observed_at);
+  if (!Number.isFinite(currentMs)) return true; // anything beats garbage
+  return incomingMs > currentMs;
+}
+
+/** Functional-mutate helper: the record that should be in the cache. */
+export function pickNewerPerceptionRecord(
+  current: LatestPerceptionRecord | null | undefined,
+  incoming: LatestPerceptionRecord,
+): LatestPerceptionRecord {
+  return isNewerPerceptionRecord(incoming, current) ? incoming : current!;
+}
+
 // --- age / staleness ---------------------------------------------------------
 
 /** Seconds between ``observedAt`` and ``now``. ``null`` when the input is

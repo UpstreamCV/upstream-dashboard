@@ -20,6 +20,7 @@ import {
   formatCountdown,
   formatOverlayAge,
   hasFrameDimensions,
+  isNewerPerceptionRecord,
   normalizeSnapshot,
   observedAtAgeSeconds,
   perceptionRecordFromRealtimeRow,
@@ -242,6 +243,18 @@ export function LivePerceptionOverlayNext({
         // and the slow keep-alive poll never needs sub-second resolution, so
         // keep the default dedupe to coalesce any incidental duplicate keys.
         dedupingInterval: demo ? undefined : 250,
+        // Newer-wins ordering guard: the poll fetches the ~1 Hz cold path,
+        // which is usually OLDER than the latest WS frame already in the
+        // cache. SWR keeps the current data when compare returns true — so
+        // an equal-or-older fetch result is treated as "no change" instead
+        // of shoving the overlay's boxes backward in time (the periodic
+        // hitch). A genuinely newer result (incl. recovery after WS silence)
+        // still applies. Non-snapshot shapes fall through to reference
+        // equality so error/empty handling is untouched.
+        compare: (a, b) =>
+          a?.snapshot && b?.snapshot
+            ? !isNewerPerceptionRecord(b.snapshot, a.snapshot)
+            : a === b,
       },
     );
 
@@ -410,10 +423,17 @@ export function LivePerceptionOverlayNext({
             const rec = perceptionRecordFromRealtimeRow(payload.new);
             if (rec) {
               // Usable broadcast row: drop other cameras, else write it straight
-              // into the SWR cache — true real-time, no refetch.
+              // into the SWR cache — true real-time, no refetch. Newer-wins:
+              // a ~1 Hz cold row must not replace a fresher WS frame.
               if (rec.camera_id !== cameraId) return;
               setLastRealtimeEventAt(now());
-              void mutate({ snapshot: rec }, { revalidate: false });
+              void mutate(
+                (prev) =>
+                  prev?.snapshot && !isNewerPerceptionRecord(rec, prev.snapshot)
+                    ? prev
+                    : { snapshot: rec },
+                { revalidate: false },
+              );
             } else {
               // Usable-but-unmappable row (no error): refetch the authoritative
               // snapshot; /perception/latest returns what the broadcast lacked.
@@ -468,7 +488,15 @@ export function LivePerceptionOverlayNext({
         const rec = perceptionRecordFromWsMessage(msg);
         if (!rec || rec.camera_id !== cameraId) return;
         setLastWsMessageAt(now());
-        void mutate({ snapshot: rec }, { revalidate: false });
+        // Newer-wins (defensive — WS frames are normally the freshest, but
+        // `seq` gaps + racing writers make ordering worth enforcing here too).
+        void mutate(
+          (prev) =>
+            prev?.snapshot && !isNewerPerceptionRecord(rec, prev.snapshot)
+              ? prev
+              : { snapshot: rec },
+          { revalidate: false },
+        );
       },
     });
     return () => {
@@ -528,8 +556,10 @@ export function LivePerceptionOverlayNext({
                   geometry
                   {/* In demo the overlay polls every 250ms over static per-scene
                       data, so isValidating flips ~4x/s — surfacing it just flickers
-                      the panel. Hide the in-flight indicator in demo. */}
-                  {!demo && isValidating ? " · refreshing…" : ""}
+                      the panel. Hide the in-flight indicator in demo, and also
+                      while the WS hot path is delivering (the 2s keep-warm poll
+                      would blink it for no user-visible reason). */}
+                  {!demo && !wsDelivering && isValidating ? " · refreshing…" : ""}
                 </span>
               ) : null}
             </p>

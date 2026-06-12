@@ -4,6 +4,36 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-12 - fix(overlay): newer-wins snapshot ordering (the periodic hitch)
+
+**Why:** the overlay's SWR cache has three racing writers — WS hot path
+(6-15 Hz, freshest), Supabase Realtime rows (~1 Hz cold path), and the
+poll (250 ms, or the 2 s keep-warm tick while WS delivers). SWR replaced
+cache data with every poll result unconditionally, and `/perception/
+latest` is the ~1 Hz cold path — usually OLDER than the last WS frame.
+Every keep-warm tick could shove an older snapshot into the cache, the
+smoothed boxes rubber-banded backward, and the user saw a small lag
+"every now and then."
+
+**What:** monotonic newer-wins application. New pure helpers
+`isNewerPerceptionRecord` / `pickNewerPerceptionRecord`
+(overlay-helpers.ts): a record applies only when its `observed_at` is
+strictly newer (equal keeps current — no churn; unparseable incoming
+never replaces; anything parseable beats a garbage current). Wired
+three ways: an SWR `compare` on the overlay's `useUpstreamList` (new
+optional passthrough in use-list.ts) refuses equal-or-older poll
+results; the Realtime and WS handlers switch to functional `mutate`
+guarded by the same rule. Poll cadence/gating/recovery untouched —
+genuinely newer data (incl. recovery after WS silence) applies exactly
+as before. Cosmetic: the "· refreshing…" indicator is hidden while
+`wsDelivering` so the keep-warm tick no longer blinks the panel.
+
+**Tests (+4):** ordering truth table (newer/equal/older/null/garbage)
+in overlay-helpers.test.ts; component tests updated to probe the
+functional updaters (WS frame replaces empty/older, keeps fresher;
+older realtime row never replaces a fresher cached snapshot). 635
+passing; tsc clean; changed files lint-clean.
+
 ## 2026-06-12 - feat(overlay): display-only smoothing for live detection boxes
 
 **Why:** the perception-fanout WS hot path delivers raw boxes at 10-15 Hz;
