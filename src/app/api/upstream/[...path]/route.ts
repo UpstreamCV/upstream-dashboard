@@ -157,10 +157,17 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
     }
   }
 
-  // Pipe response through.
+  // Pipe response through. fetch() has already DECOMPRESSED the body, so
+  // the upstream content-encoding/length headers describe bytes we no longer
+  // have — forwarding them makes the browser try to decode plain JSON
+  // (ERR_CONTENT_DECODING_FAILED on Caddy-compressed responses like
+  // perception/latest). Strip them; the runtime re-frames the response.
   const responseHeaders = new Headers();
   for (const [k, v] of upstreamResponse.headers) {
-    if (!HOP_BY_HOP.has(k.toLowerCase())) responseHeaders.set(k, v);
+    const key = k.toLowerCase();
+    if (HOP_BY_HOP.has(key)) continue;
+    if (key === "content-encoding" || key === "content-length") continue;
+    responseHeaders.set(k, v);
   }
   const buf = await upstreamResponse.arrayBuffer();
   return new NextResponse(buf, {
