@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { PerceptionObject } from "@/lib/api/types";
+import type { LatestPerceptionRecord, PerceptionObject } from "@/lib/api/types";
 import {
   buildLatestPerceptionPath,
   centroid,
@@ -9,10 +9,12 @@ import {
   formatCountdown,
   formatObjectLabel,
   hasFrameDimensions,
+  isNewerPerceptionRecord,
   isSessionExpired,
   LIVE_SESSION_DURATION_MS,
   normalizeSnapshot,
   objectName,
+  pickNewerPerceptionRecord,
   pointsToAttr,
   resolveBBox,
   selectOverlayObjects,
@@ -665,5 +667,57 @@ describe("deriveOverlayConnectionState", () => {
         realtimeStatus: null,
       }),
     ).toEqual({ mode: "fallback_polling", label: "Fallback polling" });
+  });
+});
+
+describe("newer-wins snapshot ordering", () => {
+  const rec = (observedAt: string, id = "r") =>
+    ({
+      id,
+      camera_id: "cam-1",
+      stream_session_id: "ssn-1",
+      processor_id: null,
+      package_id: null,
+      observed_at: observedAt,
+      updated_at: observedAt,
+      snapshot: {},
+    }) as LatestPerceptionRecord;
+
+  test("isNewerPerceptionRecord: strictly newer wins, equal/older does not", () => {
+    const current = rec("2026-06-12T10:00:00.500Z");
+    expect(
+      isNewerPerceptionRecord(rec("2026-06-12T10:00:00.501Z"), current),
+    ).toBe(true);
+    expect(
+      isNewerPerceptionRecord(rec("2026-06-12T10:00:00.500Z"), current),
+    ).toBe(false); // equal keeps current (no churn)
+    expect(
+      isNewerPerceptionRecord(rec("2026-06-12T10:00:00.499Z"), current),
+    ).toBe(false);
+  });
+
+  test("isNewerPerceptionRecord: null current always loses; garbage handled", () => {
+    expect(isNewerPerceptionRecord(rec("2026-06-12T10:00:00Z"), null)).toBe(
+      true,
+    );
+    expect(
+      isNewerPerceptionRecord(rec("2026-06-12T10:00:00Z"), undefined),
+    ).toBe(true);
+    // Unparseable incoming never replaces…
+    expect(
+      isNewerPerceptionRecord(rec("not-a-date"), rec("2026-06-12T10:00:00Z")),
+    ).toBe(false);
+    // …but anything parseable beats an unparseable current.
+    expect(
+      isNewerPerceptionRecord(rec("2026-06-12T10:00:00Z"), rec("garbage")),
+    ).toBe(true);
+  });
+
+  test("pickNewerPerceptionRecord returns the winning record", () => {
+    const older = rec("2026-06-12T09:00:00Z", "older");
+    const newer = rec("2026-06-12T11:00:00Z", "newer");
+    expect(pickNewerPerceptionRecord(older, newer)).toBe(newer);
+    expect(pickNewerPerceptionRecord(newer, older)).toBe(newer);
+    expect(pickNewerPerceptionRecord(null, older)).toBe(older);
   });
 });
