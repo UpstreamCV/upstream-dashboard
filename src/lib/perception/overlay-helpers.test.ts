@@ -329,7 +329,78 @@ describe("formatOverlayAge", () => {
   });
 });
 
-import { perceptionRecordFromRealtimeRow } from "./overlay-helpers";
+import {
+  perceptionRecordFromRealtimeRow,
+  perceptionRecordFromWsMessage,
+} from "./overlay-helpers";
+
+describe("perceptionRecordFromWsMessage", () => {
+  const fullMessage = {
+    type: "snapshot",
+    seq: 42,
+    camera_id: "22222222-2222-2222-2222-222222222222",
+    stream_session_id: "33333333-3333-3333-3333-333333333333",
+    processor_id: "proc-1",
+    package_id: "pkg-1",
+    observed_at: "2026-06-11T17:03:22.142Z",
+    snapshot: {
+      frame: { width: 1280, height: 720 },
+      objects: [{ label: "person", confidence: 0.91 }],
+      geometry: { rois: [], lines: [] },
+    },
+  };
+
+  test("maps a full WS snapshot frame to a LatestPerceptionRecord", () => {
+    const rec = perceptionRecordFromWsMessage(fullMessage);
+    expect(rec).not.toBeNull();
+    expect(rec!.camera_id).toBe(fullMessage.camera_id);
+    expect(rec!.observed_at).toBe(fullMessage.observed_at);
+    expect(rec!.snapshot).toEqual(fullMessage.snapshot);
+    // No DB row exists on the hot path: id is synthesized from camera + seq,
+    // and updated_at mirrors observed_at.
+    expect(rec!.id).toBe(`ws:${fullMessage.camera_id}:42`);
+    expect(rec!.updated_at).toBe(fullMessage.observed_at);
+  });
+
+  test("returns null for non-snapshot or incomplete envelopes", () => {
+    expect(perceptionRecordFromWsMessage(null)).toBeNull();
+    expect(perceptionRecordFromWsMessage({})).toBeNull();
+    expect(
+      perceptionRecordFromWsMessage({ ...fullMessage, type: "hello" }),
+    ).toBeNull();
+    expect(
+      perceptionRecordFromWsMessage({ ...fullMessage, seq: undefined }),
+    ).toBeNull();
+    expect(
+      perceptionRecordFromWsMessage({ ...fullMessage, camera_id: "" }),
+    ).toBeNull();
+    expect(
+      perceptionRecordFromWsMessage({ ...fullMessage, observed_at: undefined }),
+    ).toBeNull();
+  });
+
+  test("tolerates a garbage snapshot payload (coerced downstream)", () => {
+    const rec = perceptionRecordFromWsMessage({
+      ...fullMessage,
+      snapshot: "not-an-object",
+    });
+    expect(rec).not.toBeNull();
+    expect(rec!.snapshot).toEqual({});
+  });
+
+  test("nullable processor/package/session fields", () => {
+    const rec = perceptionRecordFromWsMessage({
+      type: "snapshot",
+      seq: 1,
+      camera_id: "cam",
+      observed_at: "2026-06-11T17:03:22Z",
+      snapshot: {},
+    });
+    expect(rec!.processor_id).toBeNull();
+    expect(rec!.package_id).toBeNull();
+    expect(rec!.stream_session_id).toBe("");
+  });
+});
 
 describe("perceptionRecordFromRealtimeRow", () => {
   const fullRow = {
@@ -469,6 +540,7 @@ describe("deriveOverlayConnectionState", () => {
     shouldUseRealtime: true,
     realtimeStatus: "SUBSCRIBED" as const,
     realtimeDelivering: true,
+    wsDelivering: false,
   };
 
   test("connected when the gate is open, subscribed, AND delivering events", () => {
@@ -476,6 +548,38 @@ describe("deriveOverlayConnectionState", () => {
       mode: "connected",
       label: "Realtime connected",
     });
+  });
+
+  test("WS hot path delivering outranks every Realtime state", () => {
+    expect(
+      deriveOverlayConnectionState({ ...CONNECTED, wsDelivering: true }),
+    ).toEqual({ mode: "ws_connected", label: "Live stream connected" });
+    // Even with Realtime errored/silent, delivered WS frames are the truth.
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        wsDelivering: true,
+        realtimeDelivering: false,
+        realtimeStatus: "CHANNEL_ERROR",
+      }).mode,
+    ).toBe("ws_connected");
+  });
+
+  test("WS delivering does NOT outrank session/stream/freshness blockers", () => {
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        wsDelivering: true,
+        isStale: true,
+      }).mode,
+    ).toBe("processor_stale");
+    expect(
+      deriveOverlayConnectionState({
+        ...CONNECTED,
+        wsDelivering: true,
+        streamActive: false,
+      }).mode,
+    ).toBe("stream_inactive");
   });
 
   test("subscribed but silent (no events) -> fallback polling", () => {
