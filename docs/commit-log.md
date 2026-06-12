@@ -4,6 +4,46 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-12 - feat(overlay): display-only smoothing for live detection boxes
+
+**Why:** the perception-fanout WS hot path delivers raw boxes at 10-15 Hz;
+rendering them directly looks far better than polling but boxes still snap
+between updates and flicker out on a single missed detection.
+
+**What:** a browser-side smoothing layer — presentation ONLY. Raw WS/poll
+snapshots stay the SWR-cache source of truth (counts, messages, analytics
+all read unsmoothed data; nothing backend-facing changes).
+
+- `src/lib/perception/overlay-smoothing.ts` — pure, time-injected
+  `DetectionSmoother`: per-track (keyed by `track_id`) lerp of x/y/w/h
+  toward the latest raw target (`BOX_SMOOTHING_ALPHA = 0.35` per 60 Hz
+  frame, frame-rate-normalized, epsilon snap); ~`DISAPPEAR_GRACE_MS =
+  300` fading grace window for briefly-missed tracks (expired entries
+  evicted — no leaks; re-entries appear fresh); light EMA
+  (`CONFIDENCE_SMOOTHING_ALPHA = 0.25`) on the LABEL confidence only
+  (raw object never mutated); objects without a `track_id` pass through
+  raw. Master kill switch `ENABLE_OVERLAY_SMOOTHING` — when false the
+  render path is byte-identical to before with zero animation frames.
+- `src/lib/perception/use-smoothed-detections.ts` — rAF loop that
+  re-samples at browser render speed, self-stops when every box has
+  converged and no fade is active (idle scene = zero frames), cancels on
+  unmount/disable, and passes raw boxes through until the first sample so
+  the first paint never blanks.
+- `overlay-svg.tsx` — optional pre-computed `objects` prop (with
+  per-object opacity for the grace fade). Geometry (ROIs / lines) is
+  NEVER smoothed and renders exactly as configured. Legacy callers
+  without the prop are unchanged.
+- `live-perception-overlay-next.tsx` — memoizes the snapshot/selection on
+  the SWR record identity and feeds the smoothed boxes to the SVG;
+  smoothing is active only while boxes are shown in a live session
+  (never in demo mode).
+
+**Tests:** `overlay-smoothing.test.ts` (13) — glide monotonicity,
+convergence + rest detection, frame-rate normalization, no fly-in on new
+tracks, grace fade/expiry/reappear/eviction, label-confidence EMA with
+raw-object immutability, untracked passthrough, disabled-path mapping.
+631 total passing; tsc clean; changed files lint-clean.
+
 ## 2026-06-11 — fix: camera form inputs invisible (login pill style inside white tiles)
 
 **Subject:** Camera create/settings form text rendered white-on-white — visible only when highlighted.
