@@ -2,7 +2,7 @@
  * Cross-component channel for "what is the WebRTC player doing right now".
  *
  * **Shared module** — imported by both dashboards:
- *   - `/dashboard` (light): `LiveStreamPlayerNext` /
+ *   - `/` (light): `LiveStreamPlayerNext` /
  *     `CameraStreamStatusBadgeNext` under `src/components/dashboard-next/`.
  *   - `/dashboard-legacy` (dark): `LiveStreamPlayer` /
  *     `CameraStreamStatusBadge` under `src/components/stream/`.

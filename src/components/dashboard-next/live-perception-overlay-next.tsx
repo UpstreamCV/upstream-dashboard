@@ -87,14 +87,14 @@ const WS_KEEPWARM_POLL_MS = 2_000;
 const DEFAULT_STALE_AFTER_SECONDS = 10;
 
 const SELECT_CLASS =
-  "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
+  "rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
 
 const CHIP_ACTIVE =
   "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]";
 const CHIP_INACTIVE =
-  "border-black/10 bg-white text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.04]";
+  "border-white/10 bg-white/[0.06] text-[var(--dn-text-50)] hover:text-white hover:bg-white/[0.08]";
 const PILL_BTN =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50";
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-deep)] px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90";
 
@@ -596,7 +596,7 @@ function LiveDetectionsControl({ session }: { session: LiveDetectionSession }) {
   if (session.status === "on") {
     return (
       <div className="inline-flex flex-wrap items-center gap-2">
-        <span className="text-sm text-black">
+        <span className="text-sm text-white">
           Live detections on · expires in {formatCountdown(session.remainingMs)}
         </span>
         <button
@@ -659,7 +659,7 @@ function DemoNotConfiguredMessage() {
   return (
     <p className="mt-2 text-sm text-[var(--dn-text-50)]">
       No detection running yet. Draw a counting line in{" "}
-      <span className="font-medium text-black">Configure</span>{" "}and save it —
+      <span className="font-medium text-white">Configure</span>{" "}and save it —
       Upstream starts detecting as soon as it&rsquo;s set up.
     </p>
   );
@@ -673,7 +673,7 @@ function DemoNotConfiguredMessage() {
  */
 function DetectionDisclaimer() {
   return (
-    <div className="mt-3 border-t border-black/5 pt-3 text-[clamp(0.78rem,0.9vw,0.85rem)] text-[var(--dn-text-50)]">
+    <div className="mt-3 border-t border-white/10 pt-3 text-[clamp(0.78rem,0.9vw,0.85rem)] text-[var(--dn-text-50)]">
       <p>Live detections show what Upstream is seeing from the camera.</p>
       <p className="mt-2">
         The boxes are drawn in your browser as a preview, so they may be

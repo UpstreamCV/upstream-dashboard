@@ -63,7 +63,7 @@ export function WorkflowRunsClient({
               TAB_BTN +
               (tab === t.key
                 ? " bg-[var(--dn-creek-mid)] text-white"
-                : " text-black/60 hover:text-black")
+                : " text-white/60 hover:text-white")
             }
           >
             {t.label}
@@ -77,7 +77,7 @@ export function WorkflowRunsClient({
             className="mx-auto h-8 w-8 text-[var(--dn-text-50)]"
             aria-hidden
           />
-          <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+          <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-white">
             No workflow runs yet
           </h3>
           <p className="mx-auto mt-3 max-w-prose text-sm text-[var(--dn-text-50)]">
@@ -93,7 +93,7 @@ export function WorkflowRunsClient({
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-black">{run.title}</span>
+                    <span className="font-bold text-white">{run.title}</span>
                     <span
                       className={
                         "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide " +
@@ -102,7 +102,7 @@ export function WorkflowRunsClient({
                     >
                       {workflowRunStatusLabel(run.status)}
                     </span>
-                    <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-black/50">
+                    <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white/60">
                       {workflowRunTriggerLabel(run.trigger_type)}
                     </span>
                   </div>
@@ -112,8 +112,8 @@ export function WorkflowRunsClient({
                   <p className="mt-0.5 text-xs font-mono text-[var(--dn-text-50)]">
                     {run.camera_id ? (
                       <Link
-                        href={`/dashboard/cameras/${run.camera_id}/monitor`}
-                        className="underline hover:text-black"
+                        href={`/cameras/${run.camera_id}/monitor`}
+                        className="underline hover:text-white"
                       >
                         {cameraNames[run.camera_id] ?? "Unknown camera"}
                       </Link>
@@ -126,8 +126,8 @@ export function WorkflowRunsClient({
                       <>
                         {" · "}
                         <Link
-                          href="/dashboard/alerts"
-                          className="underline hover:text-black"
+                          href="/alerts"
+                          className="underline hover:text-white"
                         >
                           alert ({run.alert.severity}, {run.alert.status})
                         </Link>
@@ -137,10 +137,10 @@ export function WorkflowRunsClient({
                 </div>
               </div>
               <details className="mt-2">
-                <summary className="cursor-pointer text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)] hover:text-black">
+                <summary className="cursor-pointer text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)] hover:text-white">
                   Evidence &amp; run detail
                 </summary>
-                <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-black/[0.04] p-3 font-mono text-[11px] text-black/80">
+                <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-white/[0.05] p-3 font-mono text-[11px] text-white/80">
                   {JSON.stringify(
                     {
                       id: run.id,

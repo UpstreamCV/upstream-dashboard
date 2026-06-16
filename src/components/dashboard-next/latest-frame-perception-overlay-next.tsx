@@ -166,7 +166,7 @@ export function LatestFramePerceptionOverlayNext({
             type="button"
             onClick={refresh}
             disabled={isValidating}
-            className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw
               className={clsx("h-3.5 w-3.5", isValidating && "animate-spin")}
@@ -264,7 +264,7 @@ export function LatestFramePerceptionOverlayNext({
             {frame.width && frame.height
               ? `${frame.width}×${frame.height} · `
               : ""}
-            <RelativeTime value={frame.captured_at} className="text-black/70" />
+            <RelativeTime value={frame.captured_at} className="text-white/80" />
           </span>
           {perceptionRecord && snapshot ? (
             <span>
@@ -274,7 +274,7 @@ export function LatestFramePerceptionOverlayNext({
                 : ""}
               <RelativeTime
                 value={perceptionRecord.observed_at}
-                className="text-black/70"
+                className="text-white/80"
               />
             </span>
           ) : null}
@@ -287,12 +287,12 @@ export function LatestFramePerceptionOverlayNext({
 // --- styling constants -------------------------------------------------------
 
 const SELECT_CLASS =
-  "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
+  "rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
 
 const CHIP_ACTIVE =
   "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]";
 const CHIP_INACTIVE =
-  "border-black/10 bg-white text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.04]";
+  "border-white/10 bg-white/[0.06] text-[var(--dn-text-50)] hover:text-white hover:bg-white/[0.08]";
 
 // --- small inline components -------------------------------------------------
 
@@ -342,7 +342,7 @@ function RetryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RefreshCw className={clsx("h-3.5 w-3.5", disabled && "animate-spin")} />
       Retry
@@ -362,9 +362,9 @@ function InlineEmpty({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-black/5 bg-black/[0.02] px-6 py-10 text-center">
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-6 py-10 text-center">
       {icon}
-      <h3 className="mt-3 font-bold text-black">{title}</h3>
+      <h3 className="mt-3 font-bold text-white">{title}</h3>
       <p className="mt-2 max-w-prose mx-auto text-sm text-[var(--dn-text-50)]">
         {description}
       </p>

@@ -9,7 +9,7 @@
 // scales with the frame.
 //
 // Theme-agnostic: colors come from OVERLAY_COLORS constants and read on any
-// background. Shared between /dashboard (dark) and /dashboard-next (light).
+// background. Shared between / (dark) and /dashboard-next (light).
 
 import type { NormalizedSnapshot } from "./overlay-helpers";
 import {

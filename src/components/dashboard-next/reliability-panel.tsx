@@ -63,7 +63,7 @@ function FindingBody({
   const Action = variant === "critical" ? Danger : Warning;
   return (
     <>
-      <p className="font-bold text-[clamp(0.95rem,1.1vw,1.05rem)] text-black">
+      <p className="font-bold text-[clamp(0.95rem,1.1vw,1.05rem)] text-white">
         {finding.title}
       </p>
       <p className="mt-2 text-[clamp(0.82rem,0.95vw,0.9rem)] text-[var(--dn-text-50)]">
@@ -146,7 +146,7 @@ export function ReliabilityPanel({
       <PanelBody summary={summary} variant={variant} />
       {cameraId ? (
         <Link
-          href={`/dashboard/cameras/${cameraId}/reliability`}
+          href={`/cameras/${cameraId}/reliability`}
           className="mt-4 inline-block text-[clamp(0.78rem,0.9vw,0.85rem)] font-bold text-[var(--dn-creek-mid)] hover:underline"
         >
           View reliability details →

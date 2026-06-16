@@ -4,6 +4,63 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-15 — Magnetic + glow cursor interaction on glass surfaces
+
+**Subject:** Every glass surface (tiles, cards, buttons, pills) now leans toward the cursor with a tracked sheen + hover lift — matching `upstream-web`'s `MagneticButton`/glass-pane feel.
+
+**Why:** Requested parity with the marketing site's premium cursor interactions (the waitlist CTA + glass panes).
+
+**What changed:**
+- Replicated `upstream-web`'s `useMagnetic` (lib/motion.ts) **without adding framer-motion** — extended the existing vanilla `CursorGlow` controller (`cursor-glow.tsx`). One rAF-coalesced pointer listener writes, per nearby surface: `--dn-px/--dn-py` (a distance-falloff lean toward the cursor) + `--mx/--my/--glow` (cursor-tracked sheen). Reads batched before writes; no-ops on coarse pointers; drops the pull under reduced-motion (keeps the sheen).
+- theme.css — baked the behavior into `.dn-tile`, `.dn-card`, `.dn-btn`, `.dn-glow-soft` (so all tiles/cards/View+action pills/Add-camera/sort/search get it automatically): a `transform: translate3d(var(--dn-px),var(--dn-py),0)` eased by a `cubic-bezier` transition (spring-like), a `::before` sheen on the box surfaces (buttons keep `.dn-glow-soft::after`), and a deeper hover shadow. Added a `.dn-magnetic` opt-in class for non-class-based controls.
+- Applied `.dn-magnetic` to the remaining glassy controls (filter chips, view toggle, pagination buttons, camera-card overflow) so the interaction is uniform.
+
+**Testing/checks:** `next build` passes.
+
+**Docs updated:** `docs/commit-log.md` (this entry).
+
+## 2026-06-15 — Move dashboard off the `/dashboard` prefix → site root
+
+**Subject:** The redesigned dashboard now lives at the site root (`/`, `/cameras`, `/settings`, …) instead of under `/dashboard`. Plus: background orbs roam freely.
+
+**Why:** `/dashboard` was redundant — this app *is* the dashboard. Dropping the prefix gives cleaner URLs.
+
+**What changed:**
+- Routes — `src/app/dashboard/` renamed to the route group `src/app/(dash)/` (route groups add no URL segment), so `(dash)/(app)/page.tsx` → `/`, `(dash)/(app)/cameras` → `/cameras`, `(dash)/login` → `/login`, `(dash)/demo/terminal` → `/demo/terminal`, etc. All relative imports preserved by the rename.
+- Login — the redesigned login is now the canonical `/login`; the old dark-glass `(auth)/login/page.tsx` + `login-form.tsx` were removed. **`(auth)/login/actions.ts` was kept** (the redesigned `login-form-next` imports `signInAction` from it). The root `page.tsx` redirect was removed (the home page now resolves at `/`).
+- Link sweep — ~83 `/dashboard/*` route refs across ~40 files updated to root (hrefs, `redirect`, `revalidatePath`, sidebar regex matchers, comment file-paths → `(dash)`), excluding `/dashboard-legacy`. **Guarded against two false-positives:** the API endpoint `/v1/dashboard/summary` (api-server contract — NOT a page route) was preserved, and the module import `@/lib/api/dashboard` was preserved.
+- proxy.ts — `PUBLIC_PATHS` = `["/login","/signup"]` (dropped `/dashboard/login`); logged-in redirect target `/dashboard` → `/`.
+- Assets — `public/dashboard/{upstream-logo,fish-watermark}.png` moved to `public/` (refs are now `/upstream-logo.png` etc.).
+- Cleanup — deleted 46 stray `* 2.ts`/`* 2.tsx` editor-artifact duplicate files (unused; flagged as cruft in AGENTS.md; the move had left them with dead imports).
+- `/dashboard-legacy` — **unchanged** (still at `/dashboard-legacy`, rollback fallback; uses the consolidated `/login`).
+- Orbs — `ShellBackdrop` is now a Client Component that gives each orb a fresh RANDOM target (translate + scale) on a jittered, staggered loop, easing along the `.dn-orb` CSS transition — so they roam freely anywhere on the page instead of fixed keyframe loops (the `@keyframes dn-drift-*` were removed; per-orb anchors kept as the reduced-motion resting state).
+
+**Testing/checks:** clean `next build` passes — route tree resolves at root (`/`, `/cameras`, `/login`, …) with `/dashboard-legacy/*` intact and no `/dashboard/*`. `npx tsc --noEmit` clean.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `AGENTS.md` (dashboard-next section + route policy + cookbook paths).
+
+## 2026-06-15 — Dark redesign: theme flip + Home & Cameras rebuilt to Figma
+
+**Subject:** Re-skin the `/dashboard` segment LIGHT → DARK and rebuild the Home and Cameras pages to the Figma "Dashboard Redesign" frames, keeping all data wiring.
+
+**Why:** New Figma frames ("DarkMode" Home / All-Good / Cameras) define a dark product look (`#161616` base, white text, a red/orange/yellow/green/grey status-accent system) and richer Home/Cameras layouts. The light `--dn-*` theme was the single source of truth, so flipping its token values re-skins the whole segment at once.
+
+**What changed:**
+- `src/app/dashboard/theme.css` — token block flipped to the dark palette: `--dn-base`/`--dn-tile` `#161616`, `--dn-text` white, `--dn-text-*` white-alphas, new status tokens (`--dn-red/orange/yellow/green*/grey` + `*-soft` chip fills + `--dn-live`), `--dn-tile-soft` + `.dn-card`, dark `.dn-panel`/`.dn-rail`/`.dn-glass-card`, `color-scheme: dark`, orbs dialed down. Architecture (panel/rail/orbs/cursor-glow/scrollbar) unchanged.
+- `src/components/dashboard-next/status-dot.tsx` — Figma status hexes + new `orange` `DotStatus`; exports `STATUS_HEX`.
+- `src/components/dashboard-next/dn-status.ts` (new) — camera 4-bucket model (`live/review/offline/idle`, alert-aware via `deriveCameraBucket`) + `BUCKET_META`/`BUCKET_ORDER` + `severityMeta`.
+- Home — `(app)/page.tsx` seeds alerts; `home-overview-client.tsx` rebuilt as 4 KPI tiles (Active Cameras/Agents, Alerts[unread], Needs Review) + Triage (open alerts, ShieldCheck empty state) + Fleet Overview (real legend + illustrative chart) + Recent Events (recent alerts) + System Status (illustrative) + a "More" row preserving the prior Plan&Usage/Concurrent/API Tokens/Network/Billing tiles. New `components/dashboard-next/home/{kpi-tile,triage-panel,fleet-overview,recent-events,system-status}.tsx`.
+- Cameras — `(app)/cameras/page.tsx` seeds open alerts + restyles header; `cameras-grid-client.tsx` rebuilt (filter chips + counts, Sort + grid/list toggle, 4 summary stat tiles, client filter/sort/search/pagination); `camera-card.tsx` rebuilt (thumbnail + status-badge overlay + meta + mini-stats + bucket-varying action + overflow). New `components/dashboard-next/cameras/{camera-bucket-stat-tile,camera-controls,camera-pagination}.tsx`.
+- Wiring: `/v1/alerts` newly polled on both pages (10s, tolerant seed); all prior polls/fallbackData/account-scoping/hrefs/demo guards preserved. Surfaces with no backing API (Fleet chart, System Status, per-camera Reliability/Events/Uptime, last-heartbeat) render honest placeholders — no fabricated telemetry.
+- Legibility sweep — 149 hardcoded light-color utilities (`text-black`, solid `bg-white`, `border-black/*`, `bg-black/[0.0x]`) across ~30 inherited components (rules, workflows, detection, geometry, reliability, observations, perception, tokens, alerts, audit, billing, stream, shell, loading) converted to dark equivalents (colors only). Per-page Figma layouts for those pages remain a later task.
+- Shell — route-aware chrome via a new client `AppShell` (`(app)/app-shell.tsx`, reads `usePathname`): **Home** keeps the "Welcome back" topbar with the content panel below it; **every other page** drops the topbar so the panel bleeds to the **top** edge too. `.dn-panel` is top-left-rounded only and always bleeds right + bottom (Figma). The nav rail (`sidebar-next.tsx`) has **no container** — the button pills sit directly on the shell background. On non-home pages it leads with the user avatar (Home shows identity in the topbar instead) and collapses to an **icon dock that expands to the labelled rail on hover** (in the flex flow — no toggle button — `.dn-rail-dock`), pushing the content panel (`flex-1 min-w-0`) right + reflowing it to make room for the expanded buttons, while Home shows the full labelled rail. The non-home panel squares its top-left corner (`.dn-panel-square`) since it meets the top edge. The rail's left margin (row `pl`) and right margin (rail↔panel `gap`) are kept equal and tight (12px) — room for the expanded labels comes from the in-flow hover-push, not a reserved gap. Each pill's icon sits in a fixed-width **centered slot** (`ICON_SLOT` = the collapsed rail's content width), so a collapsed icon is dead-centered (equal L/R padding) and never slides on expand — labels just cross-fade in over an eased width transition (smooth + uniform pills).
+- Home scroll + header split — Home is a **page-level scroll** (not a fixed panel with internal scroll): the rail is sticky/viewport-tall while the rounded panel scrolls, sliding up and **bleeding over the top edge** of the screen. The header is split — the **user identity (avatar + "Welcome back, {name}") sits at the top of the left rail**, and the top-right **tools (search + Upstream Dashboard + logo, now `TopbarTools`) sit at the top-right on the background as a sticky LOW-z element INSIDE the scroll layer** (so they're part of the frosted panel's backdrop); the panel sits just below them and, on scroll, **rises up and passes over them — actually backdrop-blurring them** (this only works because the tools share the panel's scroll/backdrop context; as a sibling layer outside it the blur didn't apply) — before bleeding over the top edge. Non-home keeps the fixed panel + `ScrollArea` and no header.
+- Background grain + frosted containers — a grayscale fractal-noise film (`.dn-backdrop::after`, ~20% opacity, fixed) over the base + orbs. The semi-transparent containers now `backdrop-filter: blur` their backgrounds for a glass look: `.dn-card` (camera cards) + `.dn-btn` in theme.css, the rail pills (over the orbs/grain — most visible), and the camera-card thumbnail/mini-stats + the cameras controls/pagination. Opaque (`.dn-tile` #161616) surfaces are unchanged. The main content panel (`.dn-panel`, which every right-side element sits on) was made a clearer frosted glass — scrim lightened `0.45`→`0.35`, blur `16px`. **Chrome fix:** every literal `backdrop-filter` in theme.css (panel, card, btn, glass-card, field) is now wrapped in `var(--bf-…, <value>)`. Tailwind v4's Lightning CSS collapses a *literal* `backdrop-filter` to the `-webkit-` prefix only — which Chrome ignores — so the panel/card/field blur silently did nothing in Chrome (the sidebar pills worked because they use Tailwind's `backdrop-blur` *utility*). A `var()` value is opaque to that pass, so both declarations survive. (Pattern borrowed from `upstream-web` globals.css.) Home triage list capped at 8 rows (newest open alerts first; "View all" → full inbox).
+
+**Testing/checks:** `npm run build` passes (all routes compile); `npx tsc --noEmit` clean on changed source. `npm run lint` clean on changed files — the only lint error remains the pre-existing demo-mode `add-camera-panel.tsx` `set-state-in-effect`. Demo note: `/v1/alerts` isn't routed in demo mode, so Triage/Needs-Review/Recent-Events show empty under `NEXT_PUBLIC_DEMO_MODE=1` (handled defensively); add a demo fixture if desired.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `AGENTS.md` (dashboard-next section + theme stack note), `docs/dashboard-next.md` (header + theme note), `src/app/dashboard/theme.css` (header comment).
+
 ## 2026-06-11 — fix: camera form inputs invisible (login pill style inside white tiles)
 
 **Subject:** Camera create/settings form text rendered white-on-white — visible only when highlighted.

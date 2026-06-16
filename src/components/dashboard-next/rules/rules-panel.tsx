@@ -8,7 +8,7 @@ import {
   createRuleAction,
   deleteRuleAction,
   setRuleEnabledAction,
-} from "@/app/dashboard/(app)/cameras/[cameraId]/configure/rules/actions";
+} from "@/app/(dash)/(app)/cameras/[cameraId]/configure/rules/actions";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Rule, RuleSeverity, RuleType } from "@/lib/api/types";
 import {
@@ -42,13 +42,13 @@ import {
 // schedule → all). The shared validator enforces the same restriction.
 
 const SELECT_CLASS =
-  "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 const INPUT_CLASS =
-  "rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50";
 const GHOST_BTN =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-bold text-black/70 transition hover:border-[var(--dn-creek-mid)] hover:text-black disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-bold text-white/80 transition hover:border-[var(--dn-creek-mid)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
 
 const COOLDOWN_OPTIONS: { value: number; label: string }[] = [
   { value: 0, label: "Every match" },
@@ -59,7 +59,7 @@ const COOLDOWN_OPTIONS: { value: number; label: string }[] = [
 ];
 
 const SEVERITY_CHIP: Record<string, string> = {
-  info: "bg-black/[0.06] text-black/70",
+  info: "bg-white/[0.05] text-white/80",
   warning: "bg-[#8a6d1f]/15 text-[#8a6d1f]",
   critical: "bg-red-700/10 text-red-700",
 };
@@ -333,7 +333,7 @@ export function RulesPanel({
             new rule
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               Name
               <input
                 type="text"
@@ -345,7 +345,7 @@ export function RulesPanel({
                 disabled={pending}
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               When
               <select
                 value={ruleType}
@@ -361,7 +361,7 @@ export function RulesPanel({
               </select>
             </label>
             {targetKind !== "camera" ? (
-              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+              <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                 {targetKind === "line" ? "Line" : "Zone (ROI)"}
                 <select
                   value={targetId}
@@ -381,7 +381,7 @@ export function RulesPanel({
               </label>
             ) : null}
             {ruleType === "camera_offline" ? (
-              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+              <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                 Offline for (minutes)
                 <input
                   type="number"
@@ -399,7 +399,7 @@ export function RulesPanel({
               </label>
             ) : null}
             {ruleType === "no_detections_for" ? (
-              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+              <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                 Quiet for (minutes)
                 <input
                   type="number"
@@ -418,7 +418,7 @@ export function RulesPanel({
             ) : null}
             {ruleType === "roi_occupancy" ? (
               <>
-                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                   Min objects
                   <input
                     type="number"
@@ -432,7 +432,7 @@ export function RulesPanel({
                     disabled={pending}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                   Max objects
                   <input
                     type="number"
@@ -445,7 +445,7 @@ export function RulesPanel({
                     disabled={pending}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                   Count class
                   {classOptions.length > 0 ? (
                     <select
@@ -475,7 +475,7 @@ export function RulesPanel({
               </>
             ) : null}
             {ruleType === "dwell_exceeded" ? (
-              <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+              <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                 Min dwell (s)
                 <input
                   type="number"
@@ -492,7 +492,7 @@ export function RulesPanel({
                 />
               </label>
             ) : null}
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               Severity
               <select
                 value={severity}
@@ -507,7 +507,7 @@ export function RulesPanel({
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               Cooldown
               <select
                 value={cooldown}
@@ -538,14 +538,14 @@ export function RulesPanel({
           {/* M3 conditions — only the inputs this rule type's observation
               payloads can actually prove. */}
           {showClassChips ? (
-            <div className="mt-4 border-t border-black/10 pt-3">
+            <div className="mt-4 border-t border-white/10 pt-3">
               <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
                 conditions
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 {classOptions.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs font-bold text-black/70">
+                    <span className="text-xs font-bold text-white/80">
                       Object classes:
                     </span>
                     {classOptions.map((label) => (
@@ -557,7 +557,7 @@ export function RulesPanel({
                           "rounded-full border px-2.5 py-1 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 " +
                           (selectedClasses.has(label)
                             ? "border-[var(--dn-creek-mid)] bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
-                            : "border-black/10 bg-white text-black/60 hover:border-[var(--dn-creek-mid)] hover:text-black")
+                            : "border-white/10 bg-white/[0.06] text-white/60 hover:border-[var(--dn-creek-mid)] hover:text-white")
                         }
                         disabled={pending}
                       >
@@ -569,7 +569,7 @@ export function RulesPanel({
                     </span>
                   </div>
                 ) : (
-                  <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                     Object classes (comma-separated, blank = any)
                     <input
                       type="text"
@@ -582,7 +582,7 @@ export function RulesPanel({
                   </label>
                 )}
                 {supportsClassFilter ? (
-                  <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
+                  <label className="inline-flex items-center gap-2 text-xs font-bold text-white/80">
                     <input
                       type="checkbox"
                       checked={requireTrackId}
@@ -593,7 +593,7 @@ export function RulesPanel({
                   </label>
                 ) : null}
                 {supportsClassFilter ? (
-                  <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                  <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                     Min confidence (0–1, blank = any)
                     <input
                       type="number"
@@ -612,8 +612,8 @@ export function RulesPanel({
             </div>
           ) : null}
 
-          <div className="mt-4 border-t border-black/10 pt-3">
-            <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <label className="inline-flex items-center gap-2 text-xs font-bold text-white/80">
               <input
                 type="checkbox"
                 checked={scheduleEnabled}
@@ -634,7 +634,7 @@ export function RulesPanel({
                         "rounded-full border px-2.5 py-1 text-xs font-bold capitalize transition disabled:cursor-not-allowed disabled:opacity-50 " +
                         (scheduleDays.has(day)
                           ? "border-[var(--dn-creek-mid)] bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
-                          : "border-black/10 bg-white text-black/60 hover:border-[var(--dn-creek-mid)] hover:text-black")
+                          : "border-white/10 bg-white/[0.06] text-white/60 hover:border-[var(--dn-creek-mid)] hover:text-white")
                       }
                       disabled={pending}
                     >
@@ -642,7 +642,7 @@ export function RulesPanel({
                     </button>
                   ))}
                 </div>
-                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                   From
                   <input
                     type="time"
@@ -652,7 +652,7 @@ export function RulesPanel({
                     disabled={pending}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                   To
                   <input
                     type="time"
@@ -662,7 +662,7 @@ export function RulesPanel({
                     disabled={pending}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+                <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
                   Timezone (IANA)
                   <input
                     type="text"
@@ -698,7 +698,7 @@ export function RulesPanel({
             className="mx-auto h-8 w-8 text-[var(--dn-text-50)]"
             aria-hidden
           />
-          <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+          <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-white">
             No rules yet
           </h3>
           <p className="mx-auto mt-3 max-w-prose text-sm text-[var(--dn-text-50)]">
@@ -715,7 +715,7 @@ export function RulesPanel({
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-black">{rule.name}</span>
+                  <span className="font-bold text-white">{rule.name}</span>
                   <span
                     className={
                       "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide " +
@@ -725,7 +725,7 @@ export function RulesPanel({
                     {rule.severity}
                   </span>
                   {!rule.enabled ? (
-                    <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-black/50">
+                    <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white/60">
                       disabled
                     </span>
                   ) : null}

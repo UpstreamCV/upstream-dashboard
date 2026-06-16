@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { setProcessingEnabled } from "@/app/dashboard/(app)/settings/actions";
+import { setProcessingEnabled } from "@/app/(dash)/(app)/settings/actions";
 
 // Account-level processing master switch (M3 dashboard surface).
 //
@@ -44,7 +44,7 @@ export function ProcessingToggleNext({
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="flex-1 min-w-0">
-        <p className="text-[clamp(0.95rem,1.1vw,1.05rem)] font-bold text-black">
+        <p className="text-[clamp(0.95rem,1.1vw,1.05rem)] font-bold text-white">
           Processing
         </p>
         <p className="mt-1 text-[clamp(0.82rem,0.95vw,0.9rem)] text-[var(--dn-text-50)]">

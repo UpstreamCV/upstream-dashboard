@@ -20,12 +20,12 @@ import {
 import { ObservationSummaryTiles } from "./observation-summary-tiles";
 
 const SELECT_CLASS =
-  "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
+  "rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none";
 
 const CHIP_ACTIVE =
   "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]";
 const CHIP_INACTIVE =
-  "border-black/10 bg-white text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.04]";
+  "border-white/10 bg-white/[0.06] text-[var(--dn-text-50)] hover:text-white hover:bg-white/[0.08]";
 
 function typeLabel(type: string): string {
   return type.startsWith("processor.")
@@ -175,7 +175,7 @@ export function RecentObservationsPanelNext({
             type="button"
             onClick={() => void mutate()}
             disabled={isValidating}
-            className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw
               className={clsx("h-3.5 w-3.5", isValidating && "animate-spin")}
@@ -195,7 +195,7 @@ export function RecentObservationsPanelNext({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-[11px] font-mono uppercase tracking-wider text-[var(--dn-text-50)]">
+              <tr className="border-b border-white/10 text-left text-[11px] font-mono uppercase tracking-wider text-[var(--dn-text-50)]">
                 <th className="py-2 pr-3 font-normal">Time</th>
                 <th className="py-2 pr-3 font-normal">Type</th>
                 <th className="py-2 pr-3 font-normal">Summary</th>
@@ -209,7 +209,7 @@ export function RecentObservationsPanelNext({
                 const open = openRows.has(obs.id);
                 return (
                   <Fragment key={obs.id}>
-                    <tr className="border-b border-black/5">
+                    <tr className="border-b border-white/10">
                       <td className="py-2 pr-3 align-top whitespace-nowrap">
                         <RelativeTime
                           value={obs.observed_at}
@@ -218,13 +218,13 @@ export function RecentObservationsPanelNext({
                       </td>
                       <td className="py-2 pr-3 align-top">
                         <span
-                          className="font-mono text-xs text-black"
+                          className="font-mono text-xs text-white"
                           title={obs.type}
                         >
                           {typeText}
                         </span>
                       </td>
-                      <td className="py-2 pr-3 align-top text-black/80">
+                      <td className="py-2 pr-3 align-top text-white/80">
                         {summary}
                       </td>
                       <td className="py-2 pr-3 align-top whitespace-nowrap">
@@ -245,7 +245,7 @@ export function RecentObservationsPanelNext({
                           aria-label={
                             open ? "Hide raw JSON" : "View raw JSON"
                           }
-                          className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)] transition hover:text-black"
+                          className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)] transition hover:text-white"
                         >
                           {open ? (
                             <ChevronDown className="h-3 w-3" />
@@ -257,9 +257,9 @@ export function RecentObservationsPanelNext({
                       </td>
                     </tr>
                     {open ? (
-                      <tr className="border-b border-black/5">
+                      <tr className="border-b border-white/10">
                         <td colSpan={6} className="pb-3">
-                          <pre className="max-h-64 overflow-x-auto rounded-lg bg-black/[0.04] p-3 font-mono text-[11px] text-black/80">
+                          <pre className="max-h-64 overflow-x-auto rounded-lg bg-white/[0.05] p-3 font-mono text-[11px] text-white/80">
                             {JSON.stringify(obs.payload, null, 2)}
                           </pre>
                         </td>
@@ -277,7 +277,7 @@ export function RecentObservationsPanelNext({
           <button
             type="button"
             onClick={() => void mutate()}
-            className="mt-3 font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)] transition hover:text-black"
+            className="mt-3 font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)] transition hover:text-white"
           >
             Retry
           </button>

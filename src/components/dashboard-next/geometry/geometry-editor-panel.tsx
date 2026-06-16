@@ -19,7 +19,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { saveGeometryAction } from "@/app/dashboard/(app)/cameras/[cameraId]/configure/geometry/actions";
+import { saveGeometryAction } from "@/app/(dash)/(app)/cameras/[cameraId]/configure/geometry/actions";
 import type {
   GeometryConfig,
   GeometryLine,
@@ -636,7 +636,7 @@ function Toolbar({
           <button
             type="button"
             onClick={onCancelRoi}
-            className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04]"
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition hover:bg-white/[0.08]"
           >
             Cancel
           </button>
@@ -646,7 +646,7 @@ function Toolbar({
           type="button"
           onClick={onDelete}
           disabled={!selected}
-          className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Trash2 className="h-3.5 w-3.5" />
           {deleteLabel}
@@ -667,7 +667,7 @@ function Toolbar({
           type="button"
           onClick={onDiscard}
           disabled={!dirty || saving}
-          className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Undo2 className="h-3.5 w-3.5" />
           Discard changes
@@ -706,7 +706,7 @@ function ToolChip({
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-sm transition",
         active
           ? "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
-          : "border-black/10 bg-white text-[var(--dn-text-50)] hover:bg-black/[0.04] hover:text-black",
+          : "border-white/10 bg-white/[0.06] text-[var(--dn-text-50)] hover:bg-white/[0.08] hover:text-white",
       )}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -817,7 +817,7 @@ function SelectedShapeCard({
           maxLength={GEOMETRY_LIMITS.maxLabelLen}
           onChange={(e) => onLabelChange(e.target.value)}
           placeholder={selected.kind === "line" ? "Line label" : "ROI label"}
-          className="min-w-[12rem] rounded-md border border-black/10 bg-white px-2 py-1 text-sm text-black focus:border-[var(--dn-creek-mid)] focus:outline-none"
+          className="min-w-[12rem] rounded-md border border-white/15 bg-white/[0.06] px-2 py-1 text-sm text-white focus:border-[var(--dn-creek-mid)] focus:outline-none"
         />
       </label>
       {line ? (
@@ -846,7 +846,7 @@ function DirectionToggle({
       <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
         Direction
       </span>
-      <span className="inline-flex overflow-hidden rounded-full border border-black/10">
+      <span className="inline-flex overflow-hidden rounded-full border border-white/10">
         {options.map((o) => (
           <button
             key={o.key}
@@ -857,7 +857,7 @@ function DirectionToggle({
               "px-2.5 py-1 text-sm transition",
               value === o.key
                 ? "bg-[var(--dn-creek-mid)] font-bold text-white"
-                : "bg-white text-[var(--dn-text-50)] hover:bg-black/[0.04]",
+                : "bg-white/[0.06] text-[var(--dn-text-50)] hover:bg-white/[0.08]",
             )}
           >
             {o.label}

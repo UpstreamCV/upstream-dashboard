@@ -74,7 +74,7 @@ function Row({
       <span className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         {label}
       </span>
-      <span className="text-right text-[clamp(0.82rem,0.95vw,0.9rem)] text-black">
+      <span className="text-right text-[clamp(0.82rem,0.95vw,0.9rem)] text-white">
         {value}
       </span>
     </div>

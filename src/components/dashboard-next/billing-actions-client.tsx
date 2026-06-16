@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowUpRight, ExternalLink } from "lucide-react";
 import {
   openBillingPortalAction,
   startCheckoutAction,
-} from "@/app/dashboard/(app)/billing/actions";
+} from "@/app/(dash)/(app)/billing/actions";
 import type { UsageSummary } from "@/lib/api/types";
 import { formatBillingDate } from "@/lib/usage/usage-format";
 
@@ -17,7 +17,7 @@ import { formatBillingDate } from "@/lib/usage/usage-format";
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50";
 const GHOST_BTN =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-bold text-black/70 transition hover:border-[var(--dn-creek-mid)] hover:text-black disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 text-sm font-bold text-white/80 transition hover:border-[var(--dn-creek-mid)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
 
 interface BillingActionsClientProps {
   billing: UsageSummary["billing"];
@@ -43,7 +43,7 @@ export function BillingActionsClient({
 
   if (!billing.configured) {
     return (
-      <p className="mt-3 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2 text-sm text-[var(--dn-text-50)]">
+      <p className="mt-3 rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-[var(--dn-text-50)]">
         Billing management coming soon. Plan changes are handled by the
         Upstream team for now — contact support to adjust limits.
       </p>

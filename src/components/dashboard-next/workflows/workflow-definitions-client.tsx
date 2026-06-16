@@ -8,19 +8,19 @@ import { GitBranch, Plus, Trash2 } from "lucide-react";
 import {
   deleteWorkflowAction,
   setWorkflowEnabledAction,
-} from "@/app/dashboard/(app)/workflows/actions";
+} from "@/app/(dash)/(app)/workflows/actions";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Workflow } from "@/lib/api/types";
 import { sequenceSummaryLabel } from "@/lib/workflows/sequence-config-schema";
 
 // Workflow Engine M5 — sequence workflow definitions list (the top-level
-// product objects). Rendered above the run history on /dashboard/workflows.
+// product objects). Rendered above the run history on /workflows.
 
 const GHOST_BTN =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-bold text-black/70 transition hover:border-[var(--dn-creek-mid)] hover:text-black disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-bold text-white/80 transition hover:border-[var(--dn-creek-mid)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
 
 const SEVERITY_CHIP: Record<string, string> = {
-  info: "bg-black/[0.06] text-black/70",
+  info: "bg-white/[0.05] text-white/80",
   warning: "bg-[#8a6d1f]/15 text-[#8a6d1f]",
   critical: "bg-red-700/10 text-red-700",
 };
@@ -63,7 +63,7 @@ export function WorkflowDefinitionsClient({
         </p>
         {canEdit ? (
           <Link
-            href="/dashboard/workflows/new"
+            href="/workflows/new"
             className="inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)]"
           >
             <Plus className="h-4 w-4" aria-hidden />
@@ -82,11 +82,11 @@ export function WorkflowDefinitionsClient({
           {workflows.map((workflow) => (
             <li
               key={workflow.id}
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-black/[0.02] p-3"
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-black">{workflow.name}</span>
+                  <span className="font-bold text-white">{workflow.name}</span>
                   <span
                     className={
                       "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide " +
@@ -96,7 +96,7 @@ export function WorkflowDefinitionsClient({
                     {workflow.severity}
                   </span>
                   {!workflow.enabled ? (
-                    <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-black/50">
+                    <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white/60">
                       disabled
                     </span>
                   ) : null}

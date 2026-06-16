@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { revokeTokenAction } from "@/app/dashboard/(app)/api-tokens/actions";
+import { revokeTokenAction } from "@/app/(dash)/(app)/api-tokens/actions";
 
 // Light-theme port of src/components/tokens/token-row-actions.tsx — same
 // two-step confirm pattern, restyled for the white .dn-tile table.
@@ -41,7 +41,7 @@ export function TokenRowActionsNext({
           type="button"
           onClick={() => setConfirming(false)}
           disabled={pending}
-          className="text-[11px] font-mono uppercase tracking-wider text-[var(--dn-text-50)] hover:text-black px-2 py-1"
+          className="text-[11px] font-mono uppercase tracking-wider text-[var(--dn-text-50)] hover:text-white px-2 py-1"
         >
           Cancel
         </button>

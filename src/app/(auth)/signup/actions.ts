@@ -17,7 +17,7 @@ export async function signUpAction(
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const workspaceName = String(formData.get("workspace_name") ?? "").trim();
-  const next = String(formData.get("next") ?? "/dashboard");
+  const next = String(formData.get("next") ?? "/");
 
   if (!email || !password) {
     return { error: "Email and password are required." };

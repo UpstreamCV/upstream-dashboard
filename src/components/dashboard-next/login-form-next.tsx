@@ -21,7 +21,7 @@ import { signInAction, type LoginState } from "@/app/(auth)/login/actions";
 // the pointer approaches.
 export function LoginFormNext() {
   const params = useSearchParams();
-  const next = params.get("next") ?? "/dashboard";
+  const next = params.get("next") ?? "/";
   const [state, formAction, pending] = useActionState<
     LoginState | undefined,
     FormData
@@ -57,7 +57,7 @@ export function LoginFormNext() {
     <form action={formAction} className="flex flex-col gap-4 sm:gap-5">
       <div className="text-center mb-1 sm:mb-2">
         <Image
-          src="/dashboard/upstream-logo.png"
+          src="/upstream-logo.png"
           alt="Upstream"
           width={64}
           height={64}

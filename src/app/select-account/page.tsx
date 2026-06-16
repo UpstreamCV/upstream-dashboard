@@ -44,7 +44,7 @@ export default async function SelectAccountPage() {
   if (memberships.length === 1) {
     // If we got here with exactly one membership, the cookie was missing or
     // stale. Let getActiveAccount handle the auto-set on the next request.
-    redirect("/dashboard");
+    redirect("/");
   }
 
   return (

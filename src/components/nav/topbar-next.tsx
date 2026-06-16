@@ -3,41 +3,20 @@ import { Search } from "lucide-react";
 import type { DemoScene } from "@/lib/demo/scene";
 import { DemoNotifications } from "@/lib/demo/demo-notifications";
 
-// Figma DashboardHome top bar — sits directly on the creek gradient (no panel).
-// Left: avatar + "Welcome back, {name}". Right: search + "Upstream Dashboard"
-// + the white Upstream mark. Server Component (display-only); auth comes from
-// the (app) layout which passes `name` down.
-export function TopbarNext({
-  name,
-  demoScene,
-}: {
-  name: string;
-  demoScene?: DemoScene | null;
-}) {
-  const initial = name.trim().charAt(0).toUpperCase() || "U";
-
+// The top-RIGHT tools cluster of the dashboard header: search + "Upstream
+// Dashboard" wordmark + logo (+ demo notifications). On Home these render at the
+// top-right INSIDE the content panel, so the panel's background runs behind them
+// (the box "goes over" this area). The user identity (avatar + greeting) lives
+// separately at the top of the left rail. Server Component (display-only); the
+// search input is presentational until search lands.
+//
+// (Was `TopbarNext`, a full-width bar with identity on the left + tools on the
+// right; identity moved to the rail, so this is now tools-only.)
+export function TopbarTools({ demoScene }: { demoScene?: DemoScene | null }) {
   return (
-    <header className="flex items-center justify-between gap-4 px-1 sm:px-3 py-1">
-      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-        <span
-          className="grid place-items-center rounded-full bg-white/90 text-[var(--dn-creek-deep)] font-bold shrink-0"
-          style={{
-            width: "clamp(40px,4.4vw,64px)",
-            height: "clamp(40px,4.4vw,64px)",
-            fontSize: "clamp(1rem,1.6vw,1.5rem)",
-          }}
-          aria-hidden
-        >
-          {initial}
-        </span>
-        <h1 className="truncate text-white font-bold text-[clamp(1.15rem,2.2vw,2rem)]">
-          Welcome back, <span className="capitalize">{name}</span>
-        </h1>
-      </div>
-
-      <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-        {demoScene ? <DemoNotifications scene={demoScene} /> : null}
-        <div className="hidden sm:flex items-center gap-3 sm:gap-4">
+    <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+      {demoScene ? <DemoNotifications scene={demoScene} /> : null}
+      <div className="hidden sm:flex items-center gap-3 sm:gap-4">
         {/* Presentational — search isn't wired yet. WIRE-UP: lift to a client
             component with state + a results action when search lands. */}
         <div className="dn-glow-soft relative rounded-full">
@@ -57,7 +36,7 @@ export function TopbarNext({
           Upstream Dashboard
         </span>
         <Image
-          src="/dashboard/upstream-logo.png"
+          src="/upstream-logo.png"
           alt="Upstream"
           width={64}
           height={64}
@@ -68,8 +47,7 @@ export function TopbarNext({
             height: "clamp(40px,4.4vw,64px)",
           }}
         />
-        </div>
       </div>
-    </header>
+    </div>
   );
 }

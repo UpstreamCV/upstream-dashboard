@@ -30,7 +30,7 @@ export function LiveStreamPanelNext({
         </h3>
         <p className="text-sm text-[var(--dn-text-50)] mt-2 max-w-md mx-auto">
           When the agent calls{" "}
-          <span className="font-mono text-black/80">
+          <span className="font-mono text-white/80">
             POST /v1/stream-sessions/start
           </span>{" "}
           and begins publishing, live video appears here.

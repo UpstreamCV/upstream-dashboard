@@ -84,7 +84,7 @@ function PanelBody({ display }: { display: AppliedGeometryDisplay }) {
           <Row
             label="Revision"
             value={
-              <span className="font-mono text-black">r{display.revision}</span>
+              <span className="font-mono text-white">r{display.revision}</span>
             }
           />
           <Row

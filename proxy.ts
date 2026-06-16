@@ -9,7 +9,7 @@ import { isDemoMode } from "@/lib/demo/demo-mode";
 // but it means adding a new entry must be done with full knowledge of every
 // route below it — anything nested becomes public automatically. Don't add a
 // short prefix here unless you mean every subpath.
-const PUBLIC_PATHS = ["/login", "/signup", "/dashboard/login"];
+const PUBLIC_PATHS = ["/login", "/signup"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -56,18 +56,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Logged-in users hitting the auth pages get sent into the app (now at root).
   if (user && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    url.search = "";
-    return NextResponse.redirect(url);
-  }
-
-  // Mirror the above for the dashboard's own light-themed login: logged-in
-  // users should be sent into the dashboard rather than seeing the form.
-  if (user && pathname === "/dashboard/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/";
     url.search = "";
     return NextResponse.redirect(url);
   }

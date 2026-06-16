@@ -10,7 +10,7 @@
  *
  * Returns the original path when safe, or the fallback otherwise.
  */
-export function safeNextPath(next: string | null | undefined, fallback = "/dashboard"): string {
+export function safeNextPath(next: string | null | undefined, fallback = "/"): string {
   if (!next) return fallback;
   if (!next.startsWith("/")) return fallback;
   if (next.startsWith("//")) return fallback;

@@ -1,14 +1,15 @@
-export type DotStatus = "green" | "yellow" | "red" | "neutral";
+export type DotStatus = "green" | "yellow" | "orange" | "red" | "neutral";
 
-// Figma status indicator (the small filled circle by each tile title).
-// Yellow #EEDC68 is taken from the Figma asset; green/red align to the app's
-// existing accent / danger base. `neutral` is a muted sage for idle/disabled
-// states (reads clearly on the white cards). Hex kept so the `${color}22`
-// halo trick below stays valid.
+// Figma status indicator (the small filled circle by each tile title). Colors
+// are the redesign's status-accent system (see --dn-* in theme.css): green
+// healthy, yellow info, orange needs-review/warning, red critical/offline,
+// neutral idle. A plain filled dot — no ring/halo. Hex kept literal for callers
+// (STATUS_HEX) that need the raw value.
 const COLOR: Record<DotStatus, string> = {
-  green: "#5fb869",
-  yellow: "#eedc68",
-  red: "#e15a4c",
+  green: "#48c84a",
+  yellow: "#ffe957",
+  orange: "#ff8f57",
+  red: "#f94b4b",
   neutral: "#9aa39a",
 };
 
@@ -22,8 +23,10 @@ export function StatusDot({ status }: { status: DotStatus }) {
         width: "clamp(10px, 1vw, 15px)",
         height: "clamp(10px, 1vw, 15px)",
         background: color,
-        boxShadow: `0 0 0 4px ${color}22`,
       }}
     />
   );
 }
+
+// Literal hexes for callers that need the raw value (SVG fills, charts).
+export const STATUS_HEX = COLOR;
