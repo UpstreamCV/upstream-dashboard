@@ -22,11 +22,16 @@ import {
 // the Overlay and Content are each wrapped in their own `dashboard-next`
 // container to re-apply the .dn-* class scoping.
 
-function InstallSnippet({ token }: { token: string }) {
+function InstallSnippet() {
   const lines = [
+    // The agent's real CLI: the console script is `upstream` (not
+    // `upstream-agent`), and tokens are entered via the shell's `login`
+    // prompt (hidden input) rather than a CLI flag — flags would leak the
+    // token into shell history. The plaintext shown above is what gets
+    // pasted at the prompt.
     "pip install upstream-agent",
-    `upstream-agent init --token ${token}`,
-    "upstream-agent start --camera-index 0 --width 1280 --height 720 --fps 30",
+    "upstream   # opens the agent shell",
+    "# in the shell: type `login` and paste your token, then `start`",
   ];
   return (
     <pre className="font-mono text-[12px] leading-relaxed text-white/80 bg-white/[0.05] border border-white/10 rounded-xl p-4 overflow-x-auto">
@@ -218,7 +223,7 @@ export function TokenCreateDialogNext({
                   <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)] mb-1.5">
                     Install snippet
                   </p>
-                  <InstallSnippet token={secret.plaintext} />
+                  <InstallSnippet />
                 </div>
                 <div className="rounded-xl border border-[#eedc68] bg-[#eedc68]/20 px-3.5 py-2.5 text-xs text-[#8a6d1f]">
                   Save this token now. We never store the plaintext. Close this

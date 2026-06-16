@@ -12,6 +12,11 @@ export function useUpstreamList<T>(
     // (e.g. the live perception overlay polling at ~2 Hz) must opt down so
     // their polls aren't coalesced away; everything else keeps the default.
     dedupingInterval?: number;
+    // Per-hook SWR equality override. SWR calls compare(current, incoming)
+    // and KEEPS the current data when it returns true — consumers with
+    // multiple cache writers (e.g. the perception overlay's WS + Realtime +
+    // poll) use this to refuse out-of-order/stale fetch results.
+    compare?: (a: T | undefined, b: T | undefined) => boolean;
   },
 ): SWRResponse<T> {
   return useSWR<T>(path, proxyFetch, {
@@ -21,5 +26,6 @@ export function useUpstreamList<T>(
     ...(options?.dedupingInterval !== undefined
       ? { dedupingInterval: options.dedupingInterval }
       : {}),
+    ...(options?.compare !== undefined ? { compare: options.compare } : {}),
   });
 }

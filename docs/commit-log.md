@@ -60,6 +60,86 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 **Testing/checks:** `npm run build` passes (all routes compile); `npx tsc --noEmit` clean on changed source. `npm run lint` clean on changed files — the only lint error remains the pre-existing demo-mode `add-camera-panel.tsx` `set-state-in-effect`. Demo note: `/v1/alerts` isn't routed in demo mode, so Triage/Needs-Review/Recent-Events show empty under `NEXT_PUBLIC_DEMO_MODE=1` (handled defensively); add a demo fixture if desired.
 
 **Docs updated:** `docs/commit-log.md` (this entry), `AGENTS.md` (dashboard-next section + theme stack note), `docs/dashboard-next.md` (header + theme note), `src/app/dashboard/theme.css` (header comment).
+## 2026-06-12 - fix(tokens): correct the agent install snippet (real CLI)
+
+The token-creation dialogs showed `upstream-agent init --token …` /
+`upstream-agent start …` — commands that don't exist. The console script
+is `upstream`, and tokens are entered via the shell's hidden `login`
+prompt (never a CLI flag, which would land the plaintext in shell
+history). Both dialogs (dashboard + legacy) now show the real flow; the
+unused token interpolation was removed from the snippet. Part of the
+agent update M2 slice (the api-server/bootstrap + agent notify work
+lives in those repos).
+
+## 2026-06-12 - fix(overlay): newer-wins snapshot ordering (the periodic hitch)
+
+**Why:** the overlay's SWR cache has three racing writers — WS hot path
+(6-15 Hz, freshest), Supabase Realtime rows (~1 Hz cold path), and the
+poll (250 ms, or the 2 s keep-warm tick while WS delivers). SWR replaced
+cache data with every poll result unconditionally, and `/perception/
+latest` is the ~1 Hz cold path — usually OLDER than the last WS frame.
+Every keep-warm tick could shove an older snapshot into the cache, the
+smoothed boxes rubber-banded backward, and the user saw a small lag
+"every now and then."
+
+**What:** monotonic newer-wins application. New pure helpers
+`isNewerPerceptionRecord` / `pickNewerPerceptionRecord`
+(overlay-helpers.ts): a record applies only when its `observed_at` is
+strictly newer (equal keeps current — no churn; unparseable incoming
+never replaces; anything parseable beats a garbage current). Wired
+three ways: an SWR `compare` on the overlay's `useUpstreamList` (new
+optional passthrough in use-list.ts) refuses equal-or-older poll
+results; the Realtime and WS handlers switch to functional `mutate`
+guarded by the same rule. Poll cadence/gating/recovery untouched —
+genuinely newer data (incl. recovery after WS silence) applies exactly
+as before. Cosmetic: the "· refreshing…" indicator is hidden while
+`wsDelivering` so the keep-warm tick no longer blinks the panel.
+
+**Tests (+4):** ordering truth table (newer/equal/older/null/garbage)
+in overlay-helpers.test.ts; component tests updated to probe the
+functional updaters (WS frame replaces empty/older, keeps fresher;
+older realtime row never replaces a fresher cached snapshot). 635
+passing; tsc clean; changed files lint-clean.
+
+## 2026-06-12 - feat(overlay): display-only smoothing for live detection boxes
+
+**Why:** the perception-fanout WS hot path delivers raw boxes at 10-15 Hz;
+rendering them directly looks far better than polling but boxes still snap
+between updates and flicker out on a single missed detection.
+
+**What:** a browser-side smoothing layer — presentation ONLY. Raw WS/poll
+snapshots stay the SWR-cache source of truth (counts, messages, analytics
+all read unsmoothed data; nothing backend-facing changes).
+
+- `src/lib/perception/overlay-smoothing.ts` — pure, time-injected
+  `DetectionSmoother`: per-track (keyed by `track_id`) lerp of x/y/w/h
+  toward the latest raw target (`BOX_SMOOTHING_ALPHA = 0.35` per 60 Hz
+  frame, frame-rate-normalized, epsilon snap); ~`DISAPPEAR_GRACE_MS =
+  300` fading grace window for briefly-missed tracks (expired entries
+  evicted — no leaks; re-entries appear fresh); light EMA
+  (`CONFIDENCE_SMOOTHING_ALPHA = 0.25`) on the LABEL confidence only
+  (raw object never mutated); objects without a `track_id` pass through
+  raw. Master kill switch `ENABLE_OVERLAY_SMOOTHING` — when false the
+  render path is byte-identical to before with zero animation frames.
+- `src/lib/perception/use-smoothed-detections.ts` — rAF loop that
+  re-samples at browser render speed, self-stops when every box has
+  converged and no fade is active (idle scene = zero frames), cancels on
+  unmount/disable, and passes raw boxes through until the first sample so
+  the first paint never blanks.
+- `overlay-svg.tsx` — optional pre-computed `objects` prop (with
+  per-object opacity for the grace fade). Geometry (ROIs / lines) is
+  NEVER smoothed and renders exactly as configured. Legacy callers
+  without the prop are unchanged.
+- `live-perception-overlay-next.tsx` — memoizes the snapshot/selection on
+  the SWR record identity and feeds the smoothed boxes to the SVG;
+  smoothing is active only while boxes are shown in a live session
+  (never in demo mode).
+
+**Tests:** `overlay-smoothing.test.ts` (13) — glide monotonicity,
+convergence + rest detection, frame-rate normalization, no fly-in on new
+tracks, grace fade/expiry/reappear/eviction, label-confidence EMA with
+raw-object immutability, untracked passthrough, disabled-path mapping.
+631 total passing; tsc clean; changed files lint-clean.
 
 ## 2026-06-11 — fix: camera form inputs invisible (login pill style inside white tiles)
 

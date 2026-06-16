@@ -19,6 +19,7 @@ import {
   pointsToAttr,
   selectOverlayObjects,
 } from "./overlay-helpers";
+import type { DisplayOverlayObject } from "./overlay-smoothing";
 
 const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
@@ -28,6 +29,11 @@ export interface PerceptionOverlaySvgProps {
   showLabels: boolean;
   showGeometry: boolean;
   minConfidence: number;
+  /** Pre-computed (possibly display-smoothed) boxes. When provided, the
+   * internal raw selection is skipped and these are drawn instead — with
+   * per-object opacity (the disappearance grace fade). Geometry (ROIs/lines)
+   * is NEVER smoothed and always renders from the snapshot as configured. */
+  objects?: DisplayOverlayObject[];
 }
 
 export function PerceptionOverlaySvg({
@@ -36,6 +42,7 @@ export function PerceptionOverlaySvg({
   showLabels,
   showGeometry,
   minConfidence,
+  objects,
 }: PerceptionOverlaySvgProps) {
   const { frameWidth: fw, frameHeight: fh } = snapshot;
   // The client component only mounts this when dimensions exist; guard anyway
@@ -43,8 +50,15 @@ export function PerceptionOverlaySvg({
   if (fw === null || fh === null) return null;
 
   const fontSize = Math.max(13, Math.min(40, fh * 0.032));
-  const overlayObjects = showBoxes
-    ? selectOverlayObjects(snapshot.objects, fw, fh, minConfidence)
+  const overlayObjects: DisplayOverlayObject[] = showBoxes
+    ? (objects ??
+      selectOverlayObjects(snapshot.objects, fw, fh, minConfidence).map(
+        (raw, idx) => ({
+          key: raw.object.track_id ?? `untracked-${idx}`,
+          opacity: 1,
+          ...raw,
+        }),
+      ))
     : [];
 
   return (
@@ -112,8 +126,8 @@ export function PerceptionOverlaySvg({
           })
         : null}
 
-      {overlayObjects.map(({ object, box }, idx) => (
-        <g key={`obj-${object.track_id ?? idx}`}>
+      {overlayObjects.map(({ object, box, key, opacity }) => (
+        <g key={`obj-${key}`} opacity={opacity === 1 ? undefined : opacity}>
           <rect
             x={box.x}
             y={box.y}
