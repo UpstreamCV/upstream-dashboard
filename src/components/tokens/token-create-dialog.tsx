@@ -10,11 +10,16 @@ import {
   type CreateTokenResult,
 } from "@/app/dashboard-legacy/settings/api-tokens/actions";
 
-function InstallSnippet({ token }: { token: string }) {
+function InstallSnippet() {
   const lines = [
+    // The agent's real CLI: the console script is `upstream` (not
+    // `upstream-agent`), and tokens are entered via the shell's `login`
+    // prompt (hidden input) rather than a CLI flag — flags would leak the
+    // token into shell history. The plaintext shown above is what gets
+    // pasted at the prompt.
     "pip install upstream-agent",
-    `upstream-agent init --token ${token}`,
-    "upstream-agent start --camera-index 0 --width 1280 --height 720 --fps 30",
+    "upstream   # opens the agent shell",
+    "# in the shell: type `login` and paste your token, then `start`",
   ];
   return (
     <pre className="mono text-[12px] leading-relaxed text-ink-soft bg-glass-bg-2 border border-glass-stroke-2 rounded-xl p-4 overflow-x-auto">
@@ -191,7 +196,7 @@ export function TokenCreateDialog({
                 <p className="text-[11px] uppercase tracking-wider mono text-ink-mute mb-1.5">
                   Install snippet
                 </p>
-                <InstallSnippet token={secret.plaintext} />
+                <InstallSnippet />
               </div>
               <div className="rounded-xl border border-[rgba(212,201,138,0.35)] bg-[rgba(212,201,138,0.07)] px-3.5 py-2.5 text-xs text-[#d4c98a]">
                 Save this token now. We never store the plaintext. Close this

@@ -145,6 +145,18 @@ function record(
   };
 }
 
+/** The functional updater handed to mutate by the newer-wins cache writes
+ * (WS + Realtime). Asserts the call shape, returns the updater so tests can
+ * probe its ordering decisions against arbitrary `prev` values. */
+function lastMutateUpdater() {
+  const call = h.mutateSpy.mock.calls.at(-1);
+  expect(typeof call?.[0]).toBe("function");
+  expect(call?.[1]).toEqual({ revalidate: false });
+  return call![0] as (
+    prev?: { snapshot: LatestPerceptionRecord },
+  ) => { snapshot: LatestPerceptionRecord } | undefined;
+}
+
 function setHookData(
   data: { snapshot: LatestPerceptionRecord } | undefined,
   opts: { error?: unknown; isValidating?: boolean } = {},
@@ -442,12 +454,19 @@ describe("LivePerceptionOverlayNext — perception-fanout WS hot path", () => {
     connectPlayer();
     await flushRealtime();
     emitWsFrame();
-    expect(h.mutateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        snapshot: expect.objectContaining({ id: "ws:cam-1:7" }),
-      }),
-      { revalidate: false },
-    );
+    // Newer-wins guard: mutate now receives a functional updater. Empty
+    // cache and older cached snapshots are replaced; a fresher cached
+    // snapshot is kept (prev identity returned — SWR sees no change).
+    const updater = lastMutateUpdater();
+    expect(updater(undefined)?.snapshot.id).toBe("ws:cam-1:7");
+    const older = {
+      snapshot: record({ observedAt: new Date(NOW - 5_000).toISOString() }),
+    };
+    expect(updater(older)?.snapshot.id).toBe("ws:cam-1:7");
+    const fresher = {
+      snapshot: record({ observedAt: new Date(NOW + 5_000).toISOString() }),
+    };
+    expect(updater(fresher)).toBe(fresher);
   });
 
   test("ignores WS frames for a different camera", async () => {
@@ -528,12 +547,35 @@ describe("LivePerceptionOverlayNext — realtime event + regressions", () => {
         },
       }),
     );
-    expect(h.mutateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        snapshot: expect.objectContaining({ id: "p2" }),
+    const updater = lastMutateUpdater();
+    expect(updater(undefined)?.snapshot.id).toBe("p2");
+  });
+
+  test("an older realtime row never replaces a fresher cached snapshot", async () => {
+    // The ~1 Hz cold path (realtime rows, keep-warm polls) races the
+    // 6-15 Hz WS frames; without newer-wins ordering it shoves the overlay
+    // backward in time every couple of seconds (the periodic hitch).
+    renderOverlay();
+    turnOn();
+    connectPlayer();
+    await flushRealtime();
+    act(() =>
+      h.realtime.changeHandler?.({
+        new: {
+          id: "p-old",
+          camera_id: "cam-1",
+          observed_at: new Date(NOW - 2_000).toISOString(),
+          snapshot: snap([PERSON]),
+        },
       }),
-      { revalidate: false },
     );
+    const updater = lastMutateUpdater();
+    const fresher = { snapshot: record({ id: "ws-fresh" }) }; // observed_at = NOW
+    expect(updater(fresher)).toBe(fresher); // kept by identity — no churn
+    const older = {
+      snapshot: record({ observedAt: new Date(NOW - 10_000).toISOString() }),
+    };
+    expect(updater(older)?.snapshot.id).toBe("p-old"); // genuinely newer applies
   });
 
   test("ignores realtime events for a different camera (client-side filter)", async () => {
