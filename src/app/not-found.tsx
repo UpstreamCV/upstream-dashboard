@@ -14,7 +14,7 @@ export default function NotFound() {
           renamed or is scoped to a different account.
         </p>
         <Link
-          href="/dashboard"
+          href="/"
           className="inline-flex mt-5 rounded-full bg-ink text-[#0f1809] font-medium px-4 py-2 text-sm transition hover:bg-white"
         >
           Back to dashboard

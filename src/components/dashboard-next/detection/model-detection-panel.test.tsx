@@ -20,7 +20,7 @@ const saveProcessingConfigAction = vi.fn((form: FormData) => {
   });
 });
 vi.mock(
-  "@/app/dashboard/(app)/cameras/[cameraId]/configure/detection/actions",
+  "@/app/(dash)/(app)/cameras/[cameraId]/configure/detection/actions",
   () => ({
     saveProcessingConfigAction: (form: FormData) =>
       saveProcessingConfigAction(form),

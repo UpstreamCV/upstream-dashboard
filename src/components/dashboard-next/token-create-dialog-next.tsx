@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   createTokenAction,
   type CreateTokenResult,
-} from "@/app/dashboard/(app)/api-tokens/actions";
+} from "@/app/(dash)/(app)/api-tokens/actions";
 
 // Faithful port of src/components/tokens/token-create-dialog.tsx restyled for
 // the dashboard-next light theme.
@@ -29,7 +29,7 @@ function InstallSnippet({ token }: { token: string }) {
     "upstream-agent start --camera-index 0 --width 1280 --height 720 --fps 30",
   ];
   return (
-    <pre className="font-mono text-[12px] leading-relaxed text-black/75 bg-black/[0.05] border border-black/10 rounded-xl p-4 overflow-x-auto">
+    <pre className="font-mono text-[12px] leading-relaxed text-white/80 bg-white/[0.05] border border-white/10 rounded-xl p-4 overflow-x-auto">
       {lines.join("\n")}
     </pre>
   );
@@ -158,7 +158,7 @@ export function TokenCreateDialogNext({
       <Dialog.Portal>
         <div className="dashboard-next">
           <Dialog.Overlay className="fixed inset-0 bg-[rgba(20,32,18,0.55)] backdrop-blur-sm z-40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[min(560px,calc(100vw-2rem))] dn-tile p-6 text-black">
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[min(560px,calc(100vw-2rem))] dn-tile p-6 text-white">
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
                 <Dialog.Title className="font-bold text-[clamp(1.1rem,1.6vw,1.4rem)] leading-tight">
@@ -173,7 +173,7 @@ export function TokenCreateDialogNext({
               <Dialog.Close asChild>
                 <button
                   aria-label="Close"
-                  className="rounded-full p-1.5 text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.06] transition"
+                  className="rounded-full p-1.5 text-[var(--dn-text-50)] hover:text-white hover:bg-white/[0.08] transition"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -195,7 +195,7 @@ export function TokenCreateDialogNext({
                       autoComplete="off"
                       spellCheck={false}
                       onClick={(e) => e.currentTarget.select()}
-                      className="flex-1 min-w-0 font-mono text-sm rounded-xl bg-black/[0.04] border border-black/10 px-3 py-2.5 text-black focus:outline-none focus:border-black/30 transition"
+                      className="flex-1 min-w-0 font-mono text-sm rounded-xl bg-white/[0.06] border border-white/15 px-3 py-2.5 text-white focus:outline-none focus:border-white/30 transition"
                     />
                     <button
                       type="button"
@@ -228,7 +228,7 @@ export function TokenCreateDialogNext({
                   <Dialog.Close asChild>
                     <button
                       type="button"
-                      className="rounded-full bg-black/[0.06] border border-black/10 px-4 py-2 text-sm text-black hover:bg-black/[0.1] transition"
+                      className="rounded-full bg-white/[0.05] border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/[0.08] transition"
                     >
                       Done
                     </button>
@@ -251,7 +251,7 @@ export function TokenCreateDialogNext({
                     required
                     autoComplete="off"
                     placeholder="warehouse-cam-01"
-                    className="w-full rounded-xl bg-black/[0.04] border border-black/10 px-4 py-2.5 text-black placeholder:text-[var(--dn-text-50)] focus:outline-none focus:border-black/30 transition"
+                    className="w-full rounded-xl bg-white/[0.06] border border-white/15 px-4 py-2.5 text-white placeholder:text-[var(--dn-text-50)] focus:outline-none focus:border-white/30 transition"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -270,7 +270,7 @@ export function TokenCreateDialogNext({
                       name="expires_at"
                       type="datetime-local"
                       required
-                      className="w-full rounded-xl bg-black/[0.04] border border-black/10 px-4 py-2.5 text-black focus:outline-none focus:border-black/30 transition mt-1"
+                      className="w-full rounded-xl bg-white/[0.06] border border-white/15 px-4 py-2.5 text-white focus:outline-none focus:border-white/30 transition mt-1"
                     />
                   ) : (
                     <p className="text-[11px] text-[var(--dn-text-50)] pt-0.5">
@@ -286,7 +286,7 @@ export function TokenCreateDialogNext({
                   <Dialog.Close asChild>
                     <button
                       type="button"
-                      className="rounded-full bg-black/[0.06] border border-black/10 px-4 py-2 text-sm text-black hover:bg-black/[0.1] transition"
+                      className="rounded-full bg-white/[0.05] border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/[0.08] transition"
                     >
                       Cancel
                     </button>

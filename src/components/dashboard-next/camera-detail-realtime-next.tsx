@@ -8,7 +8,7 @@ import type { StreamSession } from "@/lib/api/types";
 import { isDemoMode } from "@/lib/demo/demo-mode";
 
 // Light-theme port — pure-logic, no visuals — of
-// src/app/dashboard/cameras/[cameraId]/camera-detail-realtime.tsx.
+// src/app/(dash)/cameras/[cameraId]/camera-detail-realtime.tsx.
 //
 // Subscribes to Supabase Realtime broadcasts on `stream_sessions` filtered to
 // this camera and calls router.refresh() whenever the row's state changes.
@@ -47,7 +47,7 @@ export function CameraDetailRealtimeNext({
       const client = await getSupabaseBrowserClient();
       if (cancelled) return;
       supabase = client;
-      // Channel name: `camera:${cameraId}:sessions` — the primary /dashboard name.
+      // Channel name: `camera:${cameraId}:sessions` — the primary / name.
       // The /dashboard-legacy fallback uses `legacy-camera:…` so a user with both
       // tabs open on the same camera gets two independent subscriptions instead of
       // accidentally sharing one. When /dashboard-legacy is retired this stays the

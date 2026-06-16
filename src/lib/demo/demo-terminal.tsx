@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { DEMO_TERMINAL_LINES } from "./fixtures";
 import { TerminalLog } from "./terminal-log";
 
-// Standalone Act-1 terminal scene (optional cold-open at /dashboard/demo/terminal):
+// Standalone Act-1 terminal scene (optional cold-open at /demo/terminal):
 // animates the real `upstream run` output then offers Continue → login. Keys:
 // Enter = continue (once done), R = restart. The same animation is reused inside
 // the add-camera panel (the canonical Part-1 home).
@@ -21,7 +21,7 @@ export function DemoTerminal() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && done) router.push("/dashboard/login");
+      if (e.key === "Enter" && done) router.push("/login");
       else if (e.key.toLowerCase() === "r") restart();
     };
     window.addEventListener("keydown", onKey);
@@ -52,7 +52,7 @@ export function DemoTerminal() {
       {done ? (
         <button
           type="button"
-          onClick={() => router.push("/dashboard/login")}
+          onClick={() => router.push("/login")}
           style={{
             marginTop: 28,
             alignSelf: "flex-start",

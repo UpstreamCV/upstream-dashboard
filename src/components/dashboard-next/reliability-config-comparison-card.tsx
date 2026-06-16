@@ -74,13 +74,13 @@ function Report({ data }: { data: ConfigComparisonSummaryResponse }) {
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip status={data.comparison_status} />
         {data.baseline && data.candidate ? (
-          <span className="text-[clamp(0.85rem,1vw,0.95rem)] font-semibold text-black">
+          <span className="text-[clamp(0.85rem,1vw,0.95rem)] font-semibold text-white">
             {revLabel(data.candidate)} vs {revLabel(data.baseline)}
           </span>
         ) : null}
       </div>
 
-      <p className="text-[clamp(0.85rem,1vw,0.95rem)] text-black">{data.summary}</p>
+      <p className="text-[clamp(0.85rem,1vw,0.95rem)] text-white">{data.summary}</p>
 
       {data.baseline && data.candidate ? (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -94,7 +94,7 @@ function Report({ data }: { data: ConfigComparisonSummaryResponse }) {
       ) : null}
 
       {data.bullets.length > 0 ? (
-        <ul className="list-disc pl-5 space-y-1 text-[clamp(0.8rem,0.95vw,0.9rem)] text-black">
+        <ul className="list-disc pl-5 space-y-1 text-[clamp(0.8rem,0.95vw,0.9rem)] text-white">
           {data.bullets.map((b) => (
             <li key={b}>{b}</li>
           ))}
@@ -122,11 +122,11 @@ function revLabel(group: ConfigComparisonGroup): string {
 
 function GroupPanel({ title, group }: { title: string; group: ConfigComparisonGroup }) {
   return (
-    <div className="rounded-lg border border-black/10 bg-white/60 p-3">
+    <div className="rounded-lg border border-white/10 bg-white/[0.05] p-3">
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         {title}
       </p>
-      <p className="mt-1 text-[clamp(0.85rem,1vw,0.95rem)] font-semibold text-black">
+      <p className="mt-1 text-[clamp(0.85rem,1vw,0.95rem)] font-semibold text-white">
         {group.label}
       </p>
       <div className="mt-2 grid grid-cols-3 gap-x-4 gap-y-1">
@@ -144,7 +144,7 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         {label}
       </p>
-      <p className="mt-0.5 text-[clamp(0.85rem,1vw,0.95rem)] text-black">{value}</p>
+      <p className="mt-0.5 text-[clamp(0.85rem,1vw,0.95rem)] text-white">{value}</p>
     </div>
   );
 }
@@ -157,7 +157,7 @@ function StatusChip({ status }: { status: ConfigComparisonStatus }) {
         "text-[11px] font-mono uppercase tracking-wider",
         status === "mixed_metrics"
           ? "border-[#8a6d1f]/40 text-[#8a6d1f]"
-          : "border-black/10 text-[var(--dn-text-50)]",
+          : "border-white/10 text-[var(--dn-text-50)]",
       )}
     >
       {STATUS_LABEL[status]}
@@ -178,7 +178,7 @@ function NoteList({
     <div
       className={clsx(
         "rounded-lg border p-3",
-        tone === "amber" ? "border-[#8a6d1f]/30" : "border-black/10",
+        tone === "amber" ? "border-[#8a6d1f]/30" : "border-white/10",
       )}
     >
       <p
@@ -229,7 +229,7 @@ function RangeToggle({
               "rounded-full border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition",
               active
                 ? "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
-                : "border-black/10 bg-white text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.04]",
+                : "border-white/10 bg-white/[0.06] text-[var(--dn-text-50)] hover:text-white hover:bg-white/[0.08]",
             )}
           >
             {r}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import clsx from "clsx";
 import { Info, Save, ScanEye } from "lucide-react";
-import { saveProcessingConfigAction } from "@/app/dashboard/(app)/cameras/[cameraId]/configure/detection/actions";
+import { saveProcessingConfigAction } from "@/app/(dash)/(app)/cameras/[cameraId]/configure/detection/actions";
 import type {
   CameraProcessingConfig,
   ModelRegistryEntry,
@@ -28,13 +28,13 @@ import {
 // unchanged until the processor-config milestone. The notice block says so.
 
 const SELECT_CLASS =
-  "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 const NUMBER_CLASS =
-  "w-20 rounded-lg border border-black/10 bg-white px-2 py-1 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  "w-20 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50";
 const GHOST_BTN =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-bold text-black/70 transition hover:border-[var(--dn-creek-mid)] hover:text-black disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-bold text-white/80 transition hover:border-[var(--dn-creek-mid)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
 
 // Processing-FPS choices the dashboard offers. `null` = use the runtime/source
 // default. Values stay within the api-server's [1, 30] integer bound.
@@ -333,7 +333,7 @@ function ModelPicker({
           <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
             detection model
           </p>
-          <h2 className="mt-1 font-bold text-[clamp(1.1rem,1.6vw,1.5rem)] text-black">
+          <h2 className="mt-1 font-bold text-[clamp(1.1rem,1.6vw,1.5rem)] text-white">
             Which model runs on this camera?
           </h2>
           <p className="mt-2 text-sm text-[var(--dn-text-50)]">
@@ -397,7 +397,7 @@ function ClassSelection({
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         what to detect?
       </p>
-      <h3 className="mt-1 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+      <h3 className="mt-1 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-white">
         Object classes
       </h3>
 
@@ -406,9 +406,9 @@ function ClassSelection({
           type="checkbox"
           checked={allClasses}
           onChange={onAllClassesToggle}
-          className="h-4 w-4 rounded border-black/20 accent-[var(--dn-creek-mid)]"
+          className="h-4 w-4 rounded border-white/10 accent-[var(--dn-creek-mid)]"
         />
-        <span className="text-sm font-bold text-black">
+        <span className="text-sm font-bold text-white">
           All supported classes
         </span>
         <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
@@ -441,7 +441,7 @@ function ClassSelection({
                     "flex items-center gap-2 text-sm",
                     allClasses
                       ? "cursor-not-allowed text-[var(--dn-text-50)]"
-                      : "cursor-pointer text-black",
+                      : "cursor-pointer text-white",
                   )}
                 >
                   <input
@@ -449,7 +449,7 @@ function ClassSelection({
                     checked={checked}
                     disabled={allClasses}
                     onChange={() => onClassToggle(className)}
-                    className="h-4 w-4 rounded border-black/20 accent-[var(--dn-creek-mid)] disabled:opacity-50"
+                    className="h-4 w-4 rounded border-white/10 accent-[var(--dn-creek-mid)] disabled:opacity-50"
                   />
                   <span className="font-mono">{className}</span>
                 </label>
@@ -495,7 +495,7 @@ function DetectionTuning({
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         how to detect?
       </p>
-      <h3 className="mt-1 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+      <h3 className="mt-1 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-white">
         Tracker, confidence &amp; processing rate
       </h3>
       <p className="mt-1.5 text-xs text-[var(--dn-text-50)]">
@@ -668,7 +668,7 @@ function FpsControl({
 function NotLiveNotice() {
   return (
     <div
-      className="dn-tile flex items-start gap-2.5 border border-black/10 bg-black/[0.02] p-3"
+      className="dn-tile flex items-start gap-2.5 border border-white/10 bg-white/[0.04] p-3"
       role="note"
     >
       <Info
@@ -694,7 +694,7 @@ function ModelInfo({ model }: { model: ModelRegistryEntry | undefined }) {
         model info
       </p>
       {model.description ? (
-        <p className="mt-2 text-sm text-black/80">{model.description}</p>
+        <p className="mt-2 text-sm text-white/80">{model.description}</p>
       ) : null}
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
         <InfoCell label="runtime" value={model.runtime} />
@@ -746,7 +746,7 @@ function InfoCell({ label, value }: { label: string; value: string }) {
       <dt className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
         {label}
       </dt>
-      <dd className="mt-0.5 font-mono text-black/80">{value}</dd>
+      <dd className="mt-0.5 font-mono text-white/80">{value}</dd>
     </div>
   );
 }

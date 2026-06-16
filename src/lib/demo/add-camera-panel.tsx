@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Radio, X } from "lucide-react";
-import { satoshi } from "@/app/dashboard/fonts";
+import { satoshi } from "@/app/(dash)/fonts";
 import { DEMO_TERMINAL_LINES } from "./fixtures";
 import { setDemoSceneAction } from "./actions";
 import { TerminalLog } from "./terminal-log";

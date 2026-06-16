@@ -7,7 +7,7 @@ import { BellOff, Check, CheckCheck } from "lucide-react";
 import {
   markAlertReadAction,
   resolveAlertAction,
-} from "@/app/dashboard/(app)/alerts/actions";
+} from "@/app/(dash)/(app)/alerts/actions";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Alert, AlertListResponse } from "@/lib/api/types";
 import { useUpstreamList } from "@/lib/api/use-list";
@@ -22,10 +22,10 @@ import { useUpstreamList } from "@/lib/api/use-list";
 const TAB_BTN =
   "rounded-full px-3 py-1.5 text-sm font-bold transition disabled:cursor-not-allowed";
 const GHOST_BTN =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-bold text-black/70 transition hover:border-[var(--dn-creek-mid)] hover:text-black disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-bold text-white/80 transition hover:border-[var(--dn-creek-mid)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
 
 const SEVERITY_CHIP: Record<string, string> = {
-  info: "bg-black/[0.06] text-black/70",
+  info: "bg-white/[0.05] text-white/80",
   warning: "bg-[#8a6d1f]/15 text-[#8a6d1f]",
   critical: "bg-red-700/10 text-red-700",
 };
@@ -85,7 +85,7 @@ export function AlertsInboxClient({
               TAB_BTN +
               (tab === t
                 ? " bg-[var(--dn-creek-mid)] text-white"
-                : " text-black/60 hover:text-black")
+                : " text-white/60 hover:text-white")
             }
           >
             {t === "open" ? "Open" : "Resolved"}
@@ -99,7 +99,7 @@ export function AlertsInboxClient({
             className="mx-auto h-8 w-8 text-[var(--dn-text-50)]"
             aria-hidden
           />
-          <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-black">
+          <h3 className="mt-4 font-bold text-[clamp(1rem,1.4vw,1.2rem)] text-white">
             {tab === "open" ? "No open alerts" : "No resolved alerts"}
           </h3>
           <p className="mx-auto mt-3 max-w-prose text-sm text-[var(--dn-text-50)]">
@@ -125,7 +125,7 @@ export function AlertsInboxClient({
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={
-                        "font-bold text-black" + (unread ? "" : " text-black/70")
+                        "font-bold text-white" + (unread ? "" : " text-white/80")
                       }
                     >
                       {alert.title}
@@ -149,8 +149,8 @@ export function AlertsInboxClient({
                   </p>
                   <p className="mt-0.5 text-xs font-mono text-[var(--dn-text-50)]">
                     <Link
-                      href={`/dashboard/cameras/${alert.camera_id}/monitor`}
-                      className="underline hover:text-black"
+                      href={`/cameras/${alert.camera_id}/monitor`}
+                      className="underline hover:text-white"
                     >
                       {cameraName}
                     </Link>
@@ -166,8 +166,8 @@ export function AlertsInboxClient({
                       <>
                         {" · "}
                         <Link
-                          href="/dashboard/workflows"
-                          className="underline hover:text-black"
+                          href="/workflows"
+                          className="underline hover:text-white"
                         >
                           workflow run
                         </Link>

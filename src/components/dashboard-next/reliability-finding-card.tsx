@@ -94,7 +94,7 @@ export function ReliabilityFindingCard({
         <CategoryBadge category={finding.category} />
       </header>
 
-      <h3 className="mt-3 font-bold text-[clamp(1rem,1.2vw,1.15rem)] text-black">
+      <h3 className="mt-3 font-bold text-[clamp(1rem,1.2vw,1.15rem)] text-white">
         {finding.title}
       </h3>
       <p className="mt-2 text-[clamp(0.85rem,1vw,0.95rem)] text-[var(--dn-text-50)]">

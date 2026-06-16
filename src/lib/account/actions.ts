@@ -30,5 +30,5 @@ export async function setActiveAccountAction(formData: FormData): Promise<void> 
     path: "/",
   });
 
-  redirect("/dashboard");
+  redirect("/");
 }

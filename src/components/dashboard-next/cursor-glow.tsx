@@ -2,45 +2,69 @@
 
 import { useEffect } from "react";
 
-// One shared pointer tracker for every translucent `.dn-glow-soft` button on
-// the dashboard (the tile "View X" actions). A single window listener feeds
-// each button its own --mx/--my (pointer position) and --glow (0 far → 1 over,
-// fading across a proximity RANGE) so the white glass sheen swells in before
-// the cursor arrives — same idea as the login button, scaled to many buttons
-// without N listeners. Renders nothing.
+// Cursor controller for the dashboard's glass buttons (.dn-glow-soft). It only
+// ever touches the button the pointer is actually OVER — everything (frost,
+// white sheen, magnetic lean) is gated on real :hover, never proximity:
+//
+//   • MAGNETIC LEAN — while the pointer is inside the button, it eases TOWARD
+//     the cursor by a fraction of the cursor→center delta (--dn-tx/--dn-ty,
+//     consumed by a CSS transform applied on :hover in theme.css). Modelled on
+//     upstream-web's useMagnetic (outer 0.08); when the pointer leaves, :hover
+//     drops and the button eases back to 0 on its own.
+//   • HIGHLIGHT POSITION — --mx/--my track the pointer inside the button for the
+//     white sheen (also shown only on :hover).
+//
+// Reads (getBoundingClientRect) are batched before writes to avoid layout
+// thrash. No-ops on coarse (touch) pointers; honours prefers-reduced-motion by
+// dropping the lean (the hover sheen still works).
+const SELECTOR = ".dn-glow-soft";
+const OUTER = 0.08; // magnetic lean strength — fraction of cursor→center delta
+
 export function CursorGlow() {
   useEffect(() => {
-    const RANGE = 190; // px from a button's edge where its glow begins
-    const els = () =>
-      document.querySelectorAll<HTMLElement>(".dn-glow-soft");
+    if (window.matchMedia?.("(pointer: coarse)").matches) return; // no hover cursor
+    const reduced = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
 
-    let frame = 0; // pending rAF handle (0 = none scheduled)
+    let frame = 0;
     let clientX = 0;
     let clientY = 0;
 
-    // Coalesced once-per-frame update. mousemove fires 60–120+/s; doing the
-    // measure+write inline per event interleaved getBoundingClientRect reads
-    // with CSS-var writes, forcing synchronous layout many times per frame.
-    // Here we batch ALL reads before ANY writes, inside a single rAF.
+    // Coalesced once-per-frame: batch ALL getBoundingClientRect reads, THEN all
+    // writes — interleaving them would force a synchronous layout per node.
     const apply = () => {
       frame = 0;
-      const nodes = els();
+      const nodes = document.querySelectorAll<HTMLElement>(SELECTOR);
       const rects = new Array<DOMRect>(nodes.length);
-      nodes.forEach((el, i) => {
-        rects[i] = el.getBoundingClientRect(); // read pass
-      });
-      nodes.forEach((el, i) => {
-        const r = rects[i]; // write pass — no reads interleaved
-        el.style.setProperty("--mx", `${clientX - r.left}px`);
-        el.style.setProperty("--my", `${clientY - r.top}px`);
-        const dx = Math.max(r.left - clientX, 0, clientX - r.right);
-        const dy = Math.max(r.top - clientY, 0, clientY - r.bottom);
-        const dist = Math.hypot(dx, dy); // 0 while inside the button
-        el.style.setProperty(
-          "--glow",
-          Math.max(0, 1 - dist / RANGE).toFixed(3),
-        );
-      });
+      for (let i = 0; i < nodes.length; i++) {
+        rects[i] = nodes[i].getBoundingClientRect();
+      }
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        const r = rects[i];
+        if (r.width === 0 || r.height === 0) continue;
+        // Only the button under the pointer reacts — CSS :hover owns visibility,
+        // so far / merely-nearby buttons are left untouched (no proximity glow).
+        if (
+          clientX < r.left ||
+          clientX > r.right ||
+          clientY < r.top ||
+          clientY > r.bottom
+        ) {
+          continue;
+        }
+        el.style.setProperty("--mx", `${(clientX - r.left).toFixed(1)}px`);
+        el.style.setProperty("--my", `${(clientY - r.top).toFixed(1)}px`);
+        if (!reduced) {
+          const dx = clientX - (r.left + r.width / 2);
+          const dy = clientY - (r.top + r.height / 2);
+          const radius = Math.max(r.width, r.height) * 0.9;
+          const pull = Math.max(0, 1 - Math.hypot(dx, dy) / (radius * 2));
+          el.style.setProperty("--dn-tx", `${(dx * OUTER * pull).toFixed(2)}px`);
+          el.style.setProperty("--dn-ty", `${(dy * OUTER * pull).toFixed(2)}px`);
+        }
+      }
     };
 
     const onMove = (e: MouseEvent) => {
@@ -48,16 +72,11 @@ export function CursorGlow() {
       clientY = e.clientY;
       if (!frame) frame = requestAnimationFrame(apply);
     };
-    const onLeave = () => {
-      els().forEach((el) => el.style.setProperty("--glow", "0"));
-    };
 
     window.addEventListener("mousemove", onMove, { passive: true });
-    document.addEventListener("mouseleave", onLeave);
     return () => {
       if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseleave", onLeave);
     };
   }, []);
 

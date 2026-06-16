@@ -46,7 +46,7 @@ export function DemoNotifications({ scene }: { scene: DemoScene }) {
         duration: 6000,
         action: {
           label: "Review",
-          onClick: () => router.push(`/dashboard/cameras/${CAMERA_ID}/reliability`),
+          onClick: () => router.push(`/cameras/${CAMERA_ID}/reliability`),
         },
       });
     } else if (scene === "fixed") {

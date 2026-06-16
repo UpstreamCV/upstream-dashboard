@@ -15,12 +15,12 @@ export async function signInAction(
 ): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/dashboard");
+  const next = String(formData.get("next") ?? "/");
 
   // Demo mode: accept any credentials and land on the Cameras page (empty at
   // the `adding` start) so the recording opens straight on the connect beat.
   if (isDemoMode()) {
-    redirect("/dashboard/cameras");
+    redirect("/cameras");
   }
 
   if (!email || !password) {

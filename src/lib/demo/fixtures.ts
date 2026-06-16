@@ -695,7 +695,7 @@ export interface DemoNotification {
 }
 
 export function demoNotifications(scene: DemoScene): DemoNotification[] {
-  const reliabilityHref = `/dashboard/cameras/${CAMERA_ID}/reliability`;
+  const reliabilityHref = `/cameras/${CAMERA_ID}/reliability`;
   const list: DemoNotification[] = []; // newest first
 
   if (fixed(scene)) {
@@ -728,7 +728,7 @@ export function demoNotifications(scene: DemoScene): DemoNotification[] {
       body: "The camera connected and started streaming.",
       at: isoAgo(10 * MIN_MS),
       unread: false,
-      href: `/dashboard/cameras/${CAMERA_ID}/monitor`,
+      href: `/cameras/${CAMERA_ID}/monitor`,
     });
   }
   return list;

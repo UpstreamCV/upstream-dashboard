@@ -21,14 +21,14 @@ import {
 const CHIP_ON =
   "rounded-full border px-2.5 py-1 text-xs font-bold transition border-[var(--dn-creek-mid)] bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]";
 const CHIP_OFF =
-  "rounded-full border px-2.5 py-1 text-xs font-bold transition border-black/10 bg-white text-black/60 hover:border-[var(--dn-creek-mid)] hover:text-black";
+  "rounded-full border px-2.5 py-1 text-xs font-bold transition border-white/10 bg-white/[0.06] text-white/60 hover:border-[var(--dn-creek-mid)] hover:text-white";
 
 const CATEGORY_CHIP_STYLE: Record<string, string> = {
   billing: "bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]",
-  cameras: "bg-black/[0.06] text-black/70",
+  cameras: "bg-white/[0.05] text-white/80",
   tokens: "bg-[#8a6d1f]/15 text-[#8a6d1f]",
-  rules: "bg-black/[0.06] text-black/70",
-  workflows: "bg-black/[0.06] text-black/70",
+  rules: "bg-white/[0.05] text-white/80",
+  workflows: "bg-white/[0.05] text-white/80",
   limits: "bg-red-700/10 text-red-700",
 };
 
@@ -75,7 +75,7 @@ export function AuditLogsClient({ items }: { items: AuditLogItem[] }) {
             return (
               <li
                 key={item.id}
-                className="flex flex-wrap items-start gap-3 rounded-xl border border-black/10 bg-black/[0.02] p-3"
+                className="flex flex-wrap items-start gap-3 rounded-xl border border-white/10 bg-white/[0.05] p-3"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -83,7 +83,7 @@ export function AuditLogsClient({ items }: { items: AuditLogItem[] }) {
                       className={
                         "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide " +
                         (CATEGORY_CHIP_STYLE[itemCategory ?? ""] ??
-                          "bg-black/[0.06] text-black/70")
+                          "bg-white/[0.05] text-white/80")
                       }
                     >
                       {auditEventLabel(item.event_type)}
@@ -92,7 +92,7 @@ export function AuditLogsClient({ items }: { items: AuditLogItem[] }) {
                       {auditActorLabel(item)}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-black/80">{item.summary}</p>
+                  <p className="mt-1 text-sm text-white/80">{item.summary}</p>
                   {preview.length > 0 ? (
                     <p className="mt-0.5 text-xs font-mono text-[var(--dn-text-50)]">
                       {preview.join(" · ")}

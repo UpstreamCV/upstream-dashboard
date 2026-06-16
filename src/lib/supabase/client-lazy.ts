@@ -2,7 +2,7 @@
 
 import { env } from "@/lib/env";
 
-// Lazily-loaded browser Supabase client for the active /dashboard segment.
+// Lazily-loaded browser Supabase client for the active / segment.
 //
 // The full @supabase SDK (~511KB raw — Realtime + GoTrue + storage) is pulled
 // in via a dynamic `import()` so Turbopack splits it into its own async chunk

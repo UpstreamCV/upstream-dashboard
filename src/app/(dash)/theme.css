@@ -1,0 +1,437 @@
+/* dashboard-next scoped theme — the live /dashboard "DarkMode" redesign.
+ *
+ * This is now a DARK theme: near-black #161616 tiles, white text, a soft
+ * black-scrim panel over a #161616 base lit by subtle green/olive orbs, and a
+ * red/orange/yellow/green/grey status-accent system — transcribed from the
+ * Figma "Dashboard Redesign" frames (Some Issues / All Good / Cameras). It
+ * deliberately departs from the legacy dark-glass system in globals.css.
+ *
+ * PROD SAFETY: imported only by src/app/dashboard/layout.tsx, which applies the
+ * `.dashboard-next` scope class to the whole /dashboard subtree. It does NOT
+ * @import "tailwindcss" (already global via globals.css) and never redefines a
+ * prod token or prod class. Every name is namespaced --dn-* / .dn-* and every
+ * rule is scoped under .dashboard-next, so it cannot collide with or override
+ * anything on /dashboard-legacy or /(auth).
+ *
+ * Figma frames are 2× exports. Raw px are halved into real px and expressed
+ * with clamp() so the fixed desktop comp scales fluidly. Exact colors/effects
+ * are transcribed from Figma get_design_context / get_screenshot.
+ */
+
+.dashboard-next {
+  /* Creek palette — kept for the background orbs + login gradients only. */
+  --dn-creek-deep: #344c2c;
+  --dn-creek-mid: #4b816c;
+  --dn-creek-moss: #81764b;
+  --dn-creek-dark: #1c2a17;
+
+  /* Dark surface system (Figma redesign). The page base and the tiles share
+     #161616; separation comes from the darker translucent panel scrim behind
+     the tiles plus a faint inset rim on each tile. */
+  --dn-base: #161616; /* page base */
+  --dn-tile: #161616; /* solid metric card fill */
+  --dn-tile-soft: rgba(255, 255, 255, 0.02); /* camera-card fill (Figma) */
+  --dn-text: #ffffff;
+  --dn-text-70: rgba(255, 255, 255, 0.7);
+  --dn-text-50: rgba(255, 255, 255, 0.5);
+  --dn-text-40: rgba(255, 255, 255, 0.4);
+  --dn-text-15: rgba(255, 255, 255, 0.15); /* pill / button fill */
+
+  /* Status-accent system (Figma). *-soft are the 25%-alpha chip fills. */
+  --dn-red: #f94b4b; /* critical / offline / urgent */
+  --dn-orange: #ff8f57; /* warning / needs-review / degraded */
+  --dn-yellow: #ffe957; /* info / moved / geometry */
+  --dn-yellow-dim: #eedc68;
+  --dn-green: #48c84a; /* healthy dots / icons */
+  --dn-green-text: #5fec62; /* healthy text */
+  --dn-green-bright: #5fff62; /* bright accents / empty-state shield + border */
+  --dn-grey: #414141; /* idle badge fill */
+  --dn-grey-dot: #9aa39a; /* idle / neutral dot */
+  --dn-red-soft: rgba(249, 75, 75, 0.25);
+  --dn-orange-soft: rgba(255, 143, 87, 0.25);
+  --dn-yellow-soft: rgba(255, 233, 87, 0.25);
+  --dn-live: rgba(95, 236, 98, 0.8); /* solid "Live" badge fill */
+
+  --dn-radius-tile: clamp(18px, 1.6vw, 26px); /* Figma rounded-[50px] @2× */
+  --dn-radius-panel: clamp(28px, 3vw, 52px); /* .dn-panel corner radius */
+  --dn-radius-inner: clamp(10px, 0.9vw, 14px); /* inner pills/mini-stats */
+  /* Home top tools-row height. The rail's identity block mirrors this value
+     (minus the rail's inter-item gap) so the first nav button ("Home")
+     top-aligns with the content panel. */
+  --dn-topbar-h: clamp(72px, 7vw, 104px);
+  /* Dark tiles need a faint top-edge rim to read against the scrim panel; the
+     broad ambient shadow stays soft (Figma 0 0 100px rgba(0,0,0,.25)). */
+  --dn-shadow-tile:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 24px 60px -30px rgba(0, 0, 0, 0.7);
+
+  /* Sidebar active label — Figma 269.97deg deep→mid→moss. */
+  --dn-grad-text: linear-gradient(
+    270deg,
+    var(--dn-creek-deep) 1%,
+    var(--dn-creek-mid) 74%,
+    var(--dn-creek-moss) 148%
+  );
+  /* Login button — Figma 109.62deg moss→mid→deep. */
+  --dn-grad-btn: linear-gradient(
+    110deg,
+    var(--dn-creek-moss) 4%,
+    var(--dn-creek-mid) 52%,
+    var(--dn-creek-deep) 112%
+  );
+  /* Shell backdrop — the dark base; depth comes from the drifting orbs. */
+  --dn-shell: var(--dn-base);
+
+  /* Own the cascade for this subtree only — does not touch <html>/<body>
+     or the global --font-display-stack. */
+  font-family:
+    var(--font-satoshi), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  color: var(--dn-text);
+  /* Dark design — native controls (login checkbox, scrollbars) render dark. */
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Full-bleed dark wash behind the authed shell. */
+.dashboard-next .dn-shell-bg {
+  background: var(--dn-shell);
+}
+
+/* The large content panel that holds the page/tile grid — a translucent black
+   scrim that darkens the orbs behind it (Figma's rgba(0,0,0,0.5) panel). Per
+   the Figma frames the panel bleeds to the viewport's RIGHT + BOTTOM edges with
+   ONLY its top-left corner rounded; the topbar sits above it and the rail to
+   its left (the gaps come from the (app) layout's top/left padding). */
+.dashboard-next .dn-panel {
+  /* Frosted glass: a lighter scrim (vs 0.45) + a MODERATE blur. A huge blur
+     (40px) obliterates the grain/tools into a flat smear that reads as "no
+     frost"; ~16px keeps the grain texture + a recognizable blur of anything
+     (e.g. the home tools) that passes behind it. */
+  background: rgba(0, 0, 0, 0.35);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  /* var()-wrapped so Tailwind v4's Lightning CSS can't collapse this to the
+     -webkit- prefix only (which Chrome ignores) — see upstream-web globals.css.
+     A literal value here silently drops the blur in Chrome. */
+  -webkit-backdrop-filter: var(--bf-dn-panel, blur(16px) saturate(135%));
+  backdrop-filter: var(--bf-dn-panel, blur(16px) saturate(135%));
+  border-radius: var(--dn-radius-panel) 0 0 0;
+}
+
+/* Non-home pages: the panel meets the top edge, so square off the top-left
+   corner too (no floating rounded corner pinned to the viewport top). Defined
+   after .dn-panel so the equal-specificity rule wins when both classes apply. */
+.dashboard-next .dn-panel-square {
+  border-radius: 0;
+}
+
+/* The nav rail has NO container — the button pills sit directly on the shell
+   background. On EVERY page the rail collapses to an icon dock that expands to
+   the full labelled width on hover. It's in-flow (not an overlay): expanding
+   widens THIS element, so the content panel beside it reflows to make room — the
+   width transition slides it smoothly. */
+.dashboard-next .dn-rail-dock {
+  /* 4.5rem = the 3rem centered icon-slot + the rail's 0.75rem×2 padding. The
+     rail owns ALL the left padding (its parent has none), so its hover box
+     reaches the screen's left edge — hovering anywhere on the left strip, the
+     leftmost pixels included, expands the rail. */
+  width: 4.5rem;
+  /* Eased, slightly longer ramp + a paint hint so the hover expand reads as a
+     smooth glide rather than a snap. Labels cross-fade in (opacity) over the
+     same window — see the rail's label classes. */
+  transition: width 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
+}
+/* :hover is the pre-hydration fallback; [data-open] is the JS-driven state
+   (sidebar-next.tsx) that ALSO keeps the rail open right after a nav click, when
+   the browser won't re-fire :hover for a stationary cursor on the new page. */
+.dashboard-next .dn-rail-dock:hover,
+.dashboard-next .dn-rail-dock[data-open="true"] {
+  /* +12px over the old 190–244 to offset the wider px-3 padding, so the label
+     column (and the expanded rail's right edge) stay exactly where they were. */
+  width: clamp(202px, 17vw, 256px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-next .dn-rail-dock {
+    transition: none;
+  }
+}
+
+/* Solid near-black metric card. */
+.dashboard-next .dn-tile {
+  background: var(--dn-tile);
+  border-radius: var(--dn-radius-tile);
+  box-shadow: var(--dn-shadow-tile);
+}
+
+/* Softer translucent card (camera tiles). Frosted — blurs whatever sits behind
+   it (orbs/grain through the panel) for a glass look. */
+.dashboard-next .dn-card {
+  background: var(--dn-tile-soft);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--dn-radius-tile);
+  -webkit-backdrop-filter: var(--bf-dn-card, blur(16px) saturate(120%));
+  backdrop-filter: var(--bf-dn-card, blur(16px) saturate(120%));
+}
+
+/* "View X" pill inside a tile — Figma bg rgba(255,255,255,0.15). Frosted. */
+.dashboard-next .dn-btn {
+  background: var(--dn-text-15);
+  color: var(--dn-text);
+  border-radius: var(--dn-radius-inner);
+  /* No resting frost — the glass sheen is HOVER-ONLY and comes from
+     .dn-glow-soft, which every glassy .dn-btn pairs with. A bare .dn-btn (e.g.
+     a demo close button) is therefore a plain translucent pill, never frosted. */
+  transition: background 0.15s ease;
+}
+.dashboard-next .dn-btn:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Gradient-filled text (active nav label, accents). */
+.dashboard-next .dn-grad-text {
+  background: var(--dn-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient login button. */
+.dashboard-next .dn-grad-btn {
+  background: var(--dn-grad-btn);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 9999px;
+}
+
+/* Cursor-tracking glow: a small creek-mid orb that follows the pointer over
+   the existing gradient, revealed on hover. JS feeds the pointer position into
+   --mx/--my (see login-form-next.tsx). The label is lifted above via z-10. */
+.dashboard-next .dn-glow-btn {
+  position: relative;
+  overflow: hidden;
+}
+.dashboard-next .dn-glow-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle 200px at var(--mx, 50%) var(--my, 50%),
+    rgba(75, 129, 108, 0.8),
+    rgba(75, 129, 108, 0) 70%
+  );
+  /* Driven by JS proximity (see login-form-next.tsx): 0 far away → 1 over. */
+  opacity: var(--glow, 0);
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+/* The translucent dashboard buttons — the dark counterpart of upstream-web's
+   .glass-pane + MagneticButton. These read as real frosted glass: the
+   backdrop-filter is ALWAYS on, so the button blurs whatever sits behind it (the
+   panel scrim + orbs). It's on the ELEMENT (not a pseudo) so the blur hits only
+   the BACKDROP — the button's own label/icon stay crisp. var()-wrapped so
+   Lightning CSS keeps the unprefixed property (see .dn-panel). The hover
+   FLOURISHES are layered on top and gated on real :hover (never proximity):
+     • the frost deepens slightly,
+     • a white highlight (::after) tracks the pointer via --mx/--my,
+     • the button leans toward the cursor (magnetic, --dn-tx/--dn-ty).
+   The transition restates background-color so buttons that also brighten their
+   fill on hover (e.g. .dn-btn) keep animating. */
+.dashboard-next .dn-glow-soft {
+  position: relative;
+  overflow: hidden;
+  -webkit-backdrop-filter: var(--bf-dn-glow-rest, blur(10px) saturate(125%));
+  backdrop-filter: var(--bf-dn-glow-rest, blur(10px) saturate(125%));
+  /* Magnetic lean is applied ONLY on :hover (below) — the button leans when the
+     cursor is genuinely over it, never on approach. At rest it eases back to 0. */
+  transform: translate(0px, 0px);
+  transition:
+    background-color 0.2s ease,
+    -webkit-backdrop-filter 0.2s ease,
+    backdrop-filter 0.2s ease,
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dashboard-next .dn-glow-soft:hover {
+  -webkit-backdrop-filter: var(--bf-dn-glow, blur(13px) saturate(140%));
+  backdrop-filter: var(--bf-dn-glow, blur(13px) saturate(140%));
+  /* CursorGlow writes --dn-tx/--dn-ty while the pointer is inside; the button
+     leans toward the cursor (upstream-web useMagnetic feel) and eases back to 0
+     when the pointer leaves and :hover drops. */
+  transform: translate(var(--dn-tx, 0px), var(--dn-ty, 0px));
+}
+.dashboard-next .dn-glow-soft::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle 90px at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.4),
+    rgba(255, 255, 255, 0) 70%
+  );
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+.dashboard-next .dn-glow-soft:hover::after {
+  opacity: 1;
+}
+
+/* Heavy frosted login card over the creek photo — dark glass for the dark
+   redesign (was a white frost in the light theme). */
+.dashboard-next .dn-glass-card {
+  position: relative;
+  border: clamp(4px, 0.5vw, 9px) solid rgba(255, 255, 255, 0.22);
+  border-radius: clamp(36px, 4vw, 60px);
+  background: radial-gradient(
+    120% 110% at 50% 45%,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.45) 55%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
+  -webkit-backdrop-filter: var(--bf-dn-glass, blur(30px) saturate(120%));
+  backdrop-filter: var(--bf-dn-glass, blur(30px) saturate(120%));
+}
+
+/* Translucent pill inputs (login card + topbar/cameras search). */
+.dashboard-next .dn-field {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 9999px;
+  color: #fff;
+  -webkit-backdrop-filter: var(--bf-dn-field, blur(8px));
+  backdrop-filter: var(--bf-dn-field, blur(8px));
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.dashboard-next .dn-field::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+.dashboard-next .dn-field:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Animated background orbs — three heavily blurred creek-color ellipses that
+   glow subtly through the near-black base (Figma's masked gradient group). A
+   fixed layer behind the shell content, slowly drifting. Honors
+   prefers-reduced-motion (static positions, no animation). */
+.dashboard-next .dn-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--dn-base);
+}
+/* A faint film grain over the base + orbs (fixed, behind the z-10 content; it
+   reads subtly through the translucent panel too). Grayscale fractal-noise SVG,
+   tiled, low opacity. */
+.dashboard-next .dn-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='dngrain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23dngrain)'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+  opacity: 0.2;
+  pointer-events: none;
+}
+.dashboard-next .dn-orb {
+  position: absolute;
+  width: clamp(420px, 46vw, 1000px);
+  height: clamp(380px, 40vw, 920px);
+  border-radius: 50%;
+  filter: blur(clamp(60px, 8vw, 130px));
+  /* Subtle on dark — the Figma frame shows only a faint green/olive head glow,
+     not the bold green wash of the old light theme. */
+  opacity: 0.28;
+  will-change: transform;
+  /* Movement is JS-driven (ShellBackdrop): every few seconds each orb is given
+     a fresh RANDOM target transform and this transition eases it there, so the
+     orbs roam freely anywhere on the page on a non-repeating, random-ish path
+     (no fixed keyframe loop). The per-orb rules below are just resting anchors
+     + colors — used as-is when prefers-reduced-motion keeps the JS idle. */
+  transition: transform 20s cubic-bezier(0.45, 0, 0.55, 1);
+}
+.dashboard-next .dn-orb-1 {
+  background: var(--dn-creek-deep);
+  bottom: -20%;
+  left: -14%;
+}
+.dashboard-next .dn-orb-2 {
+  background: var(--dn-creek-deep);
+  bottom: -24%;
+  left: 2%;
+}
+.dashboard-next .dn-orb-3 {
+  background: var(--dn-creek-mid);
+  top: -16%;
+  left: -6%;
+}
+.dashboard-next .dn-orb-4 {
+  background: var(--dn-creek-moss);
+  top: -24%;
+  right: -12%;
+}
+.dashboard-next .dn-orb-5 {
+  background: var(--dn-creek-moss);
+  top: -26%;
+  right: 3%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-next .dn-orb {
+    transition: none;
+  }
+}
+
+/* Custom overlay scrollbar (scoped to dashboard-next). `.dn-scroll` fully
+   hides the native bar cross-browser; the visible bar is a JS-driven overlay
+   (ScrollArea): a faint full-length pill track with a FIXED-SIZE white dot
+   that maps scroll progress. */
+.dashboard-next .dn-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+.dashboard-next .dn-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* the transparent pill running the length */
+.dashboard-next .dn-bar-track {
+  --dn-thumb: 56px; /* fixed pill length; slides by scroll progress */
+  position: absolute;
+  /* top clears the panel's rounded top-left corner; the bottom-right is now a
+     square bleed edge, so the bar runs nearly to the bottom. */
+  top: var(--dn-radius-panel);
+  bottom: 10px;
+  right: 6px;
+  width: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+  z-index: 5;
+  transition: background 0.15s ease;
+}
+.dashboard-next .dn-bar-track:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+/* the fixed-length white position pill */
+.dashboard-next .dn-bar-thumb {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: var(--dn-thumb);
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}

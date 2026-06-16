@@ -30,7 +30,7 @@ export function Row({
       <span className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         {label}
       </span>
-      <span className="text-right text-[clamp(0.82rem,1vw,0.95rem)] text-black">
+      <span className="text-right text-[clamp(0.82rem,1vw,0.95rem)] text-white">
         {value}
       </span>
     </div>
@@ -126,8 +126,8 @@ export function AgentPanel({ agent }: { agent: Agent | null }) {
             label="Name"
             value={
               <Link
-                href="/dashboard/agents"
-                className="text-black hover:text-[var(--dn-creek-mid)] transition"
+                href="/agents"
+                className="text-white hover:text-[var(--dn-creek-mid)] transition"
               >
                 {agent.name}
               </Link>

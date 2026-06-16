@@ -133,8 +133,8 @@ function TrendBody({
 const BADGE_COLOR: Record<ConfidenceTrendStatus, string> = {
   degrading: "border-[#8a6d1f]/40 text-[#8a6d1f]",
   improving: "border-[var(--dn-creek-mid)]/40 text-[var(--dn-creek-deep)]",
-  stable: "border-black/10 text-[var(--dn-text-50)]",
-  warming: "border-black/10 text-[var(--dn-text-50)]",
+  stable: "border-white/10 text-[var(--dn-text-50)]",
+  warming: "border-white/10 text-[var(--dn-text-50)]",
 };
 
 function TrendBadge({ verdict }: { verdict: ConfidenceTrendVerdict }) {
@@ -278,7 +278,7 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
         {label}
       </p>
-      <p className="mt-1 text-[clamp(0.9rem,1.05vw,1rem)] text-black">{value}</p>
+      <p className="mt-1 text-[clamp(0.9rem,1.05vw,1rem)] text-white">{value}</p>
     </div>
   );
 }
@@ -318,7 +318,7 @@ function RangeToggle({
               "rounded-full border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition",
               active
                 ? "border-[var(--dn-creek-mid)]/40 bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]"
-                : "border-black/10 bg-white text-[var(--dn-text-50)] hover:text-black hover:bg-black/[0.04]",
+                : "border-white/10 bg-white/[0.06] text-[var(--dn-text-50)] hover:text-white hover:bg-white/[0.08]",
             )}
           >
             {r}

@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowDown, Plus } from "lucide-react";
-import { createWorkflowAction } from "@/app/dashboard/(app)/workflows/actions";
+import { createWorkflowAction } from "@/app/(dash)/(app)/workflows/actions";
 import type { RuleSeverity } from "@/lib/api/types";
 import {
   RULE_SEVERITIES,
@@ -27,15 +27,15 @@ import {
 // severity, cooldown_seconds} crosses the wire; all picker state stays here.
 
 const SELECT_CLASS =
-  "rounded-full border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 const INPUT_CLASS =
-  "rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-sm text-black transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white transition focus:border-[var(--dn-creek-mid)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50";
 const CHIP_ON =
   "rounded-full border px-2.5 py-1 text-xs font-bold transition border-[var(--dn-creek-mid)] bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-deep)]";
 const CHIP_OFF =
-  "rounded-full border px-2.5 py-1 text-xs font-bold transition border-black/10 bg-white text-black/60 hover:border-[var(--dn-creek-mid)] hover:text-black";
+  "rounded-full border px-2.5 py-1 text-xs font-bold transition border-white/10 bg-white/[0.06] text-white/60 hover:border-[var(--dn-creek-mid)] hover:text-white";
 
 const COOLDOWN_OPTIONS = [
   { value: 60, label: "1 minute" },
@@ -195,7 +195,7 @@ export function SequenceWorkflowForm({
       const result = await createWorkflowAction(formData);
       if (result.ok) {
         toast.success(result.message);
-        router.push("/dashboard/workflows");
+        router.push("/workflows");
       } else {
         toast.error(result.message);
       }
@@ -211,12 +211,12 @@ export function SequenceWorkflowForm({
     const options = kind === "line" ? lines : rois;
     const supportsConditions = step.eventType !== "processor.line_crossing";
     return (
-      <div className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
+      <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
         <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
           {label}
         </p>
         <div className="mt-2 flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+          <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
             Event
             <select
               value={step.eventType}
@@ -237,7 +237,7 @@ export function SequenceWorkflowForm({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+          <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
             {kind === "line" ? "Line" : "Zone (ROI)"}
             <select
               value={step.targetId}
@@ -254,7 +254,7 @@ export function SequenceWorkflowForm({
             </select>
           </label>
           {supportsConditions ? (
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               Min confidence (blank = any)
               <input
                 type="number"
@@ -272,7 +272,7 @@ export function SequenceWorkflowForm({
         </div>
         {supportsConditions && classOptions.length > 0 ? (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-bold text-black/70">Classes:</span>
+            <span className="text-xs font-bold text-white/80">Classes:</span>
             {classOptions.map((label2) => (
               <button
                 key={label2}
@@ -301,7 +301,7 @@ export function SequenceWorkflowForm({
 
   return (
     <div className="mt-3 space-y-4">
-      <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+      <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
         Name
         <input
           type="text"
@@ -318,7 +318,7 @@ export function SequenceWorkflowForm({
 
       <div className="flex items-center gap-3 pl-2">
         <ArrowDown className="h-4 w-4 text-[var(--dn-text-50)]" aria-hidden />
-        <label className="flex items-center gap-2 text-xs font-bold text-black/70">
+        <label className="flex items-center gap-2 text-xs font-bold text-white/80">
           within
           <input
             type="number"
@@ -335,7 +335,7 @@ export function SequenceWorkflowForm({
           seconds
         </label>
         <label
-          className="inline-flex items-center gap-2 text-xs font-bold text-black/70"
+          className="inline-flex items-center gap-2 text-xs font-bold text-white/80"
           title={
             sameTrackPossible
               ? "Both events must come from the same tracked object."
@@ -354,12 +354,12 @@ export function SequenceWorkflowForm({
 
       {stepEditor("Step 2 — expect this follow-up", follow, setFollow)}
 
-      <div className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
+      <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
         <p className="text-[11px] uppercase tracking-wider font-mono text-[var(--dn-text-50)]">
           on timeout
         </p>
         <div className="mt-2 flex flex-wrap items-end gap-3">
-          <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
+          <label className="inline-flex items-center gap-2 text-xs font-bold text-white/80">
             <input
               type="checkbox"
               checked={timeoutAlert}
@@ -369,7 +369,7 @@ export function SequenceWorkflowForm({
             Create an alert when the follow-up doesn&rsquo;t happen in time
           </label>
           {timeoutAlert ? (
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               Alert message (optional)
               <input
                 type="text"
@@ -386,7 +386,7 @@ export function SequenceWorkflowForm({
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+        <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
           Severity
           <select
             value={severity}
@@ -401,7 +401,7 @@ export function SequenceWorkflowForm({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+        <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
           Alert cooldown
           <select
             value={cooldown}
@@ -419,7 +419,7 @@ export function SequenceWorkflowForm({
       </div>
 
       <div>
-        <label className="inline-flex items-center gap-2 text-xs font-bold text-black/70">
+        <label className="inline-flex items-center gap-2 text-xs font-bold text-white/80">
           <input
             type="checkbox"
             checked={scheduleEnabled}
@@ -455,7 +455,7 @@ export function SequenceWorkflowForm({
                 </button>
               ))}
             </div>
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               From
               <input
                 type="time"
@@ -465,7 +465,7 @@ export function SequenceWorkflowForm({
                 disabled={pending}
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               To
               <input
                 type="time"
@@ -475,7 +475,7 @@ export function SequenceWorkflowForm({
                 disabled={pending}
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs font-bold text-black/70">
+            <label className="flex flex-col gap-1 text-xs font-bold text-white/80">
               Timezone (IANA)
               <input
                 type="text"

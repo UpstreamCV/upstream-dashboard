@@ -18,21 +18,21 @@ Especially relevant Next 16 changes already baked into this repo:
 
 This is the operator dashboard. It talks to `upstream-api-server` via the catch-all proxy at `src/app/api/upstream/[...path]/route.ts`, which mints the Supabase JWT server-side. The proxy auto-injects `?account_id=` from the `upstream_active_account` cookie (resolved by `getActiveAccountIdFromCookie()` + a single-membership fallback through `listMemberships()`; the redirecting `getActiveAccount()` is deliberately **not** used inside the proxy). All resource reads go through `serverFetch` (RSC, Server Actions) or `proxyFetch`/`useUpstreamList` (Client Components) — there are no direct Supabase queries from app code. The only Supabase client calls in the repo are auth-related: session refresh in `proxy.ts`, sign-in/sign-up Server Actions, and `getSession()` inside `serverFetch` to mint the bearer token. See `docs/architecture.md` for the full picture.
 
-## dashboard-next (now the default `/dashboard`)
+## dashboard-next (now the app root `/`)
 
-The light-theme redesign that lived at `src/app/dashboard-next/` was **promoted to the default `/dashboard` on 2026-05-29** (route-level rename). The previous dark dashboard is preserved as a navigable fallback at **`/dashboard-legacy`** (`src/app/dashboard-legacy/`). The new dashboard is fully wired (every page reads real data; the camera detail page has WHEP + latest frame + Realtime; tokens have create/revoke; the light login is public at `/dashboard/login`). It reuses the same `/api/upstream` proxy, `serverFetch` / `useUpstreamList`, account scoping, and auth — no duplication of the data layer. Two home tiles (Network, Billing) remain illustrative because the backing services don't exist yet.
+The redesign that lived at `src/app/dashboard-next/` was **promoted to the default `/dashboard` on 2026-05-29**, **re-skinned to a dark theme on 2026-06-15** (Figma "Dashboard Redesign" frames; Home + Cameras rebuilt), and that same day **moved OFF the `/dashboard` prefix to the site root** — `src/app/dashboard/` became the **route group `src/app/(dash)/`** (route groups add no URL segment), so pages now resolve at `/`, `/cameras`, `/settings`, `/alerts`, … and the redesigned login is the canonical **`/login`** (the old `(auth)/login/page.tsx` + `login-form.tsx` were retired; **`(auth)/login/actions.ts` is kept** — `login-form-next` imports `signInAction` from it). See `docs/commit-log.md`. The previous (separate) dark dashboard is preserved **unchanged** as a navigable fallback at **`/dashboard-legacy`** (`src/app/dashboard-legacy/`). The new dashboard is fully wired (every page reads real data; the camera detail page has WHEP + latest frame + Realtime; tokens have create/revoke; the login is public at `/login`). It reuses the same `/api/upstream` proxy, `serverFetch` / `useUpstreamList`, account scoping, and auth — no duplication of the data layer. Two home tiles (Network, Billing) remain illustrative because the backing services don't exist yet.
 
 The component folder (`src/components/dashboard-next/`), the `.dashboard-next` theme scope / `--dn-*` tokens, and the `-next` component-name suffixes are **kept as-is for now** — dropping them would delete components the live `/dashboard-legacy` fallback still imports. Those cleanup steps are deferred until the fallback is retired.
 
 Read `docs/dashboard-next.md` for the canonical reference: architecture, theme tokens, the Realtime channel-naming convention (the new dashboard uses `camera:…`; `/dashboard-legacy` uses `legacy-camera:…`), shared modules (`player-state-event.ts`, `whep-client.ts`), token security model, and the promotion checklist (route steps done; cleanup deferred). `src/app/dashboard/README.md` has the at-a-glance route status table.
 
-### Route policy — `/dashboard` is the live dashboard; `/dashboard-legacy` is the fallback
+### Route policy — the root `/` is the live dashboard; `/dashboard-legacy` is the fallback
 
-- New product-facing dashboard features (geometry editor, reliability surfaces, camera workflow tabs, review/debug UI) build under `/dashboard` (`src/app/dashboard/(app)/`). Do **not** add new feature work to `/dashboard-legacy` — it exists only as a rollback fallback and will be retired.
+- New product-facing dashboard features (geometry editor, reliability surfaces, camera workflow tabs, review/debug UI) build at the root (`src/app/(dash)/(app)/`). Do **not** add new feature work to `/dashboard-legacy` — it exists only as a rollback fallback and will be retired.
 - `/dashboard-legacy` remains available for rollback during the confidence period; bug-fix only.
 - New theme-agnostic perception/observation helpers go under `src/lib/perception/` so both segments can share them (see `src/lib/perception/overlay-helpers.ts`, `overlay-svg.tsx`, `summarize-observation.ts`).
 - New dashboard UI components still go under `src/components/dashboard-next/` (the `-next` suffix and folder are retained until the fallback is retired — see the deferred cleanup in `docs/dashboard-next.md`).
-- New dashboard routes go under `src/app/dashboard/(app)/`.
+- New dashboard routes go under `src/app/(dash)/(app)/` (the `(dash)` route group is mounted at `/`).
 
 ## Source of truth for API contracts
 
@@ -63,7 +63,7 @@ Every meaningful commit updates `docs/commit-log.md` in the same commit, plus an
 ## Stack notes
 
 - **Tailwind v4**: no `tailwind.config.js`. Brand tokens are in `src/app/globals.css` under `:root` + `@theme inline`. Use semantic classes (`text-ink`, `text-accent`, `bg-glass-bg`, etc.) rather than raw hex.
-- **Scoped light theme for dashboard-next**: `--dn-*` CSS vars + `.dn-*` utility classes scoped under `.dashboard-next` in `src/app/dashboard/theme.css` (the `.dashboard-next` scope class name is retained post-promotion). Never reference them from outside the segment, and never reference prod tokens (`--accent`, `--ink-soft`, `.glass`) from inside it. See `docs/dashboard-next.md` "Theme system".
+- **Scoped dark theme for dashboard-next**: `--dn-*` CSS vars + `.dn-*` utility classes scoped under `.dashboard-next` in `src/app/(dash)/theme.css` (the `.dashboard-next` scope class name is retained). As of 2026-06-15 this is a **dark** theme (`#161616` base/tiles, white text, a red/orange/yellow/green/grey status-accent system; see the token block + `src/components/dashboard-next/dn-status.ts`). Flip the theme by editing the token values in that one scope block — the whole dashboard re-skins at once. **Note:** literal `backdrop-filter` values in that file are wrapped in `var(--bf-…, <value>)` so Tailwind v4's Lightning CSS doesn't strip the unprefixed property (Chrome needs it; a bare literal silently disables the blur). Never reference `--dn-*`/`.dn-*` from outside the segment, and never reference prod tokens (`--accent`, `--ink-soft`, `.glass`) from inside it. See `docs/dashboard-next.md` "Theme system".
 - **ESLint 9 flat config** in `eslint.config.mjs`.
 - **No date library** — `Intl.DateTimeFormat` + `Intl.RelativeTimeFormat` via `src/lib/time.ts`.
 - **No UI primitives kit** (no shadcn). Components live under `src/components/`. The only Radix primitive is `@radix-ui/react-dialog` for the secret-reveal modal.
@@ -71,11 +71,11 @@ Every meaningful commit updates `docs/commit-log.md` in the same commit, plus an
 
 ## Adding a new dashboard page (cookbook)
 
-1. Drop a Server Component under `src/app/dashboard/(app)/<segment>/page.tsx`. The `(app)` route group adds no URL segment but holds the authed chrome + auth gate (see `(app)/layout.tsx`); the resulting URL is `/dashboard/<segment>`. (Legacy `/dashboard-legacy/` uses a flat structure with no route group — don't add new pages there.)
+1. Drop a Server Component under `src/app/(dash)/(app)/<segment>/page.tsx`. Neither `(dash)` nor `(app)` adds a URL segment — `(dash)` carries the theme/scope + Satoshi, `(app)` holds the authed chrome + auth gate (see `(app)/layout.tsx`) — so the resulting URL is `/<segment>`. (Legacy `/dashboard-legacy/` uses a flat structure with no route group — don't add new pages there.)
 2. `getActiveAccount()` already runs in `(app)/layout.tsx` for the chrome; call it again in the page only when you need `activeAccountId` for a fetch (`serverFetch` is `cache: "no-store"`, so the duplicate is cheap).
 3. Call resource functions in `src/lib/api/*.ts` (or add new ones following the existing shape — wrap `serverFetch`, accept `{ accountId, ... }`).
 4. If the page needs polling, hand the initial data to a Client Component using `useUpstreamList(...)` from `src/lib/api/use-list.ts`.
-5. Empty/loading/error states are part of the page, not a phase 2 cleanup. Page-level `loading.tsx` / `error.tsx` exist under `src/app/dashboard/` and inherit by default.
+5. Empty/loading/error states are part of the page, not a phase 2 cleanup. Page-level `loading.tsx` / `error.tsx` exist under `src/app/(dash)/` and inherit by default.
 6. Add the route to the sidebar in `src/components/nav/sidebar-next.tsx`.
 
 ## Day-zero verifications to repeat when bumping deps

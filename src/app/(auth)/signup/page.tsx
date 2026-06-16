@@ -9,7 +9,7 @@ export default async function SignUpPage({
 }) {
   const { next } = await searchParams;
   const safeNext = safeNextPath(next);
-  const loginHref = safeNext === "/dashboard" ? "/login" : `/login?next=${encodeURIComponent(safeNext)}`;
+  const loginHref = safeNext === "/" ? "/login" : `/login?next=${encodeURIComponent(safeNext)}`;
 
   return (
     <div className="glass rounded-3xl p-8">

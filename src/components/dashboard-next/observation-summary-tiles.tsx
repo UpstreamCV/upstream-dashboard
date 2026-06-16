@@ -50,7 +50,7 @@ function ObsTile({
         </span>
         {dot ? <StatusDot status={dot} /> : icon}
       </div>
-      <span className={`font-bold leading-none text-black ${valueClass}`}>
+      <span className={`font-bold leading-none text-white ${valueClass}`}>
         {value}
       </span>
       {caption ? (
