@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowDown, Plus } from "lucide-react";
-import { createWorkflowAction } from "@/app/(dash)/(app)/workflows/actions";
+import { createWorkflowAction } from "@/app/(dash)/(app)/(event-outputs)/workflows/actions";
 import type { RuleSeverity } from "@/lib/api/types";
 import {
   RULE_SEVERITIES,

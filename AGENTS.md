@@ -69,14 +69,21 @@ Every meaningful commit updates `docs/commit-log.md` in the same commit, plus an
 - **No UI primitives kit** (no shadcn). Components live under `src/components/`. The only Radix primitive is `@radix-ui/react-dialog` for the secret-reveal modal.
 - **App Router only.** Do not introduce `pages/`.
 
+## Information architecture — the 6-section site map
+
+The dashboard is organized into **six sidebar sections**: **Home, Issues, Cameras, Event Outputs, Dev Settings, Account** (see `docs/sitemap-reorg-plan.md`). The rail (`sidebar-next.tsx`) renders **exactly these six pills**; each section's sub-areas live in a secondary **`SectionTabs`** strip (`src/components/dashboard-next/section-tabs.tsx`), never in the rail — this keeps the hover-dock physics untouched.
+
+- **Section grouping uses route groups** (`(fleet)`, `(account)`, `(event-outputs)`, `(dev-settings)` under `(app)`; Home is in `(home)`). Route groups add **no URL segment**, so pages keep flat URLs (`/cameras`, `/billing`, `/workflows`, `/api-tokens`, …) — no redirects — while one group-level `layout.tsx` renders the shared `SectionTabs` strip and a group-level `loading.tsx` puts the suspense boundary BELOW it, so the **strip persists across navigation and only the content reloads** (mirrors the camera-detail tabs). The `(fleet)` group covers Cameras/Agents/Active Streams (via `CamerasSectionTabs`); its strip therefore also sits above the camera-**detail** pages, stacked over their own `CameraTabs` — a deliberate two-level nav. `(home)` exists solely so Home gets a tabless loading boundary distinct from the tabbed sections.
+- **Backend-gated sections** (Issues aggregator, Destinations, Events, Webhooks, Team, Network) are hidden via `src/lib/nav/feature-flags.ts` (`NEXT_PUBLIC_FF_*`, all default off, mirroring `demo-mode.ts`). The rail filters `NAV` by flag; gated pages `notFound()` until their backend ships. See `docs/sitemap-reorg-plan.md` "Backend asks".
+
 ## Adding a new dashboard page (cookbook)
 
-1. Drop a Server Component under `src/app/(dash)/(app)/<segment>/page.tsx`. Neither `(dash)` nor `(app)` adds a URL segment — `(dash)` carries the theme/scope + Satoshi, `(app)` holds the authed chrome + auth gate (see `(app)/layout.tsx`) — so the resulting URL is `/<segment>`. (Legacy `/dashboard-legacy/` uses a flat structure with no route group — don't add new pages there.)
+1. Drop a Server Component under `src/app/(dash)/(app)/<segment>/page.tsx` (or inside a section route group, e.g. `src/app/(dash)/(app)/(account)/<segment>/page.tsx`). Neither `(dash)`, `(app)`, nor a `(section)` group adds a URL segment — `(dash)` carries the theme/scope + Satoshi, `(app)` holds the authed chrome + auth gate (see `(app)/layout.tsx`), a `(section)` group adds the shared `SectionTabs` strip — so the resulting URL is `/<segment>`. (Legacy `/dashboard-legacy/` uses a flat structure with no route group — don't add new pages there.)
 2. `getActiveAccount()` already runs in `(app)/layout.tsx` for the chrome; call it again in the page only when you need `activeAccountId` for a fetch (`serverFetch` is `cache: "no-store"`, so the duplicate is cheap).
 3. Call resource functions in `src/lib/api/*.ts` (or add new ones following the existing shape — wrap `serverFetch`, accept `{ accountId, ... }`).
 4. If the page needs polling, hand the initial data to a Client Component using `useUpstreamList(...)` from `src/lib/api/use-list.ts`.
 5. Empty/loading/error states are part of the page, not a phase 2 cleanup. Page-level `loading.tsx` / `error.tsx` exist under `src/app/(dash)/` and inherit by default.
-6. Add the route to the sidebar in `src/components/nav/sidebar-next.tsx`.
+6. Wire navigation: a **new top-level section** → add a pill to `NAV` in `src/components/nav/sidebar-next.tsx` (with a `flag?` if backend-gated); a **sub-area of an existing section** → add a tab to that section's `SectionTabs` (the group `layout.tsx`, or `CamerasSectionTabs` for the Cameras section). If you widen/add a section `match` regex, update `sidebar-next.test.tsx`.
 
 ## Day-zero verifications to repeat when bumping deps
 

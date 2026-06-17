@@ -8,7 +8,7 @@ import { GitBranch, Plus, Trash2 } from "lucide-react";
 import {
   deleteWorkflowAction,
   setWorkflowEnabledAction,
-} from "@/app/(dash)/(app)/workflows/actions";
+} from "@/app/(dash)/(app)/(event-outputs)/workflows/actions";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Workflow } from "@/lib/api/types";
 import { sequenceSummaryLabel } from "@/lib/workflows/sequence-config-schema";

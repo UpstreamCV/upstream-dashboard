@@ -4,6 +4,23 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-17 — Site-map reorg into the 6-section IA (Phases 0–3)
+
+**Subject:** Reorganized the dashboard from a flat 12-item sidebar into the 6-section IA — **Home · Issues · Cameras · Event Outputs · Dev Settings · Account** — keeping Home and the Camera pages intact. Branch `sitemap-redesign`. Full plan: `docs/sitemap-reorg-plan.md`.
+
+**Why:** Group ~20 surfaces into six coherent sections with a clear product story (Home = is anything wrong; Issues = what to fix; Cameras = where; Event Outputs = what happens on an event; Dev Settings = integration; Account = plan/billing/audit/settings).
+
+**What changed:**
+- **Nav (P0–P1):** `sidebar-next.tsx` flat `NAV` → six grouped `NavSection` pills (widened `match` regexes, flag filter); rail hover-dock physics untouched. New `src/lib/nav/feature-flags.ts` (`NEXT_PUBLIC_FF_*`, default off) and `section-tabs.tsx` (additive generalization of `camera-tabs.tsx`; the latter unchanged). New `sidebar-next.test.tsx` (pathname→section + overlap guard).
+- **Route groups (P1):** `billing`/`settings`/`audit-logs` → `(account)`; `workflows`/`alerts` → `(event-outputs)`; `api-tokens` → `(dev-settings)` — URLs unchanged (route groups add no segment), one shared `SectionTabs` layout per group, **no redirects**. Cameras section strip rendered inline (`CamerasSectionTabs`) on the camera/agent/stream-sessions list pages. Camera tabs relabeled (Monitor→Live Monitor, Observations→Events). Repointed the moved `actions.ts` imports.
+- **Composition pages (P2, no new backend):** Camera **Command Center** (`/cameras/[id]/overview`, now `TABS[0]` + bare-root redirect target) and per-camera **Issues** tab; **Agent Detail** (`/agents/[id]`) with a **heartbeat timeline** (new `getAgentHeartbeats` + `HeartbeatRecord`); **Session Detail** (`/stream-sessions/[id]`, list-and-find) + diagnostics; session Active/History filters; **Setup Checklist** Home tile; **Billing split** into `/plan-usage` + slim `/billing`; **Security Events** audit facet.
+- **Static/read-only pages (P3):** `/event-schema`, `/api-docs` (from `api-contracts.md`, via new `CodeBlock`); account-wide read-only `/rules` roll-up; **Alert Detail** (`/alerts/[id]`, hydrate from list); read-only Workspace card on Settings.
+- **Tab + chrome polish:** `SectionTabs`/`CameraTabs` restyled as **centered, Chrome-style tabs** — rounded top + reverse-curved ("flared") bottom corners that melt into the bar baseline (masked pseudo-element "ears", `.dn-tab`/`.dn-tab-active` in `theme.css`). Sidebar margins tightened + equalized (collapsed rail `4.5rem`→`3.75rem`, `px-1.5`, rail↔panel gap removed so the icon's left/right margins match).
+- **Persistent section tabs:** wrapped the section pages in route groups with a layout (strip) + a `loading.tsx` BELOW it, so the `SectionTabs` **persist across navigation and only the content reloads** (no more blowing the tabs away on every click). `(fleet)` group → Cameras/Agents/Active Streams (its strip also stacks above the camera-detail `CameraTabs`); `(account)`/`(event-outputs)`/`(dev-settings)` likewise. Home moved to a `(home)` group with a **tabless** loading boundary; `(app)/loading.tsx` is now a neutral fallback (no tab strip).
+- **Out of scope (later):** Issues aggregator (P4, gated `FF_ISSUES`) and gated stubs (P5: Destinations, Events, Webhooks, Team, Network).
+
+**Verification:** `tsc` clean, `npm test` 644/644, all touched files lint clean (one pre-existing demo-file lint error in `add-camera-panel.tsx` is unrelated), every route resolves (static pages render with their section strips). Data-driven pages need a logged-in browser for full visual confirmation.
+
 ## 2026-06-15 — Magnetic + glow cursor interaction on glass surfaces
 
 **Subject:** Every glass surface (tiles, cards, buttons, pills) now leans toward the cursor with a tracked sheen + hover lift — matching `upstream-web`'s `MagneticButton`/glass-pane feel.
