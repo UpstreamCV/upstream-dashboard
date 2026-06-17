@@ -18,6 +18,7 @@ const TABS = [
   { label: "Live Monitor", segment: "monitor" },
   { label: "Events", segment: "observations" },
   { label: "Configure", segment: "configure" },
+  { label: "Processing", segment: "processing" },
   { label: "Reliability", segment: "reliability" },
   { label: "Issues", segment: "issues" },
   { label: "Settings", segment: "settings" },

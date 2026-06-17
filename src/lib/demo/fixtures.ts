@@ -12,6 +12,7 @@ import type {
   AccountSummary,
   Agent,
   Camera,
+  CameraPackageConfigResponse,
   CameraProcessingConfigResponse,
   ConfidenceTrendPoint,
   ConfidenceTrendRange,
@@ -24,6 +25,8 @@ import type {
   LatestPerceptionRecord,
   ModelsListResponse,
   ObservationRecord,
+  ProcessingPackage,
+  ProcessingPackageCatalogResponse,
   ProcessorStatusRecord,
   ReliabilityFinding,
   ReliabilitySummary,
@@ -499,6 +502,154 @@ export function demoCameraProcessingConfig(): CameraProcessingConfigResponse {
       created_at: null,
       updated_at: null,
     },
+  };
+}
+
+// --- processing packages (P5-F catalog + P5-G request/apply) -----------------
+
+function demoPkg(over: Partial<ProcessingPackage>): ProcessingPackage {
+  return {
+    package_id: "demo.pkg",
+    display_name: "Package",
+    description: null,
+    category: "people_analytics",
+    status: "probe",
+    production_ready: false,
+    test_mode_safe: true,
+    runtime: "deepstream",
+    model_id: null,
+    tracker_profile_id: null,
+    analytics_profile_id: null,
+    supported_classes: [],
+    supported_outputs: [],
+    supported_shapes: [],
+    supported_triggers: [],
+    default_settings: {},
+    allowed_overrides: [],
+    compute_tier: null,
+    pricing_tier: "free_probe",
+    observation_volume_risk: null,
+    warnings: [],
+    limitations: [],
+    best_for: [],
+    not_recommended_for: [],
+    requires_geometry: false,
+    requires_restart: true,
+    readiness_notes: null,
+    related_packages: [],
+    ...over,
+  };
+}
+
+// GET /v1/processing/packages — the package catalog the Processing tab renders.
+// A curated subset mirroring the real catalog (a probe, an experimental, and a
+// settings-less diagnostic) so the demo exercises every badge + the experimental
+// opt-in guard. Scene-invariant.
+const ANALYTICS_OUTPUTS = [
+  "processor.line_crossing",
+  "processor.roi_occupancy",
+  "processor.zone_entered",
+  "processor.zone_exited",
+  "processor.dwell_started",
+  "processor.dwell_exceeded",
+];
+
+export function demoProcessingPackages(): ProcessingPackageCatalogResponse {
+  return {
+    packages: [
+      demoPkg({
+        package_id: "deepstream.yolox_analytics_probe.v0",
+        display_name: "People Analytics — YOLOX",
+        description:
+          "Person detection (YOLOX-S) + IOU tracker + analytics. The recommended people-analytics probe today.",
+        category: "people_analytics",
+        status: "probe",
+        model_id: "yolox_s_v1",
+        tracker_profile_id: "deepstream_iou_fast_v1",
+        analytics_profile_id: "deepstream_nvdsanalytics_probe_v1",
+        supported_classes: ["person"],
+        supported_outputs: ANALYTICS_OUTPUTS,
+        supported_shapes: ["polygon_roi", "line_segment"],
+        supported_triggers: ["line_crossing", "roi_occupancy", "zone_exited", "dwell_exceeded"],
+        default_settings: { confidence_threshold: 0.4, target_fps: 30 },
+        allowed_overrides: ["confidence_threshold", "selected_classes", "processing_fps"],
+        compute_tier: "medium",
+        observation_volume_risk: "medium",
+        best_for: ["person_entry_exit", "zone_presence", "dwell_monitoring"],
+        requires_geometry: true,
+      }),
+      demoPkg({
+        package_id: "deepstream.yolox_analytics_nvdcf_probe.v0",
+        display_name: "People Analytics — YOLOX + NvDCF (experimental)",
+        description:
+          "Same YOLOX people-analytics chain, with the NvDCF tracker in place of IOU.",
+        category: "people_analytics",
+        status: "experimental",
+        model_id: "yolox_s_v1",
+        tracker_profile_id: "deepstream_nvdcf_balanced_v1",
+        analytics_profile_id: "deepstream_nvdsanalytics_probe_v1",
+        supported_classes: ["person"],
+        supported_outputs: ANALYTICS_OUTPUTS,
+        supported_shapes: ["polygon_roi", "line_segment"],
+        supported_triggers: ["line_crossing", "roi_occupancy", "zone_exited", "dwell_exceeded"],
+        default_settings: { confidence_threshold: 0.4, target_fps: 30 },
+        allowed_overrides: ["confidence_threshold", "selected_classes", "processing_fps"],
+        compute_tier: "high",
+        observation_volume_risk: "medium",
+        warnings: [
+          "Experimental. A representative person A/B found NvDCF did NOT reduce track fragmentation vs the IOU package — prefer the IOU YOLOX analytics package today.",
+        ],
+        best_for: ["occlusion_robustness", "track_continuity"],
+        not_recommended_for: ["production_sla"],
+        readiness_notes:
+          "P5-F A/B: NvDCF produced ~83% more track IDs than IOU; not promoted. Remains experimental.",
+        requires_geometry: true,
+      }),
+      demoPkg({
+        package_id: "deepstream.decode_probe.v0",
+        display_name: "DeepStream Decode Probe",
+        description: "Minimal RTSP decode probe (no inference). Diagnostic only.",
+        category: "diagnostic",
+        status: "probe",
+        compute_tier: "low",
+        limitations: ["Decode only; emits no observations."],
+        allowed_overrides: [],
+        requires_geometry: false,
+      }),
+    ],
+    categories: [
+      { id: "people_analytics", display_name: "People Analytics" },
+      { id: "diagnostic", display_name: "Diagnostic Probes" },
+    ],
+    warnings: [],
+  };
+}
+
+// GET/PUT/apply /v1/cameras/{id}/processing-config/package — the camera's
+// requested/applied package state. The demo camera has the recommended IOU
+// package requested AND applied (state "active") so the populated state header
+// renders; clicking another package opens its editor. Save/Apply resolve here
+// too (demo serverFetch is path-keyed), so the buttons round-trip cleanly.
+export function demoCameraPackageConfig(): CameraPackageConfigResponse {
+  return {
+    camera_id: CAMERA_ID,
+    requested: {
+      package_id: "deepstream.yolox_analytics_probe.v0",
+      settings: { confidence_threshold: 0.4 },
+      revision: 2,
+      updated_at: isoAgo(2 * HOUR_MS),
+      updated_by: `user:${USER_ID}`,
+    },
+    applied: {
+      package_id: "deepstream.yolox_analytics_probe.v0",
+      model_id: "yolox_s_v1",
+      tracker_profile_id: "deepstream_iou_fast_v1",
+      analytics_profile_id: "deepstream_nvdsanalytics_probe_v1",
+      status: "processing",
+      applied_at: isoAgo(90 * MIN_MS),
+    },
+    state: "active",
+    warnings: [],
   };
 }
 

@@ -4,6 +4,24 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-17 — P5-H Processing tab: per-camera package selector
+
+**Subject:** New top-level **Processing** tab on camera detail — the user-facing surface over the P5-F package catalog + P5-G request/apply backend. Pick a processing package, edit its safe overrides, save + apply, and see requested/applied/state. The model/detection concern moved here (the legacy Model & Detection editor was retired into a redirect) so Processing and Configure aren't redundant.
+
+**Why:** P5-F/P5-G/P5-Gap shipped the catalog, request/apply state, and trustworthy lifecycle events, but none of it was visible in the dashboard. P5-H makes package selection usable — the first user-facing processing-customizability UI.
+
+**What changed:**
+- **API client + types:** new `src/lib/api/processing-packages.ts` (`listProcessingPackages`, `getProcessingPackage`) and `src/lib/api/camera-package-config.ts` (`getCameraPackageConfig`, `putCameraPackageConfig`, `applyCameraPackageConfig` — apply route resolved to `POST …/processing-config/apply`). 8 new hand-written types in `src/lib/api/types.ts` mirroring the api-server schemas.
+- **Validation:** new `src/lib/perception/package-config-schema.ts` (`validatePackageRequest`) — pure mirror of the server validators (classes ⊆ supported, override keys ⊆ allowed, ranges, experimental opt-in); used both client-side and in the Server Action.
+- **Tab + route:** added `{ Processing, processing }` to `camera-tabs.tsx`; new `cameras/[cameraId]/processing/{page.tsx,actions.ts}` (server page fetches catalog + config; `saveCameraPackageAction` + `applyCameraPackageAction` with defense-in-depth re-validation, friendly error mapping incl. 409 `no_requested_config`, and `revalidatePath`).
+- **Panel:** new `src/components/dashboard-next/processing/` — `processing-package-panel` + `package-state-header` (state badge + requested/applied + pending/failed banners), `package-card` (status-driven badges + server warnings), `package-detail` (lineage + supported lists + readiness), `package-settings-form` (controls only for `allowed_overrides`). Experimental packages require an explicit opt-in checkbox before save; honest "applies next session, no live restart" copy.
+- **De-dup (product decision):** removed the "Model & Detection" card from the Configure hub and `redirect()`ed `/configure/detection` → `/processing`. Configure keeps Geometry + Triggers; the legacy `model_key` backend (`camera-processing-config.ts`) is intact, just unsurfaced. Added a one-line pointer on the Configure hub.
+- **Tests:** wrappers, schema (14 cases), Server Actions (8), the panel (12 incl. experimental-opt-in / save-payload / error-surfacing), and the new tab — colocated Vitest + RTL.
+- **Demo mode:** added fixtures so the tab is previewable with no backend — `src/lib/demo/fixtures.ts` (`demoProcessingPackages` + `demoCameraPackageConfig`) and `router.ts` routes for `/v1/processing/packages` and the camera package GET/apply.
+- **Docs:** `dashboard-next.md` (new Processing-packages section, tab-table row, Model & Detection marked superseded).
+
+**Verification:** `npm test` 705/705 (45 files); P5-H files lint-clean; `tsc` 0 errors in `src/`. Pre-existing/unrelated: the `add-camera-panel.tsx` lint error and the stale `.next/types/validator.ts` tsc errors (they reference the pre-`(dash)`-migration `src/app/dashboard/…` layout and regenerate on the next `next build`). No api-server changes (endpoints already exist). Not committed/pushed.
+
 ## 2026-06-17 — Site-map reorg into the 6-section IA (Phases 0–3)
 
 **Subject:** Reorganized the dashboard from a flat 12-item sidebar into the 6-section IA — **Home · Issues · Cameras · Event Outputs · Dev Settings · Account** — keeping Home and the Camera pages intact. Branch `sitemap-redesign`. Full plan: `docs/sitemap-reorg-plan.md`.
