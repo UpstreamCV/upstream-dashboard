@@ -24,6 +24,31 @@ export interface Agent {
   updated_at: IsoDateTime;
 }
 
+// Per-agent (and per-camera) heartbeat history. Source:
+// ../upstream-api-server/src/upstream_api/schemas/heartbeats.py — returned
+// newest-first by GET /v1/agents/{id}/heartbeats and GET /v1/cameras/{id}/heartbeats.
+export type HeartbeatStatus =
+  | "online"
+  | "streaming"
+  | "error"
+  | "reconnecting";
+export interface HeartbeatRecord {
+  id: Uuid;
+  agent_id: Uuid;
+  camera_id: Uuid | null;
+  session_id: Uuid | null;
+  status: HeartbeatStatus;
+  fps: number | null;
+  bitrate_kbps: number | null;
+  width: number | null;
+  height: number | null;
+  codec: string | null;
+  last_error: string | null;
+  agent_version: string | null;
+  reported_at: IsoDateTime;
+  created_at: IsoDateTime;
+}
+
 export type CameraStatus = "idle" | "streaming" | "error" | "disabled";
 export interface Camera {
   id: Uuid;
@@ -100,6 +125,9 @@ export interface ApiTokenCreated {
 
 export interface AgentListResponse {
   agents: Agent[];
+}
+export interface HeartbeatListResponse {
+  heartbeats: HeartbeatRecord[];
 }
 export interface CameraListResponse {
   cameras: Camera[];

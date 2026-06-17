@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AgentCard, agentState } from "./agent-card";
 import { StatCard } from "./stat-card";
 import { useUpstreamList } from "@/lib/api/use-list";
@@ -46,7 +47,14 @@ export function AgentsGridClient({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
           {agents.map((a) => (
-            <AgentCard key={a.id} agent={a} />
+            <Link
+              key={a.id}
+              href={`/agents/${a.id}`}
+              aria-label={`Open ${a.name}`}
+              className="block transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:-translate-y-0.5"
+            >
+              <AgentCard agent={a} />
+            </Link>
           ))}
         </div>
       )}

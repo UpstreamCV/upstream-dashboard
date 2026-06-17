@@ -8,8 +8,8 @@ import { listAgents } from "@/lib/api/agents";
 // derived inside the wrapper via agentState() so the 90s heartbeat window
 // is the single source of truth.
 //
-// No agent detail page exists in prod — the AgentCard "View" pill is inert
-// for now. Loading/error covered by the segment files.
+// Each card links to the Agent Detail page (/agents/[agentId]) for heartbeat
+// history + claimed cameras. Loading/error covered by the segment files.
 export default async function AgentsPage() {
   const { activeAccountId } = await getActiveAccount();
   const agents = await listAgents({ accountId: activeAccountId });

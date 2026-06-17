@@ -1,17 +1,15 @@
-// Content-area Suspense fallback for top-level dashboard navigations (Home,
-// Cameras, Agents, Stream sessions, Settings, API tokens). It renders inside
-// the persistent (app) shell — the sidebar/topbar stay put and only the <main>
-// content swaps to this skeleton — so a route transition shows immediate
-// feedback instead of freezing on the old page until the server responds.
+// Generic content-area Suspense fallback for (app) — a neutral fallback for any
+// top-level route that doesn't define its own loading.tsx. Every real section
+// now owns a nearer boundary that keeps its chrome in place: Home →
+// (home)/loading.tsx (no tabs); the tabbed sections (Cameras/Agents/Streams via
+// (fleet), Event Outputs, Dev Settings, Account) each have a group loading.tsx
+// that sits BELOW the section's persistent SectionTabs, so only the content
+// reloads. Hence no tab strip here — those are never blown away anymore.
 //
-// Just as important: every / route is dynamic, and Next 16 only
-// prefetches a dynamic route when a `loading` boundary exists for it. Adding
-// this boundary lets <Link> partial-prefetch the shell on hover/viewport, so
-// the skeleton is usually already warm by the time the user clicks.
-//
-// Content-only on purpose (no ShellBackdrop / dvh wrapper — those belong to the
-// shell, which persists). The sibling dashboard/loading.tsx covers the
-// first-load case where the (app) layout itself hasn't rendered yet.
+// Renders inside the persistent (app) shell (sidebar/topbar stay put). Also: a
+// `loading` boundary is what lets Next 16 partial-prefetch these dynamic routes
+// on <Link> hover. The sibling dashboard/loading.tsx covers the first-load case
+// where the (app) layout itself hasn't rendered yet.
 export default function Loading() {
   return (
     <section

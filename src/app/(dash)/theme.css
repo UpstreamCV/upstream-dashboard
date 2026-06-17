@@ -31,6 +31,9 @@
   --dn-base: #161616; /* page base */
   --dn-tile: #161616; /* solid metric card fill */
   --dn-tile-soft: rgba(255, 255, 255, 0.02); /* camera-card fill (Figma) */
+  /* Active chrome-tab fill — semi-transparent white (the glassy look), shared by
+     the tab body and its flared ears. */
+  --dn-tab-fill: rgba(255, 255, 255, 0.1);
   --dn-text: #ffffff;
   --dn-text-70: rgba(255, 255, 255, 0.7);
   --dn-text-50: rgba(255, 255, 255, 0.5);
@@ -133,11 +136,12 @@
    widens THIS element, so the content panel beside it reflows to make room — the
    width transition slides it smoothly. */
 .dashboard-next .dn-rail-dock {
-  /* 4.5rem = the 3rem centered icon-slot + the rail's 0.75rem×2 padding. The
-     rail owns ALL the left padding (its parent has none), so its hover box
-     reaches the screen's left edge — hovering anywhere on the left strip, the
-     leftmost pixels included, expands the rail. */
-  width: 4.5rem;
+  /* 3.75rem = the 3rem centered icon-slot + the rail's 0.375rem×2 (px-1.5)
+     padding — a tight left/right margin. The rail owns ALL the left padding
+     (its parent has none), so its hover box still reaches the screen's left
+     edge — hovering anywhere on the left strip, the leftmost pixels included,
+     expands the rail. */
+  width: 3.75rem;
   /* Eased, slightly longer ramp + a paint hint so the hover expand reads as a
      smooth glide rather than a snap. Labels cross-fade in (opacity) over the
      same window — see the rail's label classes. */
@@ -164,6 +168,59 @@
   background: var(--dn-tile);
   border-radius: var(--dn-radius-tile);
   box-shadow: var(--dn-shadow-tile);
+}
+
+/* Chrome-style tabs (SectionTabs / CameraTabs). The active tab rounds at the
+   TOP and FLARES at the bottom: two masked quarter-circle "ears" just outside
+   its bottom corners curve the fill outward into the tab bar's baseline (the
+   reverse/inverted bottom radius), so the active tab reads as a browser tab
+   fused to the content below. The fill (tab + ears) is semi-transparent white
+   (--dn-tab-fill) — the glassy look. --dn-tab-r is both the top radius (via
+   rounded-t on the element) and the ear size. */
+.dashboard-next .dn-tab {
+  position: relative;
+  --dn-tab-r: 0.5rem;
+}
+.dashboard-next .dn-tab-active {
+  background: var(--dn-tab-fill);
+}
+.dashboard-next .dn-tab-active::before,
+.dashboard-next .dn-tab-active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: var(--dn-tab-r);
+  height: var(--dn-tab-r);
+  background: var(--dn-tab-fill);
+  pointer-events: none;
+}
+/* Left ear: fill hugs the tab + baseline; concave bite removed from top-left. */
+.dashboard-next .dn-tab-active::before {
+  left: calc(-1 * var(--dn-tab-r));
+  -webkit-mask: radial-gradient(
+    circle at top left,
+    #0000 var(--dn-tab-r),
+    #000 calc(var(--dn-tab-r) + 0.5px)
+  );
+  mask: radial-gradient(
+    circle at top left,
+    #0000 var(--dn-tab-r),
+    #000 calc(var(--dn-tab-r) + 0.5px)
+  );
+}
+/* Right ear: mirror — concave bite removed from top-right. */
+.dashboard-next .dn-tab-active::after {
+  right: calc(-1 * var(--dn-tab-r));
+  -webkit-mask: radial-gradient(
+    circle at top right,
+    #0000 var(--dn-tab-r),
+    #000 calc(var(--dn-tab-r) + 0.5px)
+  );
+  mask: radial-gradient(
+    circle at top right,
+    #0000 var(--dn-tab-r),
+    #000 calc(var(--dn-tab-r) + 0.5px)
+  );
 }
 
 /* Softer translucent card (camera tiles). Frosted — blurs whatever sits behind
@@ -204,30 +261,6 @@
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 9999px;
-}
-
-/* Cursor-tracking glow: a small creek-mid orb that follows the pointer over
-   the existing gradient, revealed on hover. JS feeds the pointer position into
-   --mx/--my (see login-form-next.tsx). The label is lifted above via z-10. */
-.dashboard-next .dn-glow-btn {
-  position: relative;
-  overflow: hidden;
-}
-.dashboard-next .dn-glow-btn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    circle 200px at var(--mx, 50%) var(--my, 50%),
-    rgba(75, 129, 108, 0.8),
-    rgba(75, 129, 108, 0) 70%
-  );
-  /* Driven by JS proximity (see login-form-next.tsx): 0 far away → 1 over. */
-  opacity: var(--glow, 0);
-  transition: opacity 0.18s ease;
-  pointer-events: none;
 }
 
 /* The translucent dashboard buttons — the dark counterpart of upstream-web's
@@ -318,6 +351,15 @@
   outline: none;
   border-color: rgba(255, 255, 255, 0.55);
   background: rgba(255, 255, 255, 0.22);
+}
+
+/* Login fields sit over the frosted card + creek photo — give them a deeper
+   backdrop blur than the default dn-field so the busy backdrop reads as soft
+   frost (the topbar/cameras search keep the lighter default). var()-wrapped so
+   Lightning CSS keeps the unprefixed property (see .dn-panel). */
+.dashboard-next .dn-glass-card .dn-field {
+  -webkit-backdrop-filter: var(--bf-dn-login-field, blur(20px) saturate(125%));
+  backdrop-filter: var(--bf-dn-login-field, blur(20px) saturate(125%));
 }
 
 /* Animated background orbs — three heavily blurred creek-color ellipses that

@@ -6,9 +6,10 @@ import { agentState } from "./agent-card";
 import { TOKEN_EXPIRING_WINDOW_MS, tokenStatus } from "./tokens-table";
 import type { DotStatus } from "./status-dot";
 import { KpiTile } from "./home/kpi-tile";
-import { TriagePanel } from "./home/triage-panel";
+import { TriagePanel, type TriageItem } from "./home/triage-panel";
 import { FleetOverview } from "./home/fleet-overview";
 import { RecentEvents } from "./home/recent-events";
+import { SetupChecklist } from "./home/setup-checklist";
 import { SystemStatus } from "./home/system-status";
 import { useUpstreamList } from "@/lib/api/use-list";
 import { isDemoMode } from "@/lib/demo/demo-mode";
@@ -21,6 +22,8 @@ import type {
   AlertListResponse,
   ApiToken,
   ApiTokenListResponse,
+  Camera,
+  CameraListResponse,
   DashboardSummary,
 } from "@/lib/api/types";
 
@@ -48,6 +51,7 @@ export function HomeOverviewClient({
   initialTokens,
   initialLimits,
   initialAlerts,
+  initialCameras,
   streamMinutesUsed,
 }: {
   account: AccountSummary;
@@ -56,6 +60,7 @@ export function HomeOverviewClient({
   initialTokens: ApiToken[];
   initialLimits: AccountLimits;
   initialAlerts: Alert[];
+  initialCameras: Camera[];
   // Completed stream minutes this period (null while the endpoint is
   // unavailable; renders as an unknown meter, never a fake 0).
   streamMinutesUsed: number | null;
@@ -92,6 +97,15 @@ export function HomeOverviewClient({
       fallbackData: { alerts: seedAlerts },
       refreshInterval: 10_000,
     }).data?.alerts ?? seedAlerts;
+
+  // Cameras back the triage rows' name + location meta (alerts only carry a
+  // camera_id). Polled like the rest; tolerates an unavailable endpoint by
+  // falling back to the server seed (empty → meta line is simply omitted).
+  const seedCameras = initialCameras ?? [];
+  const cameras =
+    useUpstreamList<CameraListResponse>("/v1/cameras", {
+      fallbackData: { cameras: seedCameras },
+    }).data?.cameras ?? seedCameras;
 
   // --- KPI 1: Active Cameras → online/total plus offline + errors note. ----
   const camsTotal = summary.total_cameras;
@@ -130,13 +144,34 @@ export function HomeOverviewClient({
   const needsReviewStatus: DotStatus = needsReview > 0 ? "orange" : "green";
 
   // --- Triage / Recent Events feeds (derived from the alerts poll). --------
-  // Triage shows only the most recent handful of open alerts (newest first;
-  // the panel's "View all" links to the full inbox) — keeps the home card to
-  // ~8 rows rather than an unbounded list.
-  const openAlerts = alerts
+  // Triage shows the 3 most recent open alerts (newest first); when more are
+  // open, the panel's "View more" button (and the header "View all" link) lead
+  // to the full inbox.
+  const TRIAGE_SHOWN = 3;
+  const openAll = alerts
     .filter((a) => a.status === "open")
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    .slice(0, 8);
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const openAlerts = openAll.slice(0, TRIAGE_SHOWN);
+  const triageMoreCount = openAll.length - openAlerts.length;
+
+  // Enrich each open alert with its camera's name + free-text location (read
+  // from the open-vocabulary metadata blob, like the cameras grid does).
+  // Unknown camera → both null, and the meta line is dropped rather than faked.
+  // Demo supplies a snapshot still; otherwise the slot is an icon placeholder
+  // (no fleet snapshot endpoint).
+  const cameraById = new Map(cameras.map((c) => [c.id, c]));
+  const triageItems: TriageItem[] = openAlerts.map((alert) => {
+    const cam = cameraById.get(alert.camera_id);
+    const rawLoc = cam?.metadata?.location;
+    const location =
+      typeof rawLoc === "string" && rawLoc.trim() ? rawLoc : null;
+    return {
+      alert,
+      cameraName: cam?.name ?? null,
+      location,
+      previewSrc: demo ? "/demo/dock-frame.jpg" : undefined,
+    };
+  });
   const recentAlerts = [...alerts]
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
     .slice(0, 5);
@@ -165,6 +200,14 @@ export function HomeOverviewClient({
 
   return (
     <div className="flex flex-col gap-4 md:gap-5">
+      {/* (0) SETUP CHECKLIST — only while onboarding is incomplete; derived
+          from already-fetched counts (cameras/agents/tokens), no new fetch. */}
+      <SetupChecklist
+        cameraCount={summary.total_cameras}
+        agentCount={agents.length}
+        tokenCount={tokens.length}
+      />
+
       {/* (1) KPI ROW */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5">
         <KpiTile
@@ -217,7 +260,7 @@ export function HomeOverviewClient({
 
       {/* (2) MIDDLE ROW — Triage + Fleet Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
-        <TriagePanel openAlerts={openAlerts} />
+        <TriagePanel items={triageItems} moreCount={triageMoreCount} />
         <FleetOverview
           critical={camsErrors}
           review={needsReview}
@@ -243,8 +286,8 @@ export function HomeOverviewClient({
         <Tile
           title="Plan & Usage"
           span={2}
-          actionLabel="View Billing"
-          actionHref="/billing"
+          actionLabel="View Plan & Usage"
+          actionHref="/plan-usage"
         >
           <div className="flex flex-col gap-5">
             <div className="flex items-baseline gap-3">

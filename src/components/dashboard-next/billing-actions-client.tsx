@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowUpRight, ExternalLink } from "lucide-react";
 import {
   openBillingPortalAction,
   startCheckoutAction,
-} from "@/app/(dash)/(app)/billing/actions";
+} from "@/app/(dash)/(app)/(account)/billing/actions";
 import type { UsageSummary } from "@/lib/api/types";
 import { formatBillingDate } from "@/lib/usage/usage-format";
 
