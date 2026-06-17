@@ -4,6 +4,21 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-17 — P5-I guided package setup + readiness checks
+
+**Subject:** A guided setup layer on the Processing tab (P5-H): a use-case picker that metadata-ranks the catalog, a per-package readiness checklist (geometry / settings / saved / applied), and a pre-save setup summary. Dashboard-only — no api-server changes.
+
+**Why:** P5-H let users pick a package but not understand *which* one or *what's missing*. P5-I answers "what do I want this camera to do?", "which package?", and "what needs to happen before it's useful?" — guided setup, not auto-tuning.
+
+**What changed:**
+- **Recommendation (pure):** `src/lib/perception/package-recommendation.ts` — `USE_CASES` (line crossing / zone entry-exit / occupancy / dwell / general / debug) + `scorePackageForUseCase` + `recommendPackages` → tiers Recommended / Compatible / Experimental / Not recommended. Metadata-driven (triggers/shapes/status/warnings/best_for/not_recommended_for); never a hardcoded id. An experimental package is always tiered `experimental` (NvDCF never "recommended"); metadata makes the IOU YOLOX package the recommended people-analytics choice.
+- **Readiness (pure):** `src/lib/perception/package-readiness.ts` — `computeReadiness` → checklist items + overall state (ready / needs_geometry / needs_save / pending_restart / experimental / failed_config). Geometry check maps `supported_shapes` (`line_segment`→lines, `polygon_roi`→rois) to the camera's `GeometryConfigRecord`; unavailable geometry degrades to a soft hint, never blocks.
+- **UI:** `processing/` gains `use-case-picker`, `package-readiness-checklist`, `setup-summary`; `package-card` gains a recommendation-tier badge; the panel wires use-case state, recommendation ordering, the readiness checklist, and the setup summary while keeping P5-H behavior intact when no use case is selected. `processing/page.tsx` now also fetches geometry (`getCameraGeometryConfig`, tolerant of failure).
+- **Tests:** 21 recommendation + 15 readiness helper cases (incl. IOU > TrafficCamNet, NvDCF never recommended, deprecated excluded) + 8 new panel UI tests (use-case ranking, readiness checklist, needs-geometry warning + link, ready/failed states, next-session summary copy).
+- **Docs:** `dashboard-next.md` (new "Guided package setup (P5-I)" section).
+
+**Verification:** `npm test` 749/749 (47 files); P5-I files lint-clean; `tsc` 0 errors in `src/`. Pre-existing/unrelated: the `add-camera-panel.tsx` lint error + the stale `.next/types/validator.ts` tsc errors. No api-server changes (uses existing geometry/package endpoints). Not committed/pushed.
+
 ## 2026-06-17 — P5-H Processing tab: per-camera package selector
 
 **Subject:** New top-level **Processing** tab on camera detail — the user-facing surface over the P5-F package catalog + P5-G request/apply backend. Pick a processing package, edit its safe overrides, save + apply, and see requested/applied/state. The model/detection concern moved here (the legacy Model & Detection editor was retired into a redirect) so Processing and Configure aren't redundant.

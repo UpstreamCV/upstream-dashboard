@@ -3,9 +3,11 @@ import { ProcessingPackagePanel } from "@/components/dashboard-next/processing/p
 import { getActiveAccount } from "@/lib/account/active";
 import { getCameraPackageConfig } from "@/lib/api/camera-package-config";
 import { UpstreamApiError } from "@/lib/api/errors";
+import { getCameraGeometryConfig } from "@/lib/api/geometry";
 import { listProcessingPackages } from "@/lib/api/processing-packages";
 import type {
   CameraPackageConfigResponse,
+  GeometryConfigRecord,
   ProcessingPackageCatalogResponse,
 } from "@/lib/api/types";
 
@@ -33,9 +35,14 @@ export default async function CameraProcessingPage({
   // independent reads — fetch concurrently. The package GET 404s only on
   // camera_not_found (it returns state "unset" otherwise); map that one case to
   // notFound(), same as the geometry/detection pages.
-  const [catalog, config]: [
+  // Geometry feeds the P5-I readiness checks (line vs ROI). It's non-critical —
+  // if it fails for any reason, the checklist degrades to a soft "configure
+  // geometry" hint rather than blocking the page (camera_not_found is already
+  // surfaced by the package GET below).
+  const [catalog, config, geometry]: [
     ProcessingPackageCatalogResponse,
     CameraPackageConfigResponse,
+    GeometryConfigRecord | null,
   ] = await Promise.all([
     listProcessingPackages({ accountId: activeAccountId }),
     getCameraPackageConfig({ accountId: activeAccountId, cameraId }).catch(
@@ -46,6 +53,9 @@ export default async function CameraProcessingPage({
         throw err;
       },
     ),
+    getCameraGeometryConfig({ accountId: activeAccountId, cameraId }).catch(
+      () => null,
+    ),
   ]);
 
   return (
@@ -54,6 +64,7 @@ export default async function CameraProcessingPage({
         cameraId={cameraId}
         catalog={catalog}
         config={config}
+        geometry={geometry}
       />
     </div>
   );
