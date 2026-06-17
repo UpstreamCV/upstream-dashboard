@@ -39,6 +39,7 @@ vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }
 import { ProcessingPackagePanel } from "./processing-package-panel";
 import type {
   CameraPackageConfigResponse,
+  GeometryConfigRecord,
   ProcessingPackage,
   ProcessingPackageCatalogResponse,
   RequestedPackageConfig,
@@ -133,6 +134,57 @@ const requested = (over: Partial<RequestedPackageConfig> = {}): RequestedPackage
   ...over,
 });
 
+function geo(opts: { lines?: boolean; rois?: boolean } = {}): GeometryConfigRecord {
+  return {
+    id: null,
+    camera_id: "cam-1",
+    revision: 0,
+    config: {
+      version: 1,
+      frame: { width: 1280, height: 720, coordinate_space: "normalized" },
+      lines: opts.lines
+        ? [
+            {
+              id: "l1",
+              points: [
+                { x: 0.3, y: 0.5 },
+                { x: 0.7, y: 0.5 },
+              ],
+              direction: "any",
+              enabled: true,
+            },
+          ]
+        : [],
+      rois: opts.rois
+        ? [
+            {
+              id: "r1",
+              type: "polygon",
+              points: [
+                { x: 0.1, y: 0.1 },
+                { x: 0.9, y: 0.1 },
+                { x: 0.5, y: 0.9 },
+              ],
+              enabled: true,
+            },
+          ]
+        : [],
+    },
+    is_default: !(opts.lines || opts.rois),
+    created_at: null,
+    updated_at: null,
+  };
+}
+
+const APPLIED_IOU = {
+  package_id: "iou",
+  model_id: "yolox_s_v1",
+  tracker_profile_id: "deepstream_iou_fast_v1",
+  analytics_profile_id: "deepstream_nvdsanalytics_probe_v1",
+  status: "processing",
+  applied_at: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   saveAction.mockResolvedValue({ ok: true, message: "saved", response: config() });
@@ -141,9 +193,17 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-function renderPanel(cfg: CameraPackageConfigResponse) {
+function renderPanel(
+  cfg: CameraPackageConfigResponse,
+  geometry: GeometryConfigRecord | null = null,
+) {
   return render(
-    <ProcessingPackagePanel cameraId="cam-1" catalog={CATALOG} config={cfg} />,
+    <ProcessingPackagePanel
+      cameraId="cam-1"
+      catalog={CATALOG}
+      config={cfg}
+      geometry={geometry}
+    />,
   );
 }
 
@@ -177,9 +237,9 @@ describe("ProcessingPackagePanel", () => {
 
   test("pending_restart: shows the next-session banner", () => {
     renderPanel(config({ requested: requested(), state: "pending_restart" }));
-    expect(
-      screen.getByText(/next time this camera session starts/i),
-    ).toBeDefined();
+    // Header-banner specific wording (the readiness checklist also mentions the
+    // next session, so match the banner's "no live restart" phrase).
+    expect(screen.getByText(/there is no live restart/i)).toBeDefined();
   });
 
   test("failed_config: shows the failure banner", () => {
@@ -282,5 +342,79 @@ describe("ProcessingPackagePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /Apply/i }));
     await waitFor(() => expect(applyAction).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+});
+
+describe("ProcessingPackagePanel — P5-I guided setup", () => {
+  test("renders the guided use-case section", () => {
+    renderPanel(config());
+    expect(
+      screen.getByText("What do you want this camera to do?"),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Zone entry & exit" }),
+    ).toBeDefined();
+  });
+
+  test("selecting a use case ranks packages with tier badges", () => {
+    renderPanel(config());
+    fireEvent.click(screen.getByRole("button", { name: "Zone entry & exit" }));
+    expect(screen.getByText(/recommended packages/i)).toBeDefined();
+    expect(screen.getByText("Recommended")).toBeDefined(); // IOU tier badge
+    expect(screen.getByText("Not recommended")).toBeDefined(); // decode probe
+  });
+
+  test("a selected package shows a readiness checklist", () => {
+    renderPanel(config());
+    fireEvent.click(screen.getByText("People Analytics — YOLOX"));
+    expect(screen.getByText("readiness")).toBeDefined();
+    expect(screen.getByText("Package selected")).toBeDefined();
+  });
+
+  test("missing geometry surfaces a warning + the Configure → Geometry link", () => {
+    renderPanel(config(), geo()); // empty geometry; IOU requires polygon ROI
+    fireEvent.click(screen.getByText("People Analytics — YOLOX"));
+    expect(screen.getByText("Needs geometry")).toBeDefined(); // readiness overall
+    const link = screen.getByText("Configure → Geometry").closest("a");
+    expect(link?.getAttribute("href")).toBe(
+      "/cameras/cam-1/configure/geometry",
+    );
+  });
+
+  test("ready when geometry is satisfied and the package is applied", () => {
+    renderPanel(
+      config({ requested: requested(), applied: APPLIED_IOU, state: "active" }),
+      geo({ rois: true }),
+    );
+    expect(screen.getByText("Ready")).toBeDefined();
+  });
+
+  test("failed config shows in the readiness checklist", () => {
+    renderPanel(
+      config({ requested: requested(), state: "failed_config" }),
+      geo({ rois: true }),
+    );
+    expect(screen.getByText("Failed config")).toBeDefined();
+  });
+
+  test("the setup summary states changes apply next session (no live restart)", () => {
+    renderPanel(config());
+    fireEvent.click(screen.getByText("People Analytics — YOLOX"));
+    expect(
+      screen.getByText(/The live processor is not restarted/i),
+    ).toBeDefined();
+  });
+
+  test("experimental opt-in is still required after selecting an experimental package", () => {
+    renderPanel(config());
+    fireEvent.click(screen.getByText(/NvDCF/));
+    const saveBtn = screen.getByRole("button", { name: /Save request/i });
+    expect((saveBtn as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I understand this package is experimental/i,
+      }),
+    );
+    expect((saveBtn as HTMLButtonElement).disabled).toBe(false);
   });
 });

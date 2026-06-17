@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import clsx from "clsx";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ProcessingPackage, ProcessingPackageStatus } from "@/lib/api/types";
+import type { RecommendationTier } from "@/lib/perception/package-recommendation";
 
 // One catalog package, rendered as an expandable card. The status badge is
 // driven by the package's `status` field (never hardcoded per id) so an
@@ -32,6 +33,14 @@ const STATUS_BADGE: Record<
   },
 };
 
+// Recommendation tier badge (shown only when a use case is selected).
+const RECOMMENDATION_BADGE: Record<RecommendationTier, string> = {
+  recommended: "bg-[var(--dn-green-text)]/15 text-[var(--dn-green-text)]",
+  compatible: "bg-[var(--dn-creek-mid)]/15 text-[var(--dn-creek-mid)]",
+  experimental: "bg-[var(--dn-orange-soft)] text-[var(--dn-orange)]",
+  not_recommended: "bg-white/5 text-[var(--dn-text-50)]",
+};
+
 function Chip({ children }: { children: ReactNode }) {
   return (
     <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
@@ -45,12 +54,14 @@ export function PackageCard({
   selected,
   isRequested,
   onSelect,
+  recommendation,
   children,
 }: {
   pkg: ProcessingPackage;
   selected: boolean;
   isRequested: boolean;
   onSelect: () => void;
+  recommendation?: { tier: RecommendationTier; label: string };
   children?: ReactNode;
 }) {
   const badge = STATUS_BADGE[pkg.status];
@@ -86,6 +97,16 @@ export function PackageCard({
             <h3 className="font-bold text-[clamp(1rem,1.4vw,1.15rem)] text-white">
               {pkg.display_name}
             </h3>
+            {recommendation ? (
+              <span
+                className={clsx(
+                  "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider",
+                  RECOMMENDATION_BADGE[recommendation.tier],
+                )}
+              >
+                {recommendation.label}
+              </span>
+            ) : null}
             <span
               className={clsx(
                 "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider",

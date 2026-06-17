@@ -12,6 +12,7 @@ import type {
   CameraPackageConfigResponse,
   CameraPackageRequest,
   CameraPackageSettings,
+  GeometryConfigRecord,
   ProcessingPackage,
   ProcessingPackageCatalogResponse,
   RequestedPackageConfig,
@@ -20,17 +21,29 @@ import {
   type PackageConfigValidationIssue,
   validatePackageRequest,
 } from "@/lib/perception/package-config-schema";
+import {
+  getUseCase,
+  recommendPackages,
+  TIER_LABEL,
+  type RecommendationTier,
+  type UseCaseId,
+} from "@/lib/perception/package-recommendation";
+import {
+  computeReadiness,
+  geometryReadiness,
+} from "@/lib/perception/package-readiness";
 import { PackageCard } from "./package-card";
 import { PackageDetail } from "./package-detail";
+import { PackageReadinessChecklist } from "./package-readiness-checklist";
 import { PackageSettingsForm } from "./package-settings-form";
 import { PackageStateHeader } from "./package-state-header";
+import { SetupSummary } from "./setup-summary";
+import { UseCasePicker } from "./use-case-picker";
 
-// P5-H Processing panel — the interactive brains of the Processing tab. Owns the
-// editor-local selection + safe-settings state and drives the save/apply Server
-// Actions. The package selector is the single control for a camera's
-// model/detection/analytics choice (it supersedes the legacy Model & Detection
-// editor). After a successful save/apply it calls router.refresh() so the
-// server-rendered requested/applied/state re-derives.
+// P5-I Processing panel — the P5-H package selector plus a guided setup layer:
+// a use-case picker that ranks the catalog (metadata-driven), a per-package
+// readiness checklist (geometry / settings / saved / applied), and a pre-save
+// setup summary. With no use case selected the catalog renders exactly as P5-H.
 
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50";
@@ -42,9 +55,6 @@ interface EditorSettings {
   selectedClasses: Set<string>;
 }
 
-// Seed the editor from the requested config when the package being edited IS
-// the requested one; otherwise start from "use package defaults" (null / all
-// classes).
 function deriveSettings(
   pkg: ProcessingPackage | null,
   requested: RequestedPackageConfig | null,
@@ -66,10 +76,12 @@ export function ProcessingPackagePanel({
   cameraId,
   catalog,
   config,
+  geometry,
 }: {
   cameraId: string;
   catalog: ProcessingPackageCatalogResponse;
   config: CameraPackageConfigResponse;
+  geometry: GeometryConfigRecord | null;
 }) {
   const router = useRouter();
   const requested = config.requested;
@@ -84,6 +96,7 @@ export function ProcessingPackagePanel({
     [initialPkg, requested],
   );
 
+  const [useCaseId, setUseCaseId] = useState<UseCaseId | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(requestedId);
   const [confidence, setConfidence] = useState<number | null>(
     initial.confidence,
@@ -106,9 +119,47 @@ export function ProcessingPackagePanel({
     [catalog.packages, selectedId],
   );
 
+  const useCaseDef = useCaseId ? getUseCase(useCaseId) : undefined;
+  const recommendations = useMemo(
+    () => (useCaseDef ? recommendPackages(catalog.packages, useCaseDef) : null),
+    [catalog.packages, useCaseDef],
+  );
+
+  const isSelectedSaved =
+    selected !== null && requestedId === selected.package_id;
+
+  const readiness = useMemo(
+    () =>
+      selected
+        ? computeReadiness({
+            pkg: selected,
+            config,
+            geometry,
+            allowExperimental,
+            isSelectedSaved,
+            settings: {
+              confidence,
+              targetFps,
+              allClasses,
+              selectedClassCount: selectedClasses.size,
+            },
+          })
+        : null,
+    [
+      selected,
+      config,
+      geometry,
+      allowExperimental,
+      isSelectedSaved,
+      confidence,
+      targetFps,
+      allClasses,
+      selectedClasses,
+    ],
+  );
+
   const selectPackage = useCallback(
     (pkg: ProcessingPackage) => {
-      // Clicking the already-open card collapses it.
       if (pkg.package_id === selectedId) {
         setSelectedId(null);
         return;
@@ -214,6 +265,146 @@ export function ProcessingPackagePanel({
     });
   }, [cameraId, router]);
 
+  // The expanded editor + guided panels for the selected package.
+  const expandedContent = (pkg: ProcessingPackage) => {
+    const geoR = geometryReadiness(pkg, geometry);
+    const geometryHint = geoR.state === "missing" ? geoR.detail : null;
+    return (
+      <div className="space-y-4">
+        <PackageDetail pkg={pkg} />
+
+        {readiness ? <PackageReadinessChecklist readiness={readiness} /> : null}
+
+        {pkg.status === "experimental" ? (
+          <label className="flex items-start gap-2 rounded-lg border border-[var(--dn-orange)]/30 bg-[var(--dn-orange-soft)] p-2.5">
+            <input
+              type="checkbox"
+              checked={allowExperimental}
+              onChange={(e) => setAllowExperimental(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[var(--dn-orange)]"
+            />
+            <span className="text-xs text-[var(--dn-orange)]">
+              I understand this package is experimental and not recommended for
+              production.
+            </span>
+          </label>
+        ) : null}
+
+        <PackageSettingsForm
+          pkg={pkg}
+          confidence={confidence}
+          targetFps={targetFps}
+          allClasses={allClasses}
+          selectedClasses={selectedClasses}
+          subsetEmpty={subsetEmpty}
+          onConfidence={(v) => {
+            setConfidence(v);
+            setSaveIssues([]);
+            setSaveError(null);
+          }}
+          onTargetFps={(v) => {
+            setTargetFps(v);
+            setSaveIssues([]);
+            setSaveError(null);
+          }}
+          onAllClasses={(v) => {
+            setAllClasses(v);
+            setSaveIssues([]);
+            setSaveError(null);
+          }}
+          onToggleClass={handleToggleClass}
+        />
+
+        {pkg.requires_geometry ? (
+          <p className="text-xs text-[var(--dn-text-50)]">
+            This package needs line/ROI geometry to emit events. Draw it under
+            the{" "}
+            <a
+              href={`/cameras/${cameraId}/configure/geometry`}
+              className="text-[var(--dn-creek-mid)] underline"
+            >
+              Configure → Geometry
+            </a>{" "}
+            editor.
+          </p>
+        ) : null}
+
+        <SetupSummary
+          pkg={pkg}
+          useCase={useCaseDef ?? null}
+          settings={{
+            confidence,
+            targetFps,
+            allClasses,
+            selectedClassCount: selectedClasses.size,
+          }}
+          config={config}
+          geometryHint={geometryHint}
+        />
+
+        {saveIssues.length > 0 ? (
+          <div
+            className="rounded-lg border border-[var(--dn-red)]/30 bg-[var(--dn-red-soft)] p-3"
+            role="alert"
+          >
+            <p className="text-sm font-bold text-[var(--dn-red)]">
+              Fix these before saving
+            </p>
+            <ul className="mt-2 space-y-1 text-xs text-[var(--dn-red)]">
+              {saveIssues.slice(0, 8).map((issue, idx) => (
+                <li key={`${issue.field}-${idx}`} className="font-mono">
+                  {issue.field}: {issue.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : saveError ? (
+          <p
+            className="rounded-lg border border-[var(--dn-red)]/30 bg-[var(--dn-red-soft)] p-3 text-sm text-[var(--dn-red)]"
+            role="alert"
+          >
+            {saveError}
+          </p>
+        ) : null}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave}
+            className={PRIMARY_BTN}
+          >
+            <Save className="h-3.5 w-3.5" />
+            {saving ? "Saving…" : "Save request"}
+          </button>
+          <span className="text-xs text-[var(--dn-text-50)]">
+            {pkg.requires_restart
+              ? "Applies on the camera’s next session."
+              : "Applies on the next processing run."}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCard = (
+    pkg: ProcessingPackage,
+    recommendation?: { tier: RecommendationTier; label: string },
+  ) => (
+    <PackageCard
+      key={pkg.package_id}
+      pkg={pkg}
+      selected={pkg.package_id === selectedId}
+      isRequested={pkg.package_id === requestedId}
+      onSelect={() => selectPackage(pkg)}
+      recommendation={recommendation}
+    >
+      {selected && selected.package_id === pkg.package_id
+        ? expandedContent(selected)
+        : null}
+    </PackageCard>
+  );
+
   return (
     <div className="space-y-5">
       <PackageStateHeader
@@ -223,14 +414,25 @@ export function ProcessingPackagePanel({
         applying={applying}
       />
 
+      <UseCasePicker selected={useCaseId} onSelect={setUseCaseId} />
+
       <section className="space-y-3">
         <h2 className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
-          available packages
+          {recommendations ? "recommended packages" : "available packages"}
         </h2>
         {catalog.packages.length === 0 ? (
           <p className="text-sm text-[var(--dn-text-50)]">
             No processing packages are available for this account.
           </p>
+        ) : recommendations ? (
+          <div className="space-y-2">
+            {recommendations.map((rec) =>
+              renderCard(rec.pkg, {
+                tier: rec.tier,
+                label: TIER_LABEL[rec.tier],
+              }),
+            )}
+          </div>
         ) : (
           catalog.categories.map((category) => {
             const pkgs = catalog.packages.filter(
@@ -242,122 +444,7 @@ export function ProcessingPackagePanel({
                 <h3 className="text-sm font-bold text-white/80">
                   {category.display_name}
                 </h3>
-                {pkgs.map((pkg) => (
-                  <PackageCard
-                    key={pkg.package_id}
-                    pkg={pkg}
-                    selected={pkg.package_id === selectedId}
-                    isRequested={pkg.package_id === requestedId}
-                    onSelect={() => selectPackage(pkg)}
-                  >
-                    {selected && selected.package_id === pkg.package_id ? (
-                      <div className="space-y-4">
-                        <PackageDetail pkg={selected} />
-
-                        {needsOptIn || selected.status === "experimental" ? (
-                          <label className="flex items-start gap-2 rounded-lg border border-[var(--dn-orange)]/30 bg-[var(--dn-orange-soft)] p-2.5">
-                            <input
-                              type="checkbox"
-                              checked={allowExperimental}
-                              onChange={(e) =>
-                                setAllowExperimental(e.target.checked)
-                              }
-                              className="mt-0.5 h-4 w-4 accent-[var(--dn-orange)]"
-                            />
-                            <span className="text-xs text-[var(--dn-orange)]">
-                              I understand this package is experimental and not
-                              recommended for production.
-                            </span>
-                          </label>
-                        ) : null}
-
-                        <PackageSettingsForm
-                          pkg={selected}
-                          confidence={confidence}
-                          targetFps={targetFps}
-                          allClasses={allClasses}
-                          selectedClasses={selectedClasses}
-                          subsetEmpty={subsetEmpty}
-                          onConfidence={(v) => {
-                            setConfidence(v);
-                            setSaveIssues([]);
-                            setSaveError(null);
-                          }}
-                          onTargetFps={(v) => {
-                            setTargetFps(v);
-                            setSaveIssues([]);
-                            setSaveError(null);
-                          }}
-                          onAllClasses={(v) => {
-                            setAllClasses(v);
-                            setSaveIssues([]);
-                            setSaveError(null);
-                          }}
-                          onToggleClass={handleToggleClass}
-                        />
-
-                        {selected.requires_geometry ? (
-                          <p className="text-xs text-[var(--dn-text-50)]">
-                            This package needs line/ROI geometry to emit events.
-                            Draw it under the{" "}
-                            <a
-                              href={`/cameras/${cameraId}/configure/geometry`}
-                              className="text-[var(--dn-creek-mid)] underline"
-                            >
-                              Configure → Geometry
-                            </a>{" "}
-                            editor.
-                          </p>
-                        ) : null}
-
-                        {saveIssues.length > 0 ? (
-                          <div
-                            className="rounded-lg border border-[var(--dn-red)]/30 bg-[var(--dn-red-soft)] p-3"
-                            role="alert"
-                          >
-                            <p className="text-sm font-bold text-[var(--dn-red)]">
-                              Fix these before saving
-                            </p>
-                            <ul className="mt-2 space-y-1 text-xs text-[var(--dn-red)]">
-                              {saveIssues.slice(0, 8).map((issue, idx) => (
-                                <li
-                                  key={`${issue.field}-${idx}`}
-                                  className="font-mono"
-                                >
-                                  {issue.field}: {issue.message}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : saveError ? (
-                          <p
-                            className="rounded-lg border border-[var(--dn-red)]/30 bg-[var(--dn-red-soft)] p-3 text-sm text-[var(--dn-red)]"
-                            role="alert"
-                          >
-                            {saveError}
-                          </p>
-                        ) : null}
-
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={handleSave}
-                            disabled={!canSave}
-                            className={PRIMARY_BTN}
-                          >
-                            <Save className="h-3.5 w-3.5" />
-                            {saving ? "Saving…" : "Save request"}
-                          </button>
-                          <span className="text-xs text-[var(--dn-text-50)]">
-                            {selected.requires_restart
-                              ? "Applies on the camera’s next session."
-                              : "Applies on the next processing run."}
-                          </span>
-                        </div>
-                      </div>
-                    ) : null}
-                  </PackageCard>
-                ))}
+                {pkgs.map((pkg) => renderCard(pkg))}
               </div>
             );
           })
