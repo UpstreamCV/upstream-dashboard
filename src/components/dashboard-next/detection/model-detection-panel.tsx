@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import clsx from "clsx";
 import { Info, Save, ScanEye } from "lucide-react";
-import { saveProcessingConfigAction } from "@/app/(dash)/(app)/cameras/[cameraId]/configure/detection/actions";
+import { saveProcessingConfigAction } from "@/app/(dash)/(app)/(fleet)/cameras/[cameraId]/configure/detection/actions";
 import type {
   CameraProcessingConfig,
   ModelRegistryEntry,

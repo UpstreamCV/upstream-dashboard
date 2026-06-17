@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { StreamSession, StreamSessionState } from "@/lib/api/types";
 import { StatusDot, type DotStatus } from "./status-dot";
@@ -61,8 +62,13 @@ export function SessionsTable({
                 key={s.id}
                 className="border-t border-[rgba(0,0,0,0.07)] transition-colors hover:bg-[rgba(0,0,0,0.03)] [&>td]:whitespace-nowrap [&>td]:px-4 [&>td]:py-3 [&>td]:align-middle"
               >
-                <td className="font-mono text-[var(--dn-text-50)]">
-                  {short(s.id)}
+                <td className="font-mono">
+                  <Link
+                    href={`/stream-sessions/${s.id}`}
+                    className="text-[var(--dn-text-50)] hover:text-black hover:underline underline-offset-2"
+                  >
+                    {short(s.id)}
+                  </Link>
                 </td>
                 <td>
                   <span className="inline-flex items-center gap-1.5">

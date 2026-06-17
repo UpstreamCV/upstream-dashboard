@@ -2,6 +2,7 @@ import { HomeOverviewClient } from "@/components/dashboard-next/home-overview-cl
 import { getActiveAccount } from "@/lib/account/active";
 import { listAgents } from "@/lib/api/agents";
 import { listAlerts } from "@/lib/api/alerts";
+import { listCameras } from "@/lib/api/cameras";
 import { listTokens } from "@/lib/api/api-tokens";
 import { getAccount, getAccountLimits } from "@/lib/api/accounts";
 import { getUsageSummary } from "@/lib/api/usage";
@@ -30,7 +31,7 @@ import { getDashboardSummary } from "@/lib/api/dashboard";
 export default async function DashboardNextHome() {
   const { activeAccountId } = await getActiveAccount();
 
-  const [summary, agents, tokens, account, limits, usage, alerts] =
+  const [summary, agents, tokens, account, limits, usage, alerts, cameras] =
     await Promise.all([
       getDashboardSummary({ accountId: activeAccountId }),
       listAgents({ accountId: activeAccountId }),
@@ -42,6 +43,9 @@ export default async function DashboardNextHome() {
       // Alerts seed the triage + recent-events feeds; tolerate the endpoint
       // being unavailable (the client polls and recovers on the next tick).
       listAlerts({ accountId: activeAccountId, limit: 100 }).catch(() => []),
+      // Cameras resolve the triage rows' name + location (alerts only carry a
+      // camera_id). Tolerate an unavailable endpoint — the client re-polls.
+      listCameras({ accountId: activeAccountId, limit: 200 }).catch(() => []),
     ]);
 
   return (
@@ -52,6 +56,7 @@ export default async function DashboardNextHome() {
       initialTokens={tokens}
       initialLimits={limits}
       initialAlerts={alerts}
+      initialCameras={cameras}
       streamMinutesUsed={usage?.usage.stream_minutes ?? null}
     />
   );

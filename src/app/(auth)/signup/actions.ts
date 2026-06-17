@@ -16,6 +16,7 @@ export async function signUpAction(
 ): Promise<SignUpState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
   const workspaceName = String(formData.get("workspace_name") ?? "").trim();
   const next = String(formData.get("next") ?? "/");
 
@@ -24,6 +25,12 @@ export async function signUpAction(
   }
   if (password.length < 8) {
     return { error: "Password must be at least 8 characters." };
+  }
+  // Authoritative password "double-check" — the form also validates this live in
+  // the browser, but re-check here so a disabled-JS / tampered client can't skip
+  // it (defence in depth; never trust the client).
+  if (password !== confirmPassword) {
+    return { error: "Passwords do not match." };
   }
 
   const supabase = await createSupabaseServerClient();

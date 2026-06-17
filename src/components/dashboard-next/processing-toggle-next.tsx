@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { setProcessingEnabled } from "@/app/(dash)/(app)/settings/actions";
+import { setProcessingEnabled } from "@/app/(dash)/(app)/(account)/settings/actions";
 
 // Account-level processing master switch (M3 dashboard surface).
 //

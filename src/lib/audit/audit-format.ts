@@ -10,6 +10,7 @@ import type { AuditLogItem } from "@/lib/api/types";
 
 export const AUDIT_CATEGORIES = [
   "all",
+  "security",
   "billing",
   "cameras",
   "tokens",
@@ -21,6 +22,7 @@ export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 
 export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
   all: "All",
+  security: "Security",
   billing: "Billing",
   cameras: "Cameras",
   tokens: "Tokens",
@@ -28,6 +30,17 @@ export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
   workflows: "Workflows",
   limits: "Limits",
 };
+
+// "Security Events" is a CROSS-CUTTING view (Account History = "all"), not a
+// single-category bucket — credential + access-control events that also belong
+// to their own category (tokens, limits). Kept separate from auditEventCategory
+// (which assigns one category per event) so the per-category chips are unchanged.
+export function isSecurityEvent(eventType: string): boolean {
+  return (
+    eventType.startsWith("api_token.") ||
+    eventType === "stream_session.limit_rejected"
+  );
+}
 
 const EVENT_LABELS: Record<string, string> = {
   "billing.checkout_started": "Checkout started",

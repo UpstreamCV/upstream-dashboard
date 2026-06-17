@@ -7,7 +7,7 @@ import { BellOff, Check, CheckCheck } from "lucide-react";
 import {
   markAlertReadAction,
   resolveAlertAction,
-} from "@/app/(dash)/(app)/alerts/actions";
+} from "@/app/(dash)/(app)/(event-outputs)/alerts/actions";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Alert, AlertListResponse } from "@/lib/api/types";
 import { useUpstreamList } from "@/lib/api/use-list";
@@ -123,13 +123,15 @@ export function AlertsInboxClient({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span
+                    <Link
+                      href={`/alerts/${alert.id}`}
                       className={
-                        "font-bold text-white" + (unread ? "" : " text-white/80")
+                        "font-bold text-white hover:underline underline-offset-2" +
+                        (unread ? "" : " text-white/80")
                       }
                     >
                       {alert.title}
-                    </span>
+                    </Link>
                     <span
                       className={
                         "rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide " +

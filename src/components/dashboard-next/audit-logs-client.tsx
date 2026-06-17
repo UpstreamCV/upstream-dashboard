@@ -12,6 +12,7 @@ import {
   auditEventCategory,
   auditEventLabel,
   auditMetadataPreview,
+  isSecurityEvent,
 } from "@/lib/audit/audit-format";
 
 // Module 7 M3 — audit log list with category filter chips. Filtering is
@@ -35,13 +36,16 @@ const CATEGORY_CHIP_STYLE: Record<string, string> = {
 export function AuditLogsClient({ items }: { items: AuditLogItem[] }) {
   const [category, setCategory] = useState<AuditCategory>("all");
 
-  const visible = useMemo(
-    () =>
-      category === "all"
-        ? items
-        : items.filter((item) => auditEventCategory(item.event_type) === category),
-    [items, category],
-  );
+  const visible = useMemo(() => {
+    if (category === "all") return items;
+    // "Security" is a cross-cutting overlay; the rest are single-category.
+    if (category === "security") {
+      return items.filter((item) => isSecurityEvent(item.event_type));
+    }
+    return items.filter(
+      (item) => auditEventCategory(item.event_type) === category,
+    );
+  }, [items, category]);
 
   return (
     <div className="dn-tile p-[clamp(1.1rem,1.8vw,1.5rem)]">
