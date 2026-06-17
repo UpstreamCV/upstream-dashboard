@@ -12,6 +12,7 @@ import {
   demoAccount,
   demoAgent,
   demoCamera,
+  demoCameraPackageConfig,
   demoCameraProcessingConfig,
   demoCameras,
   demoConfidenceTrend,
@@ -24,6 +25,7 @@ import {
   demoObservations,
   demoPerception,
   demoProcessingConfig,
+  demoProcessingPackages,
   demoProcessorStatus,
   demoReliabilitySummary,
   demoSession,
@@ -50,6 +52,7 @@ export function resolveDemoResponse(
   if (path === "/v1/account/limits") return demoLimits;
   if (path === "/v1/account/processing-config") return demoProcessingConfig;
   if (path === "/v1/models") return demoModels();
+  if (path === "/v1/processing/packages") return demoProcessingPackages();
   if (path === "/v1/stream-sessions") return { sessions: [demoSession()] };
 
   if (seg[1] === "agents" && seg[2]) return demoAgent(); // /v1/agents/{id}
@@ -73,6 +76,9 @@ export function resolveDemoResponse(
         return { geometry_config: demoGeometryConfig(scene) };
       case "processing-config":
         return demoCameraProcessingConfig();
+      case "processing-config/package":
+      case "processing-config/apply":
+        return demoCameraPackageConfig();
       case "perception/latest":
         return demoPerception(scene);
       case "processor-status/latest":

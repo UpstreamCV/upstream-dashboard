@@ -496,6 +496,143 @@ export interface CameraProcessingConfigResponse {
   processing_config: CameraProcessingConfigRecord;
 }
 
+// --- Processing packages (P5-F catalog + P5-G camera request/apply) ----------
+// TS mirrors of the api-server schemas. Source of truth (do not drift):
+// ../upstream-api-server/src/upstream_api/schemas/processing_packages.py and
+// schemas/processing_config_camera.py; services/package_catalog.py for the
+// curated catalog data. See ../upstream-api-server/docs/api-contracts.md.
+
+/** Curation/readiness status of a processing package. */
+export type ProcessingPackageStatus =
+  | "probe"
+  | "experimental"
+  | "supported"
+  | "deprecated";
+
+/**
+ * One processing package from the catalog (GET /v1/processing/packages). A
+ * package is a curated bundle: a detection model + (optional) tracker +
+ * (optional) analytics profile, plus the safe operator overrides it allows.
+ * `production_ready` is an honesty gate (true only when status is
+ * "supported"); the catalog is all probe/experimental today. `warnings`,
+ * `limitations`, and `readiness_notes` are server-authored — render them, never
+ * hardcode package guidance.
+ */
+export interface ProcessingPackage {
+  package_id: string;
+  display_name: string;
+  description: string | null;
+  category: string;
+  status: ProcessingPackageStatus;
+  production_ready: boolean;
+  test_mode_safe: boolean;
+  runtime: string;
+  model_id: string | null;
+  tracker_profile_id: string | null;
+  analytics_profile_id: string | null;
+  supported_classes: string[];
+  supported_outputs: string[];
+  supported_shapes: string[];
+  supported_triggers: string[];
+  default_settings: Record<string, unknown>;
+  allowed_overrides: string[];
+  compute_tier: string | null;
+  pricing_tier: string | null;
+  observation_volume_risk: string | null;
+  warnings: string[];
+  limitations: string[];
+  best_for: string[];
+  not_recommended_for: string[];
+  requires_geometry: boolean;
+  requires_restart: boolean;
+  readiness_notes: string | null;
+  related_packages: string[];
+}
+
+/** A catalog category bucket (e.g. people_analytics → "People Analytics"). */
+export interface ProcessingPackageCategory {
+  id: string;
+  display_name: string;
+}
+
+/** GET /v1/processing/packages response envelope. */
+export interface ProcessingPackageCatalogResponse {
+  packages: ProcessingPackage[];
+  categories: ProcessingPackageCategory[];
+  warnings: string[];
+}
+
+/**
+ * Safe operator overrides on a package. Each key is gated by the package's
+ * `allowed_overrides`; only send the ones the package allows. `target_fps`
+ * maps to the processor's `processing_fps` seam; `selected_classes` of `[]`
+ * means "all supported classes".
+ */
+export interface CameraPackageSettings {
+  confidence_threshold?: number | null;
+  target_fps?: number | null;
+  selected_classes?: string[];
+}
+
+/** PUT /v1/cameras/{camera_id}/processing-config/package request body. */
+export interface CameraPackageRequest {
+  package_id: string;
+  settings: CameraPackageSettings;
+  /** Explicit opt-in required to request an `experimental` package. */
+  allow_experimental: boolean;
+}
+
+/** The operator's requested package + safe settings (revision-tracked). */
+export interface RequestedPackageConfig {
+  package_id: string;
+  settings: CameraPackageSettings;
+  revision: number;
+  updated_at: IsoDateTime | null;
+  updated_by: string | null;
+}
+
+/**
+ * What the processor last actually ran, derived from the latest
+ * `processor_statuses` row. All fields are null until a worker has reported.
+ */
+export interface AppliedPackageConfig {
+  package_id: string | null;
+  model_id: string | null;
+  tracker_profile_id: string | null;
+  analytics_profile_id: string | null;
+  status: string | null;
+  applied_at: IsoDateTime | null;
+}
+
+/**
+ * Derived request/apply lifecycle for a camera's package:
+ * - unset: no package requested (default processing runs)
+ * - active: requested == applied and the latest run is healthy
+ * - pending_apply: requested, but no processor run yet
+ * - pending_restart: requested != applied (applies next session)
+ * - failed_config: latest run for the requested package failed
+ * - experimental_selected: the active package is experimental
+ */
+export type CameraPackageState =
+  | "unset"
+  | "active"
+  | "pending_apply"
+  | "pending_restart"
+  | "failed_config"
+  | "experimental_selected";
+
+/**
+ * GET/PUT/apply /v1/cameras/{camera_id}/processing-config/package response.
+ * `warnings` is server-authored (experimental / not-production / failure).
+ */
+export interface CameraPackageConfigResponse {
+  camera_id: Uuid;
+  requested: RequestedPackageConfig | null;
+  applied: AppliedPackageConfig | null;
+  state: CameraPackageState;
+  warnings: string[];
+}
+
 // --- Processor Status (P6-D latest-processor-status API) ---------------------
 // The latest `processor_statuses` row for one camera, including the `payload`
 // JSONB where the P6-C analytics worker stamps the `applied_geometry` lineage
