@@ -19,7 +19,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { saveGeometryAction } from "@/app/(dash)/(app)/cameras/[cameraId]/configure/geometry/actions";
+import { saveGeometryAction } from "@/app/(dash)/(app)/(fleet)/cameras/[cameraId]/configure/geometry/actions";
 import type {
   GeometryConfig,
   GeometryLine,

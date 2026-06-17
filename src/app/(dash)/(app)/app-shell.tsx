@@ -36,7 +36,7 @@ export function AppShell({
   if (isHome) {
     return (
       <div className="relative z-10 h-full overflow-y-auto dn-scroll">
-        <div className="flex min-h-full gap-3">
+        <div className="flex min-h-full">
           {/* Sticky, viewport-tall rail (collapsed icon dock + identity) — stays
               put and expands on hover. No left padding here: the rail owns it so
               its hover box reaches the screen's left edge. */}
@@ -72,7 +72,7 @@ export function AppShell({
   // box reaches the screen's left edge.
   return (
     <div className="relative z-10 flex h-full flex-col">
-      <div className="flex-1 flex min-h-0 gap-3">
+      <div className="flex-1 flex min-h-0">
         <SidebarNext name={name} />
         <main className="dn-panel dn-panel-square flex-1 min-w-0 relative overflow-hidden">
           <ScrollArea>{children}</ScrollArea>

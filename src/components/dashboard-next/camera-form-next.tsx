@@ -7,7 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import type { CameraFormResult } from "@/app/(dash)/(app)/cameras/new/actions";
+import type { CameraFormResult } from "@/app/(dash)/(app)/(fleet)/cameras/new/actions";
 import type { AccountLimits, Camera } from "@/lib/api/types";
 
 export function CameraFormNext({

@@ -8,7 +8,7 @@ import {
   createRuleAction,
   deleteRuleAction,
   setRuleEnabledAction,
-} from "@/app/(dash)/(app)/cameras/[cameraId]/configure/rules/actions";
+} from "@/app/(dash)/(app)/(fleet)/cameras/[cameraId]/configure/rules/actions";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Rule, RuleSeverity, RuleType } from "@/lib/api/types";
 import {

@@ -1,52 +1,162 @@
 import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
+import {
+  ChevronRight,
+  Image as ImageIcon,
+  MapPin,
+  ShieldCheck,
+  Video,
+} from "lucide-react";
 import { RelativeTime } from "@/components/data/relative-time";
 import type { Alert } from "@/lib/api/types";
 import { severityMeta } from "../dn-status";
 
-// Triage panel (Figma "Some Issues" / "All Good" — left middle card). Lists the
-// OPEN alerts the operator needs to act on. When nothing is open it flips to the
-// "All Good" empty state: a bright-green-bordered card with a shield, headline,
-// and a "View History" pill.
+// Triage panel (Figma "Some Issues" 390:341 — left middle card, "Triage
+// Section" rows + "Group 19" banner). Lists the OPEN alerts the operator needs
+// to act on. Each row leads with a CAMERA SNAPSHOT (severity-bordered + a soft
+// same-color glow), then the severity chip, title + live time, the alert
+// message, and a camera • location meta line; the Review button sits at the far
+// right. Below the rows a separate reassurance banner explains that only
+// attention-worthy issues are shown.
+//
+// Honest-data note: there is no fleet-level snapshot endpoint (same constraint
+// the cameras grid lives under — see camera-card.tsx), so the snapshot slot is
+// an image-icon placeholder unless a still is supplied (demo passes the dock
+// frame). Camera name + location are resolved from the cameras list upstream
+// and omitted entirely when unknown — never a raw UUID or a fake "—".
+//
+// When nothing is open the panel flips to the "All Good" empty state: a
+// bright-green-bordered card with a shield, headline, and a "View History" pill.
 //
 // Alerts carry a freeform `severity` string; severityMeta() maps it to the
-// redesign's chip fill/text + dot. RelativeTime keeps the timestamp live (never
-// a Date.now() snapshot baked at render). Every link points at /alerts.
+// redesign's chip fill/text + accent. RelativeTime keeps the timestamp live
+// (never a Date.now() snapshot baked at render). Every link points at /alerts.
 
 const ALERTS_HREF = "/alerts";
 
-function TriageRow({ alert }: { alert: Alert }) {
+/** An open alert enriched with its camera's display name + location (resolved
+ *  upstream from the cameras list) and an optional snapshot still. */
+export interface TriageItem {
+  alert: Alert;
+  cameraName: string | null;
+  location: string | null;
+  /** Snapshot still for the thumbnail slot (demo supplies the dock frame). */
+  previewSrc?: string;
+}
+
+function TriageRow({ item }: { item: TriageItem }) {
+  const { alert, cameraName, location, previewSrc } = item;
   const sev = severityMeta(alert.severity);
+  // Figma 390:493: a translucent-WHITE rim with the severity color showing only
+  // as a near-solid same-color halo (shadow 0 0 25px <accent>).
+  const glow = `color-mix(in srgb, ${sev.accentVar} 90%, transparent)`;
+
   return (
-    <li className="flex items-start gap-[clamp(0.75rem,1.4vw,1.25rem)] py-[clamp(0.9rem,1.6vw,1.4rem)]">
-      <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    <li className="flex items-center gap-[clamp(0.85rem,1.6vw,1.4rem)] py-[clamp(0.9rem,1.6vw,1.4rem)]">
+      {/* Camera snapshot — severity-bordered + glowing; image-icon placeholder
+          when no still is available. */}
+      <div
+        className="relative grid shrink-0 place-items-center overflow-hidden bg-[rgba(255,255,255,0.06)] bg-cover bg-center aspect-[16/10] w-[clamp(6rem,13vw,9.75rem)]"
+        style={{
+          border: "2px solid var(--dn-text-40)",
+          borderRadius: "var(--dn-radius-inner)",
+          boxShadow: `0 0 clamp(16px,2vw,25px) ${glow}`,
+          ...(previewSrc ? { backgroundImage: `url(${previewSrc})` } : {}),
+        }}
+      >
+        {previewSrc ? null : (
+          <ImageIcon
+            className="h-[clamp(1.4rem,2.4vw,2.2rem)] w-[clamp(1.4rem,2.4vw,2.2rem)] text-white/35"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex min-w-0 flex-1 flex-col gap-[clamp(0.3rem,0.6vw,0.5rem)]">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <span
-            className="rounded-full px-3 py-1 text-[clamp(0.72rem,0.9vw,0.85rem)] font-bold shrink-0"
+            className="shrink-0 rounded-[var(--dn-radius-inner)] px-3 py-1 text-[clamp(0.72rem,0.9vw,0.85rem)] font-bold"
             style={{ background: sev.chipBg, color: sev.chipText }}
           >
             {sev.chipLabel}
           </span>
-          <span className="font-bold text-[clamp(0.95rem,1.2vw,1.15rem)] min-w-0 truncate">
+          <span className="min-w-0 truncate font-bold text-[clamp(0.95rem,1.2vw,1.15rem)]">
             {alert.title}
           </span>
-          <span className="text-[clamp(0.8rem,1vw,0.95rem)] text-[var(--dn-text-50)] shrink-0">
-            <RelativeTime value={alert.created_at} />
+          <span className="shrink-0 text-[clamp(0.8rem,1vw,0.95rem)] text-[var(--dn-text-40)]">
+            • <RelativeTime value={alert.created_at} />
           </span>
         </div>
+
         {alert.message && (
-          <p className="mt-1.5 text-[clamp(0.82rem,1.05vw,1rem)] text-[var(--dn-text-50)] line-clamp-2">
+          <p className="line-clamp-2 text-[clamp(0.82rem,1.05vw,1rem)] text-[var(--dn-text-40)]">
             {alert.message}
           </p>
         )}
+
+        {(cameraName || location) && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[clamp(0.78rem,0.98vw,0.92rem)] font-bold text-[var(--dn-text-40)]">
+            {cameraName && (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <Video className="h-[1em] w-[1.15em] shrink-0" aria-hidden />
+                <span className="truncate">{cameraName}</span>
+              </span>
+            )}
+            {cameraName && location && (
+              <span
+                className="h-1 w-1 shrink-0 rounded-full bg-[var(--dn-text-40)]"
+                aria-hidden
+              />
+            )}
+            {location && (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <MapPin className="h-[1em] w-[1em] shrink-0" aria-hidden />
+                <span className="truncate">{location}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
       <Link
         href={ALERTS_HREF}
-        className="dn-btn dn-glow-soft shrink-0 self-start font-bold px-[clamp(0.85rem,1.2vw,1.1rem)] py-[clamp(0.4rem,0.7vw,0.6rem)] text-[clamp(0.78rem,0.95vw,0.9rem)]"
+        className="dn-btn dn-glow-soft shrink-0 self-center font-bold px-[clamp(0.95rem,1.4vw,1.3rem)] py-[clamp(0.45rem,0.75vw,0.65rem)] text-[clamp(0.78rem,0.95vw,0.9rem)]"
       >
         <span className="relative z-10">Review</span>
       </Link>
     </li>
+  );
+}
+
+// "We're only showing what needs your attention" reassurance banner — a
+// separate green-bordered element below the rows (Figma "Group 19").
+function TriageBanner() {
+  return (
+    <div
+      className="flex items-center gap-[clamp(0.75rem,1.4vw,1.25rem)] px-[clamp(1rem,1.8vw,1.75rem)] py-[clamp(0.75rem,1.3vw,1.15rem)]"
+      style={{
+        background: "var(--dn-text-15)",
+        border:
+          "2px solid color-mix(in srgb, var(--dn-green-bright) 50%, transparent)",
+        borderRadius: "var(--dn-radius-tile)",
+      }}
+    >
+      <ShieldCheck
+        className="h-[clamp(1.6rem,2.6vw,2.4rem)] w-[clamp(1.6rem,2.6vw,2.4rem)] shrink-0"
+        style={{ color: "var(--dn-green-bright)" }}
+        strokeWidth={2}
+        aria-hidden
+      />
+      <div className="min-w-0">
+        <p className="font-bold text-[clamp(0.9rem,1.15vw,1.1rem)] text-white">
+          We&rsquo;re only showing what needs your attention.
+        </p>
+        <p className="font-bold text-[clamp(0.78rem,1vw,0.95rem)] text-[var(--dn-text-40)]">
+          Other issues have been automatically fixed by us.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -82,7 +192,14 @@ function TriageEmpty() {
   );
 }
 
-export function TriagePanel({ openAlerts }: { openAlerts: Alert[] }) {
+export function TriagePanel({
+  items,
+  moreCount = 0,
+}: {
+  items: TriageItem[];
+  // Open alerts beyond the few shown here — surfaces a "View more" button.
+  moreCount?: number;
+}) {
   return (
     <section className="dn-tile flex flex-col gap-[clamp(0.75rem,1.4vw,1.25rem)] p-[clamp(1.25rem,2.2vw,2.25rem)] min-w-0">
       <header className="flex items-baseline justify-between gap-3">
@@ -100,14 +217,31 @@ export function TriagePanel({ openAlerts }: { openAlerts: Alert[] }) {
         </Link>
       </header>
 
-      {openAlerts.length === 0 ? (
+      {items.length === 0 ? (
         <TriageEmpty />
       ) : (
-        <ul className="flex flex-col divide-y divide-[var(--dn-text-15)]">
-          {openAlerts.map((alert) => (
-            <TriageRow key={alert.id} alert={alert} />
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col divide-y divide-[var(--dn-text-15)]">
+            {items.map((item) => (
+              <TriageRow key={item.alert.id} item={item} />
+            ))}
+          </ul>
+          {moreCount > 0 && (
+            <Link
+              href={ALERTS_HREF}
+              className="dn-btn dn-glow-soft self-stretch text-center font-bold px-[clamp(0.95rem,1.4vw,1.3rem)] py-[clamp(0.5rem,0.85vw,0.7rem)] text-[clamp(0.8rem,1vw,0.92rem)]"
+            >
+              <span className="relative z-10 inline-flex items-center justify-center gap-1.5">
+                View {moreCount} more
+                <ChevronRight
+                  className="h-[1.05em] w-[1.05em] shrink-0"
+                  aria-hidden
+                />
+              </span>
+            </Link>
+          )}
+          <TriageBanner />
+        </>
       )}
     </section>
   );

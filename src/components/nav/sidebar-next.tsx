@@ -6,28 +6,26 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import clsx from "clsx";
 import {
-  Bell,
-  CreditCard,
-  Cpu,
+  AlertTriangle,
+  CircleUser,
   Globe,
   Home,
-  KeyRound,
   LogOut,
-  Network,
-  Radio,
-  ScrollText,
-  Settings,
-  Users,
+  Send,
+  Terminal,
   Video,
-  Workflow,
   type LucideIcon,
 } from "lucide-react";
+import { FLAGS, type FeatureFlag } from "@/lib/nav/feature-flags";
 
 // Figma navigation rail — NO container: the button pills sit directly on the
 // shell background. Each item is a pill with a per-section icon + label; the
-// active item is a solid white pill (gradient label + deep-creek icon). Cameras,
-// Agents, Streaming Sessions, API Keys, and Home route to wired pages; the
-// others are inert placeholders ("coming soon" via title) until they land.
+// active item is a solid white pill (gradient label + deep-creek icon). The rail
+// holds the SIX top-level sections of the IA (Home, Issues, Cameras, Event
+// Outputs, Dev Settings, Account); each section's sub-areas live in a per-section
+// SectionTabs strip, never in the rail. Backend-gated sections (e.g. Issues until
+// its aggregator ships) are filtered out via feature flags, so the rail simply
+// shows fewer uniform pills.
 //
 // Per-route behavior:
 //   • EVERY PAGE collapses to an icon-only dock that expands to the labelled
@@ -43,73 +41,52 @@ import {
 // dead-centered (equal padding L/R) and never slides when the rail expands — the
 // label simply cross-fades in beside it. That's what keeps the expand smooth and
 // every pill identical in size.
-const NAV: {
+// Six top-level SECTIONS (the 6-section IA). The rail renders exactly these six
+// pills — sub-areas live in per-section SectionTabs strips, NOT in the rail, so
+// the hover-dock physics below stay untouched (uniform pills, no accordion). Each
+// section's `match` is widened to cover all of its leaf URL prefixes so the right
+// pill lights on any deep route (e.g. /agents and /stream-sessions light Cameras).
+// `flag` gates a section until its backend lands — flagged-off sections are
+// filtered out before render (so the rail just has fewer uniform pills). The pill
+// href points at the section's primary landing page. See docs/sitemap-reorg-plan.md.
+export const NAV: {
   label: string;
-  href: string | null;
-  match?: RegExp;
+  href: string;
+  match: RegExp;
   icon: LucideIcon;
+  flag?: FeatureFlag;
 }[] = [
+  { label: "Home", href: "/", match: /^\/$/, icon: Home },
   {
-    label: "Home",
-    href: "/",
-    match: /^\/$/,
-    icon: Home,
+    label: "Issues",
+    href: "/issues",
+    match: /^\/issues/,
+    icon: AlertTriangle,
+    flag: "issues",
   },
   {
     label: "Cameras",
     href: "/cameras",
-    match: /^\/cameras/,
+    match: /^\/(cameras|agents|stream-sessions)/,
     icon: Video,
   },
   {
-    label: "Agents",
-    href: "/agents",
-    match: /^\/agents/,
-    icon: Cpu,
-  },
-  {
-    label: "Streaming Sessions",
-    href: "/stream-sessions",
-    match: /^\/stream-sessions/,
-    icon: Radio,
-  },
-  { label: "Network", href: null, icon: Network },
-  {
-    label: "Billing",
-    href: "/billing",
-    match: /^\/billing/,
-    icon: CreditCard,
-  },
-  { label: "Users", href: null, icon: Users },
-  {
-    label: "Workflows",
+    label: "Event Outputs",
     href: "/workflows",
-    match: /^\/workflows/,
-    icon: Workflow,
+    match: /^\/(rules|workflows|alerts|destinations|events)/,
+    icon: Send,
   },
   {
-    label: "Alerts",
-    href: "/alerts",
-    match: /^\/alerts/,
-    icon: Bell,
-  },
-  {
-    label: "Audit Logs",
-    href: "/audit-logs",
-    match: /^\/audit-logs/,
-    icon: ScrollText,
-  },
-  {
-    label: "API Keys",
+    label: "Dev Settings",
     href: "/api-tokens",
-    match: /^\/api-tokens/,
-    icon: KeyRound,
+    match: /^\/(api-tokens|event-schema|api-docs|webhooks)/,
+    icon: Terminal,
   },
   {
-    label: "Settings",
-    href: "/settings",
-    match: /^\/settings/,
-    icon: Settings,
+    label: "Account",
+    href: "/plan-usage",
+    match: /^\/(account|plan-usage|billing|settings|audit-logs|team)/,
+    icon: CircleUser,
   },
 ];
 
@@ -226,6 +203,9 @@ export function SidebarNext({ name }: { name: string }) {
       color,
     );
   }
+  // Hide sections whose backend hasn't landed (flag off) — the rail just renders
+  // fewer uniform pills, so the hover-dock physics are unaffected.
+  const sections = NAV.filter((item) => !item.flag || FLAGS[item.flag]);
   const rail = (
     <>
       {/* User identity at the top-left. Avatar centered in the same slot as the
@@ -265,10 +245,9 @@ export function SidebarNext({ name }: { name: string }) {
       </div>
 
       <nav className="flex flex-col gap-1.5">
-        {NAV.map((item) => {
-          const active = item.match?.test(pathname) ?? false;
+        {sections.map((item) => {
+          const active = item.match.test(pathname);
           const Icon = item.icon;
-          const title = item.href ? item.label : `${item.label} (coming soon)`;
           const inner = (
             <>
               <Slot>
@@ -289,26 +268,16 @@ export function SidebarNext({ name }: { name: string }) {
               </span>
             </>
           );
-          return item.href ? (
+          return (
             <Link
               key={item.label}
               href={item.href}
               className={itemCls(active)}
-              title={title}
+              title={item.label}
               aria-label={dock ? item.label : undefined}
             >
               {inner}
             </Link>
-          ) : (
-            <span
-              key={item.label}
-              className={clsx(itemCls(active), "cursor-default select-none")}
-              aria-disabled
-              aria-label={dock ? title : undefined}
-              title={title}
-            >
-              {inner}
-            </span>
           );
         })}
       </nav>
@@ -372,11 +341,12 @@ export function SidebarNext({ name }: { name: string }) {
       ref={asideRef}
       data-open={open ? "true" : "false"}
       className={clsx(
-        // pl 18px / pr 6px (not symmetric px): the rail BOX still starts at the
+        // Tight symmetric px-1.5 (6px) margin: the rail BOX still starts at the
         // screen's left edge (no parent padding) so its hover zone covers the
-        // leftmost pixels, while the pills sit 18px from the edge — equal to
-        // their 18px gap to the panel on the right (6px pr + 12px row gap).
-        "dn-rail-dock dn-scroll group hidden md:flex md:flex-col gap-1.5 pl-[18px] pr-1.5 shrink-0 overflow-x-hidden overflow-y-auto pb-4 sm:pb-6 md:pb-8",
+        // leftmost pixels; the icon-slot is centered in the 3.75rem dock and the
+        // AppShell row has NO gap, so the panel abuts the box's right edge — the
+        // icon's gap to the screen (left) and to the panel (right) are equal.
+        "dn-rail-dock dn-scroll group hidden md:flex md:flex-col gap-1.5 px-1.5 shrink-0 overflow-x-hidden overflow-y-auto pb-4 sm:pb-6 md:pb-8",
         // Home's rail lives in a block wrapper and must fill it; elsewhere the
         // rail is a flex item that already stretches to full height.
         isHome && "h-full",

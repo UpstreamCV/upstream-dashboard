@@ -5,10 +5,11 @@ import { Check, Copy, KeyRound, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { CodeBlock } from "./code-block";
 import {
   createTokenAction,
   type CreateTokenResult,
-} from "@/app/(dash)/(app)/api-tokens/actions";
+} from "@/app/(dash)/(app)/(dev-settings)/api-tokens/actions";
 
 // Faithful port of src/components/tokens/token-create-dialog.tsx restyled for
 // the dashboard-next light theme.
@@ -28,11 +29,10 @@ function InstallSnippet({ token }: { token: string }) {
     `upstream-agent init --token ${token}`,
     "upstream-agent start --camera-index 0 --width 1280 --height 720 --fps 30",
   ];
-  return (
-    <pre className="font-mono text-[12px] leading-relaxed text-white/80 bg-white/[0.05] border border-white/10 rounded-xl p-4 overflow-x-auto">
-      {lines.join("\n")}
-    </pre>
-  );
+  // copyable stays OFF here: the dialog already exposes a dedicated copy
+  // affordance for the raw secret, and the plaintext must not gain extra
+  // copy paths beyond the audited ones.
+  return <CodeBlock code={lines.join("\n")} />;
 }
 
 /**

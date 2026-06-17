@@ -1,5 +1,7 @@
 # dashboard — at-a-glance status
 
+> **2026-06-17 — 6-section IA.** The sidebar is now six sections — **Home · Issues · Cameras · Event Outputs · Dev Settings · Account** — grouped via route groups (`(account)`/`(event-outputs)`/`(dev-settings)`) that add no URL segment, with a `SectionTabs` strip per section. URLs below are unchanged by the reorg (no redirects); new pages: `/cameras/[id]/overview` + `/issues` tab, `/agents/[id]`, `/stream-sessions/[id]`, `/plan-usage`, `/rules`, `/alerts/[id]`, `/event-schema`, `/api-docs`. Gated-off (feature flags) until backend: Issues queue, Destinations, Events, Webhooks, Team, Network. Canonical: `docs/sitemap-reorg-plan.md`.
+
 The operator dashboard. **As of 2026-05-29 this is the live default at `/dashboard`** (promoted from the former `dashboard-next`). All new product-facing dashboard work goes here — see `docs/dashboard-next.md` "Route policy."
 
 - **Live (production, this folder):** `src/app/dashboard/` → `/dashboard` (authed) and `/dashboard/login` (public).

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { revokeTokenAction } from "@/app/(dash)/(app)/api-tokens/actions";
+import { revokeTokenAction } from "@/app/(dash)/(app)/(dev-settings)/api-tokens/actions";
 
 // Light-theme port of src/components/tokens/token-row-actions.tsx — same
 // two-step confirm pattern, restyled for the white .dn-tile table.

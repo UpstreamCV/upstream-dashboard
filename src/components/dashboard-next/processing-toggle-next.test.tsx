@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 // directory. Server Actions can't be exercised in a unit test environment,
 // so stub the module here. The component just needs the function to exist
 // and be callable; behavior under success / failure is integration territory.
-vi.mock("@/app/(dash)/(app)/settings/actions", () => ({
+vi.mock("@/app/(dash)/(app)/(account)/settings/actions", () => ({
   setProcessingEnabled: vi.fn(async () => ({ ok: true })),
 }));
 
