@@ -6,7 +6,10 @@
 // e.g. `/v1/cameras` returns `{ cameras: [...] }` because listCameras() unwraps
 // `.cameras`. List endpoints wrap; `/{id}` endpoints return the bare object.
 
-import type { ConfidenceTrendRange } from "@/lib/api/types";
+import type {
+  ConfidenceTrendRange,
+  ProcessingEvidenceRange,
+} from "@/lib/api/types";
 import type { DemoScene } from "./scene";
 import {
   demoAccount,
@@ -25,6 +28,7 @@ import {
   demoObservations,
   demoPerception,
   demoProcessingConfig,
+  demoProcessingEvidence,
   demoProcessingPackages,
   demoProcessorStatus,
   demoReliabilitySummary,
@@ -79,6 +83,11 @@ export function resolveDemoResponse(
       case "processing-config/package":
       case "processing-config/apply":
         return demoCameraPackageConfig();
+      case "processing/evidence": {
+        const range: ProcessingEvidenceRange =
+          query?.range === "1h" ? "1h" : "24h";
+        return demoProcessingEvidence(scene, range);
+      }
       case "perception/latest":
         return demoPerception(scene);
       case "processor-status/latest":

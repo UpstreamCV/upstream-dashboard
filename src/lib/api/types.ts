@@ -633,6 +633,81 @@ export interface CameraPackageConfigResponse {
   warnings: string[];
 }
 
+// --- Processing runtime evidence (P5-J) --------------------------------------
+// Read-only visibility summary. TS mirror of
+// ../upstream-api-server/src/upstream_api/schemas/processing_evidence.py.
+// VISIBILITY, NOT recommendations.
+
+export type ProcessingEvidenceRange = "1h" | "24h";
+
+export interface EvidenceWindow {
+  range: ProcessingEvidenceRange;
+  started_at: IsoDateTime;
+  ended_at: IsoDateTime;
+}
+
+export interface EvidencePackage {
+  requested_package_id: string | null;
+  applied_package_id: string | null;
+  state: CameraPackageState;
+  requested_revision: number | null;
+}
+
+/** What actually ran, from the latest processor status payload (all nullable). */
+export interface EvidenceLineage {
+  model_id: string | null;
+  tracker_profile_id: string | null;
+  tracker_algorithm: string | null;
+  analytics_profile_id: string | null;
+}
+
+export interface EvidenceStatus {
+  status: string | null;
+  last_seen_at: IsoDateTime | null;
+  last_error_code: string | null;
+  updated_at: IsoDateTime | null;
+}
+
+export interface EvidenceObservationCount {
+  type: string;
+  count: number;
+}
+
+export interface EvidenceLifecycle {
+  inferred_zone_exits: number;
+  track_missing_timeout_exits: number;
+}
+
+/** Tracker metrics from the latest status — SESSION-LEVEL, not windowed. */
+export interface EvidenceTracking {
+  unique_tracker_ids_count: number | null;
+  tracker_ids_sample: string[];
+  is_session_level: boolean;
+}
+
+export interface EvidencePackageHistoryItem {
+  id: Uuid;
+  event_type: string;
+  package_id: string | null;
+  actor_type: string;
+  actor_user_id: Uuid | null;
+  summary: string;
+  created_at: IsoDateTime;
+}
+
+export interface ProcessingEvidenceResponse {
+  camera_id: Uuid;
+  window: EvidenceWindow;
+  package: EvidencePackage;
+  lineage: EvidenceLineage;
+  status: EvidenceStatus;
+  observation_counts: EvidenceObservationCount[];
+  lifecycle: EvidenceLifecycle;
+  tracking: EvidenceTracking;
+  package_history: EvidencePackageHistoryItem[];
+  warnings: string[];
+}
+
 // --- Processor Status (P6-D latest-processor-status API) ---------------------
 // The latest `processor_statuses` row for one camera, including the `payload`
 // JSONB where the P6-C analytics worker stamps the `applied_geometry` lineage

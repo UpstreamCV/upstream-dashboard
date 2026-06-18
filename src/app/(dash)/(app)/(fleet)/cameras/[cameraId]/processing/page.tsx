@@ -1,13 +1,16 @@
 import { notFound } from "next/navigation";
 import { ProcessingPackagePanel } from "@/components/dashboard-next/processing/processing-package-panel";
+import { RuntimeEvidencePanel } from "@/components/dashboard-next/processing/runtime-evidence-panel";
 import { getActiveAccount } from "@/lib/account/active";
 import { getCameraPackageConfig } from "@/lib/api/camera-package-config";
 import { UpstreamApiError } from "@/lib/api/errors";
 import { getCameraGeometryConfig } from "@/lib/api/geometry";
+import { getProcessingEvidence } from "@/lib/api/processing-evidence";
 import { listProcessingPackages } from "@/lib/api/processing-packages";
 import type {
   CameraPackageConfigResponse,
   GeometryConfigRecord,
+  ProcessingEvidenceResponse,
   ProcessingPackageCatalogResponse,
 } from "@/lib/api/types";
 
@@ -39,10 +42,14 @@ export default async function CameraProcessingPage({
   // if it fails for any reason, the checklist degrades to a soft "configure
   // geometry" hint rather than blocking the page (camera_not_found is already
   // surfaced by the package GET below).
-  const [catalog, config, geometry]: [
+  // Evidence (P5-J) is a non-critical visibility read at the default 24h window;
+  // getProcessingEvidence already degrades all errors to null, so it's safe in
+  // the batch and never rejects it.
+  const [catalog, config, geometry, evidence]: [
     ProcessingPackageCatalogResponse,
     CameraPackageConfigResponse,
     GeometryConfigRecord | null,
+    ProcessingEvidenceResponse | null,
   ] = await Promise.all([
     listProcessingPackages({ accountId: activeAccountId }),
     getCameraPackageConfig({ accountId: activeAccountId, cameraId }).catch(
@@ -56,6 +63,7 @@ export default async function CameraProcessingPage({
     getCameraGeometryConfig({ accountId: activeAccountId, cameraId }).catch(
       () => null,
     ),
+    getProcessingEvidence({ accountId: activeAccountId, cameraId }),
   ]);
 
   return (
@@ -66,6 +74,7 @@ export default async function CameraProcessingPage({
         config={config}
         geometry={geometry}
       />
+      <RuntimeEvidencePanel cameraId={cameraId} initialEvidence={evidence} />
     </div>
   );
 }

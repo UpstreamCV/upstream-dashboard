@@ -25,6 +25,8 @@ import type {
   LatestPerceptionRecord,
   ModelsListResponse,
   ObservationRecord,
+  ProcessingEvidenceRange,
+  ProcessingEvidenceResponse,
   ProcessingPackage,
   ProcessingPackageCatalogResponse,
   ProcessorStatusRecord,
@@ -417,19 +419,130 @@ function crossing(
   };
 }
 
+function zoneExit(id: string, observedAt: string): ObservationRecord {
+  // An inferred zone exit (P5-Gap): the track disappeared past the grace window
+  // rather than being seen to leave. Feeds both the Events tab and the P5-J
+  // runtime-evidence lifecycle counts.
+  return {
+    id,
+    camera_id: CAMERA_ID,
+    stream_session_id: SESSION_ID,
+    processor_id: "proc-demo",
+    package_id: "deepstream.yolox_analytics_probe.v0",
+    type: "processor.zone_exited",
+    payload: {
+      zone_id: "dock-roi",
+      zone_label: "Dock",
+      track_id: "5",
+      inferred: true,
+      exit_reason: "track_missing_timeout",
+      missing_duration_seconds: 2.3,
+    },
+    observed_at: observedAt,
+    created_at: observedAt,
+  };
+}
+
 export function demoObservations(scene: DemoScene): { observations: ObservationRecord[] } {
   if (!counting(scene)) return { observations: [] };
-  // Newest first; anchored to "moments ago" so the Time column reads fresh.
   const rows = [
     crossing("e3", 3, isoAgo(90_000), MODEL_BASE),
     crossing("e2", 2, isoAgo(140_000), MODEL_BASE),
     crossing("e1", 1, isoAgo(190_000), MODEL_BASE),
+    zoneExit("z2", isoAgo(120_000)),
+    zoneExit("z1", isoAgo(220_000)),
   ];
   if (fixed(scene)) {
-    // The previously-missed crossing now counts (the payoff) — most recent row.
-    rows.unshift(crossing("e4", 4, isoAgo(20_000), MODEL_HIGH_RECALL));
+    // The previously-missed crossing now counts (the payoff).
+    rows.push(crossing("e4", 4, isoAgo(20_000), MODEL_HIGH_RECALL));
   }
+  // Newest first; anchored to "moments ago" so the Time column reads fresh.
+  rows.sort((a, b) => (a.observed_at < b.observed_at ? 1 : -1));
   return { observations: rows };
+}
+
+// GET /v1/cameras/{id}/processing/evidence — P5-J runtime evidence. Counts +
+// inferred-exit lifecycle are DERIVED from demoObservations(scene) so the
+// evidence panel and the Events tab can never contradict each other. Lineage /
+// tracking / history are synthesized to match the active YOLOX package.
+export function demoProcessingEvidence(
+  scene: DemoScene,
+  range: ProcessingEvidenceRange,
+): ProcessingEvidenceResponse {
+  const obs = demoObservations(scene).observations;
+  const byType = new Map<string, number>();
+  for (const o of obs) byType.set(o.type, (byType.get(o.type) ?? 0) + 1);
+  const observation_counts = [...byType.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([type, count]) => ({ type, count }));
+  const inferred = obs.filter(
+    (o) =>
+      o.type === "processor.zone_exited" &&
+      (o.payload as { inferred?: boolean }).inferred === true,
+  ).length;
+  const active = obs.length > 0;
+
+  return {
+    camera_id: CAMERA_ID,
+    window: {
+      range,
+      started_at: isoAgo(range === "1h" ? HOUR_MS : DAY_MS),
+      ended_at: nowIso(),
+    },
+    package: {
+      requested_package_id: "deepstream.yolox_analytics_probe.v0",
+      applied_package_id: active ? "deepstream.yolox_analytics_probe.v0" : null,
+      state: "active",
+      requested_revision: 2,
+    },
+    lineage: {
+      model_id: active ? "yolox_s_v1" : null,
+      tracker_profile_id: active ? "deepstream_iou_fast_v1" : null,
+      tracker_algorithm: active ? "iou" : null,
+      analytics_profile_id: active ? "deepstream_nvdsanalytics_probe_v1" : null,
+    },
+    status: {
+      status: active ? "processing" : null,
+      last_seen_at: active ? isoAgo(15_000) : null,
+      last_error_code: null,
+      updated_at: active ? isoAgo(15_000) : null,
+    },
+    observation_counts,
+    lifecycle: {
+      inferred_zone_exits: inferred,
+      track_missing_timeout_exits: inferred,
+    },
+    tracking: active
+      ? {
+          unique_tracker_ids_count: 8,
+          tracker_ids_sample: ["1", "2", "5"],
+          is_session_level: true,
+        }
+      : { unique_tracker_ids_count: null, tracker_ids_sample: [], is_session_level: true },
+    package_history: [
+      {
+        id: "a0000000-0000-4000-8000-0000000000e2",
+        event_type: "camera.processing_package_applied",
+        package_id: "deepstream.yolox_analytics_probe.v0",
+        actor_type: "user",
+        actor_user_id: USER_ID,
+        summary: "Processing package apply confirmed.",
+        created_at: isoAgo(20 * MIN_MS),
+      },
+      {
+        id: "a0000000-0000-4000-8000-0000000000e1",
+        event_type: "camera.processing_package_requested",
+        package_id: "deepstream.yolox_analytics_probe.v0",
+        actor_type: "user",
+        actor_user_id: USER_ID,
+        summary: "Processing package requested.",
+        created_at: isoAgo(22 * MIN_MS),
+      },
+    ],
+    warnings: active
+      ? ["dwell_closure_reason_not_persisted", "tracking_metrics_are_session_level"]
+      : ["dwell_closure_reason_not_persisted"],
+  };
 }
 
 // GET /v1/models — the detection model registry the M5/M6 "Model & Detection"
