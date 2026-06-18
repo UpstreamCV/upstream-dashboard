@@ -427,6 +427,15 @@ P5-I layers a guided setup experience onto the Processing tab (P5-H) without rep
 
 **Non-goals (P5-I):** no automatic / reliability-based package switching, no BYOM, no live restart, no backend recommendation service, no workflow builder, no raw config editor.
 
+## Runtime evidence (P5-J)
+
+A read-only **Runtime Evidence** panel (`runtime-evidence-panel.tsx`) sits **below** the package selector on the Processing tab — VISIBILITY, not recommendations (copy is observational, never prescriptive). It's fetched server-side at the default 24h window in `processing/page.tsx` via `getProcessingEvidence` (`src/lib/api/processing-evidence.ts`, which degrades ALL errors to `null` so it can never break the selector above it), passed as `fallbackData`, then re-fetched client-side on a **1h/24h** range toggle via `useUpstreamList`.
+
+- **Sub-components:** `evidence-runtime-status` (requested/applied package + state + model/tracker/analytics lineage + last seen + error), `evidence-observation-counts` (windowed counts by type), `evidence-lifecycle-signals` (inferred zone-exit + track-missing-timeout counts with observational copy + the standing warnings; tracking metrics labeled **session-to-date**, not windowed), `evidence-package-history` (request/apply timeline from the audit log). Pure copy/label logic in `src/lib/perception/processing-evidence-format.ts`.
+- **Backend:** `GET /v1/cameras/{id}/processing/evidence?range=1h|24h` (P5-J, read-only).
+- **Tracked:** windowed observation counts; inferred zone exits (P5-Gap); package + lineage + processor status; recent package-change history. **Not yet:** dwell-closures-caused-by-inferred-exit (not persisted), and tracking metrics are session-level not windowed — both surfaced as warning footnotes.
+- **States:** empty → "Runtime evidence will appear after a processing session starts."; error → "Could not load processing evidence." (existing monitoring unaffected). **No recommendation copy** — evidence only; recommendations are a later milestone.
+
 ## Model & Detection (M5/M6) — superseded by the Processing tab (P5-H)
 
 > **Superseded (P5-H, 2026-06):** the standalone Model & Detection editor was consolidated into the new **Processing** tab (see "Processing packages (P5-H)" below). A processing *package* embodies the model/detection choice, so a separate per-field `model_key` editor was redundant. `/configure/detection` now `redirect()`s to `/processing`, and the "Model & Detection" card was removed from the Configure hub (Configure keeps Geometry + Triggers). The legacy `camera-processing-config.ts` client + `model_key` backend are intact and unchanged — just no longer surfaced as a separate editor. The section below documents that retired editor.

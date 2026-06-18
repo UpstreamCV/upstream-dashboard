@@ -4,6 +4,21 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-17 — P5-J runtime evidence panel (read-only visibility)
+
+**Subject:** A read-only **Runtime Evidence** panel below the package selector on the Processing tab: current runtime (requested/applied package + lineage + status), windowed observation counts, lifecycle signals (inferred zone exits), and a package-change timeline — over a 1h/24h window. Visibility, not recommendations (observational copy only).
+
+**Why:** P5-H/P5-I let operators choose/set up a package; P5-J shows what it's actually *doing* so issues are visible and later milestones can build recommendations on real signals.
+
+**What changed:**
+- **Client + types:** `src/lib/api/processing-evidence.ts` (`getProcessingEvidence` — degrades all errors to null; `buildProcessingEvidencePath` shared by the server fetch + client SWR key) + 9 mirrored types in `types.ts`.
+- **UI:** `runtime-evidence-panel` (range toggle + `useUpstreamList` with server-fetched `fallbackData`) + `evidence-runtime-status` / `evidence-observation-counts` / `evidence-lifecycle-signals` / `evidence-package-history`; pure copy in `src/lib/perception/processing-evidence-format.ts`. Tracking metrics labeled session-to-date; warning footnotes for the known gaps. `processing/page.tsx` fetches evidence (24h) in the existing `Promise.all` and renders the panel below `<ProcessingPackagePanel>`.
+- **Demo:** `demoProcessingEvidence` derived from `demoObservations` (coherent counts); enriched `demoObservations` with 2 inferred zone-exits; `router.ts` `processing/evidence` case.
+- **Tests:** wrapper (path/query + null-on-error), format helper, and panel (sections, range toggle, empty/error states, warnings, **asserts no prescriptive copy**).
+- **Docs:** `dashboard-next.md` (Runtime evidence section).
+
+**Verification:** `npm test` 771/771 (50 files); P5-J files lint-clean; `tsc` 0 `src` errors. Backend: the api-server `GET /v1/cameras/{id}/processing/evidence` endpoint (P5-J) is read-only; until it deploys, `getProcessingEvidence` returns null and the panel shows its empty state. Pre-existing/unrelated: the `add-camera-panel.tsx` lint error + stale `.next/types` tsc noise. Not committed/pushed.
+
 ## 2026-06-17 — P5-I guided package setup + readiness checks
 
 **Subject:** A guided setup layer on the Processing tab (P5-H): a use-case picker that metadata-ranks the catalog, a per-package readiness checklist (geometry / settings / saved / applied), and a pre-save setup summary. Dashboard-only — no api-server changes.
