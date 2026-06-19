@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import clsx from "clsx";
-import { buildProcessingEvidencePath } from "@/lib/api/processing-evidence";
+import { buildProcessingEvidencePath } from "@/lib/api/processing-evidence-path";
 import { useUpstreamList } from "@/lib/api/use-list";
 import type {
   ProcessingEvidenceRange,

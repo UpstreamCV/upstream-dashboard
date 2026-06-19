@@ -29,21 +29,34 @@ import {
   type UseCaseId,
 } from "@/lib/perception/package-recommendation";
 import {
+  modelsFromCatalog,
+  resolveCanonicalPackage,
+  trackersForModel,
+} from "@/lib/perception/advanced-resolution";
+import {
   computeReadiness,
   geometryReadiness,
+  OVERALL_LABEL,
 } from "@/lib/perception/package-readiness";
+import { ModeToggle, type SetupMode } from "./mode-toggle";
+import { ModelPicker } from "./model-picker";
+import { ModelStatsDetail } from "./model-stats";
 import { PackageCard } from "./package-card";
 import { PackageDetail } from "./package-detail";
 import { PackageReadinessChecklist } from "./package-readiness-checklist";
 import { PackageSettingsForm } from "./package-settings-form";
 import { PackageStateHeader } from "./package-state-header";
 import { SetupSummary } from "./setup-summary";
+import { TrackerPicker } from "./tracker-picker";
 import { UseCasePicker } from "./use-case-picker";
 
-// P5-I Processing panel — the P5-H package selector plus a guided setup layer:
-// a use-case picker that ranks the catalog (metadata-driven), a per-package
-// readiness checklist (geometry / settings / saved / applied), and a pre-save
-// setup summary. With no use case selected the catalog renders exactly as P5-H.
+// P5-L Processing panel — a browse-and-compare redesign. Two modes share one
+// editor + the package request/apply flow (the selection always resolves to a
+// package_id; no backend change):
+//   • Advanced (default): pick a MODEL (rich picker with published stats) + a
+//     TRACKER → resolves to the canonical package; settings/readiness behind
+//     progressive disclosure.
+//   • Guided: a use-case picker → the single recommended package, lighter.
 
 const PRIMARY_BTN =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--dn-creek-mid)] px-3 py-1.5 text-sm font-bold text-white transition hover:bg-[var(--dn-creek-deep)] disabled:cursor-not-allowed disabled:opacity-50";
@@ -72,6 +85,28 @@ function deriveSettings(
   };
 }
 
+function Disclosure({
+  summary,
+  children,
+  defaultOpen = false,
+}: {
+  summary: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      className="rounded-lg border border-white/10 bg-white/[0.03]"
+      open={defaultOpen}
+    >
+      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-bold text-white/80 [&::-webkit-details-marker]:hidden">
+        {summary}
+      </summary>
+      <div className="border-t border-white/10 p-3">{children}</div>
+    </details>
+  );
+}
+
 export function ProcessingPackagePanel({
   cameraId,
   catalog,
@@ -86,47 +121,69 @@ export function ProcessingPackagePanel({
   const router = useRouter();
   const requested = config.requested;
   const requestedId = requested?.package_id ?? null;
+  const packages = catalog.packages;
 
   const initialPkg = useMemo(
-    () => catalog.packages.find((p) => p.package_id === requestedId) ?? null,
-    [catalog.packages, requestedId],
+    () => packages.find((p) => p.package_id === requestedId) ?? null,
+    [packages, requestedId],
   );
   const initial = useMemo(
     () => deriveSettings(initialPkg, requested),
     [initialPkg, requested],
   );
 
+  const models = useMemo(() => modelsFromCatalog(packages), [packages]);
+
+  // Initial advanced model/tracker: the requested package's, else the first model.
+  const initialModelId =
+    initialPkg?.model_id && models.some((m) => m.modelId === initialPkg.model_id)
+      ? initialPkg.model_id
+      : (models[0]?.modelId ?? null);
+  const initialTrackerId = (() => {
+    const tks = initialModelId ? trackersForModel(packages, initialModelId) : [];
+    if (initialPkg?.tracker_profile_id && initialPkg.model_id === initialModelId) {
+      return initialPkg.tracker_profile_id;
+    }
+    return tks[0]?.profileId ?? null;
+  })();
+
+  const [mode, setMode] = useState<SetupMode>("advanced");
+  const [advModelId, setAdvModelId] = useState<string | null>(initialModelId);
+  const [advTrackerId, setAdvTrackerId] = useState<string | null>(initialTrackerId);
   const [useCaseId, setUseCaseId] = useState<UseCaseId | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(requestedId);
-  const [confidence, setConfidence] = useState<number | null>(
-    initial.confidence,
-  );
+  const [confidence, setConfidence] = useState<number | null>(initial.confidence);
   const [targetFps, setTargetFps] = useState<number | null>(initial.targetFps);
   const [allClasses, setAllClasses] = useState<boolean>(initial.allClasses);
   const [selectedClasses, setSelectedClasses] = useState<Set<string>>(
     initial.selectedClasses,
   );
   const [allowExperimental, setAllowExperimental] = useState(false);
-  const [saveIssues, setSaveIssues] = useState<PackageConfigValidationIssue[]>(
-    [],
-  );
+  const [saveIssues, setSaveIssues] = useState<PackageConfigValidationIssue[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
   const [applying, startApply] = useTransition();
 
-  const selected = useMemo(
-    () => catalog.packages.find((p) => p.package_id === selectedId) ?? null,
-    [catalog.packages, selectedId],
+  const advancedActive = useMemo(
+    () =>
+      advModelId && advTrackerId
+        ? resolveCanonicalPackage(packages, advModelId, advTrackerId)
+        : null,
+    [packages, advModelId, advTrackerId],
   );
+  const guidedActive = useMemo(
+    () => packages.find((p) => p.package_id === selectedId) ?? null,
+    [packages, selectedId],
+  );
+  const selected = mode === "advanced" ? advancedActive : guidedActive;
 
   const useCaseDef = useCaseId ? getUseCase(useCaseId) : undefined;
   const recommendations = useMemo(
-    () => (useCaseDef ? recommendPackages(catalog.packages, useCaseDef) : null),
-    [catalog.packages, useCaseDef],
+    () => (useCaseDef ? recommendPackages(packages, useCaseDef) : null),
+    [packages, useCaseDef],
   );
 
-  const isSelectedSaved =
-    selected !== null && requestedId === selected.package_id;
+  const isSelectedSaved = selected !== null && requestedId === selected.package_id;
 
   const readiness = useMemo(
     () =>
@@ -158,13 +215,8 @@ export function ProcessingPackagePanel({
     ],
   );
 
-  const selectPackage = useCallback(
-    (pkg: ProcessingPackage) => {
-      if (pkg.package_id === selectedId) {
-        setSelectedId(null);
-        return;
-      }
-      setSelectedId(pkg.package_id);
+  const resetSettingsFor = useCallback(
+    (pkg: ProcessingPackage | null) => {
       const d = deriveSettings(pkg, requested);
       setConfidence(d.confidence);
       setTargetFps(d.targetFps);
@@ -174,7 +226,63 @@ export function ProcessingPackagePanel({
       setSaveIssues([]);
       setSaveError(null);
     },
-    [requested, selectedId],
+    [requested],
+  );
+
+  const switchMode = useCallback(
+    (m: SetupMode) => {
+      setMode(m);
+      resetSettingsFor(m === "advanced" ? advancedActive : guidedActive);
+    },
+    [advancedActive, guidedActive, resetSettingsFor],
+  );
+
+  const chooseModel = useCallback(
+    (modelId: string) => {
+      const tks = trackersForModel(packages, modelId);
+      const keep =
+        advTrackerId && tks.some((t) => t.profileId === advTrackerId)
+          ? advTrackerId
+          : (tks[0]?.profileId ?? null);
+      setAdvModelId(modelId);
+      setAdvTrackerId(keep);
+      resetSettingsFor(keep ? resolveCanonicalPackage(packages, modelId, keep) : null);
+    },
+    [packages, advTrackerId, resetSettingsFor],
+  );
+
+  const chooseTracker = useCallback(
+    (trackerId: string) => {
+      setAdvTrackerId(trackerId);
+      resetSettingsFor(
+        advModelId ? resolveCanonicalPackage(packages, advModelId, trackerId) : null,
+      );
+    },
+    [packages, advModelId, resetSettingsFor],
+  );
+
+  const chooseUseCase = useCallback(
+    (id: UseCaseId | null) => {
+      setUseCaseId(id);
+      if (!id) {
+        setSelectedId(null);
+        return;
+      }
+      const def = getUseCase(id);
+      const recs = def ? recommendPackages(packages, def) : [];
+      const top = recs.find((r) => r.tier === "recommended")?.pkg ?? recs[0]?.pkg ?? null;
+      setSelectedId(top?.package_id ?? null);
+      resetSettingsFor(top);
+    },
+    [packages, resetSettingsFor],
+  );
+
+  const selectGuidedPackage = useCallback(
+    (pkg: ProcessingPackage) => {
+      setSelectedId((cur) => (cur === pkg.package_id ? null : pkg.package_id));
+      resetSettingsFor(pkg);
+    },
+    [resetSettingsFor],
   );
 
   const handleToggleClass = useCallback((className: string) => {
@@ -198,11 +306,7 @@ export function ProcessingPackagePanel({
       if (allowed.has("processing_fps") && targetFps !== null) {
         settings.target_fps = targetFps;
       }
-      if (
-        allowed.has("selected_classes") &&
-        !allClasses &&
-        selectedClasses.size > 0
-      ) {
+      if (allowed.has("selected_classes") && !allClasses && selectedClasses.size > 0) {
         settings.selected_classes = [...selectedClasses];
       }
       return {
@@ -265,15 +369,81 @@ export function ProcessingPackagePanel({
     });
   }, [cameraId, router]);
 
-  // The expanded editor + guided panels for the selected package.
-  const expandedContent = (pkg: ProcessingPackage) => {
+  // Shared editor for the active package: condensed summary always visible;
+  // model stats / settings / readiness behind progressive disclosure; the
+  // experimental opt-in + Save stay visible.
+  const editor = (pkg: ProcessingPackage) => {
     const geoR = geometryReadiness(pkg, geometry);
     const geometryHint = geoR.state === "missing" ? geoR.detail : null;
     return (
-      <div className="space-y-4">
-        <PackageDetail pkg={pkg} />
+      <div className="space-y-3">
+        <SetupSummary
+          pkg={pkg}
+          useCase={useCaseDef ?? null}
+          settings={{
+            confidence,
+            targetFps,
+            allClasses,
+            selectedClassCount: selectedClasses.size,
+          }}
+          config={config}
+          geometryHint={geometryHint}
+        />
 
-        {readiness ? <PackageReadinessChecklist readiness={readiness} /> : null}
+        <Disclosure summary="Model details & published stats">
+          <div className="space-y-3">
+            <ModelStatsDetail metrics={pkg.model_metrics} computeTier={pkg.compute_tier} />
+            <PackageDetail pkg={pkg} />
+          </div>
+        </Disclosure>
+
+        <Disclosure summary="Settings">
+          <div className="space-y-3">
+            <PackageSettingsForm
+              pkg={pkg}
+              confidence={confidence}
+              targetFps={targetFps}
+              allClasses={allClasses}
+              selectedClasses={selectedClasses}
+              subsetEmpty={subsetEmpty}
+              onConfidence={(v) => {
+                setConfidence(v);
+                setSaveIssues([]);
+                setSaveError(null);
+              }}
+              onTargetFps={(v) => {
+                setTargetFps(v);
+                setSaveIssues([]);
+                setSaveError(null);
+              }}
+              onAllClasses={(v) => {
+                setAllClasses(v);
+                setSaveIssues([]);
+                setSaveError(null);
+              }}
+              onToggleClass={handleToggleClass}
+            />
+            {pkg.requires_geometry ? (
+              <p className="text-xs text-[var(--dn-text-50)]">
+                This package needs line/ROI geometry to emit events. Draw it under
+                the{" "}
+                <a
+                  href={`/cameras/${cameraId}/configure/geometry`}
+                  className="text-[var(--dn-creek-mid)] underline"
+                >
+                  Configure → Geometry
+                </a>{" "}
+                editor.
+              </p>
+            ) : null}
+          </div>
+        </Disclosure>
+
+        {readiness ? (
+          <Disclosure summary={`Readiness — ${OVERALL_LABEL[readiness.overall]}`}>
+            <PackageReadinessChecklist readiness={readiness} />
+          </Disclosure>
+        ) : null}
 
         {pkg.status === "experimental" ? (
           <label className="flex items-start gap-2 rounded-lg border border-[var(--dn-orange)]/30 bg-[var(--dn-orange-soft)] p-2.5">
@@ -289,58 +459,6 @@ export function ProcessingPackagePanel({
             </span>
           </label>
         ) : null}
-
-        <PackageSettingsForm
-          pkg={pkg}
-          confidence={confidence}
-          targetFps={targetFps}
-          allClasses={allClasses}
-          selectedClasses={selectedClasses}
-          subsetEmpty={subsetEmpty}
-          onConfidence={(v) => {
-            setConfidence(v);
-            setSaveIssues([]);
-            setSaveError(null);
-          }}
-          onTargetFps={(v) => {
-            setTargetFps(v);
-            setSaveIssues([]);
-            setSaveError(null);
-          }}
-          onAllClasses={(v) => {
-            setAllClasses(v);
-            setSaveIssues([]);
-            setSaveError(null);
-          }}
-          onToggleClass={handleToggleClass}
-        />
-
-        {pkg.requires_geometry ? (
-          <p className="text-xs text-[var(--dn-text-50)]">
-            This package needs line/ROI geometry to emit events. Draw it under
-            the{" "}
-            <a
-              href={`/cameras/${cameraId}/configure/geometry`}
-              className="text-[var(--dn-creek-mid)] underline"
-            >
-              Configure → Geometry
-            </a>{" "}
-            editor.
-          </p>
-        ) : null}
-
-        <SetupSummary
-          pkg={pkg}
-          useCase={useCaseDef ?? null}
-          settings={{
-            confidence,
-            targetFps,
-            allClasses,
-            selectedClassCount: selectedClasses.size,
-          }}
-          config={config}
-          geometryHint={geometryHint}
-        />
 
         {saveIssues.length > 0 ? (
           <div
@@ -396,14 +514,15 @@ export function ProcessingPackagePanel({
       pkg={pkg}
       selected={pkg.package_id === selectedId}
       isRequested={pkg.package_id === requestedId}
-      onSelect={() => selectPackage(pkg)}
+      onSelect={() => selectGuidedPackage(pkg)}
       recommendation={recommendation}
     >
-      {selected && selected.package_id === pkg.package_id
-        ? expandedContent(selected)
-        : null}
+      {selectedId === pkg.package_id ? editor(pkg) : null}
     </PackageCard>
   );
+
+  const topRec = recommendations?.find((r) => r.tier === "recommended") ?? null;
+  const otherRecs = recommendations?.filter((r) => r !== topRec) ?? [];
 
   return (
     <div className="space-y-5">
@@ -414,48 +533,76 @@ export function ProcessingPackagePanel({
         applying={applying}
       />
 
-      <UseCasePicker selected={useCaseId} onSelect={setUseCaseId} />
+      <ModeToggle mode={mode} onChange={switchMode} />
 
-      <section className="space-y-3">
-        <h2 className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
-          {recommendations ? "recommended packages" : "available packages"}
-        </h2>
-        {!recommendations ? (
-          <p className="text-xs text-[var(--dn-text-50)]">
-            Not sure? Pick what this camera should do above to see the recommended
-            package for that use case.
-          </p>
-        ) : null}
-        {catalog.packages.length === 0 ? (
-          <p className="text-sm text-[var(--dn-text-50)]">
-            No processing packages are available for this account.
-          </p>
-        ) : recommendations ? (
-          <div className="space-y-2">
-            {recommendations.map((rec) =>
-              renderCard(rec.pkg, {
-                tier: rec.tier,
-                label: TIER_LABEL[rec.tier],
-              }),
-            )}
-          </div>
-        ) : (
-          catalog.categories.map((category) => {
-            const pkgs = catalog.packages.filter(
-              (p) => p.category === category.id,
-            );
-            if (pkgs.length === 0) return null;
-            return (
-              <div key={category.id} className="space-y-2">
-                <h3 className="text-sm font-bold text-white/80">
-                  {category.display_name}
-                </h3>
-                {pkgs.map((pkg) => renderCard(pkg))}
+      {mode === "advanced" ? (
+        <section className="space-y-3">
+          {models.length === 0 ? (
+            <p className="text-sm text-[var(--dn-text-50)]">
+              No detection models are available for this account.
+            </p>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
+                    Model
+                  </label>
+                  <ModelPicker
+                    models={models}
+                    selectedModelId={selected?.model_id ?? advModelId}
+                    onSelect={chooseModel}
+                  />
+                </div>
+                <TrackerPicker
+                  trackers={trackersForModel(packages, selected?.model_id ?? advModelId ?? "")}
+                  selected={selected?.tracker_profile_id ?? advTrackerId}
+                  onSelect={chooseTracker}
+                />
               </div>
-            );
-          })
-        )}
-      </section>
+              {selected ? (
+                editor(selected)
+              ) : (
+                <p className="text-sm text-[var(--dn-text-50)]">
+                  No package is available for this model + tracker combination.
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      ) : (
+        <section className="space-y-3">
+          <UseCasePicker selected={useCaseId} onSelect={chooseUseCase} />
+          {!useCaseId ? (
+            <p className="text-xs text-[var(--dn-text-50)]">
+              Pick what this camera should do to see the recommended setup.
+            </p>
+          ) : recommendations && topRec ? (
+            <div className="space-y-3">
+              {renderCard(topRec.pkg, {
+                tier: topRec.tier,
+                label: TIER_LABEL[topRec.tier],
+              })}
+              {otherRecs.length > 0 ? (
+                <Disclosure summary={`Other compatible packages (${otherRecs.length})`}>
+                  <div className="space-y-2">
+                    {otherRecs.map((rec) =>
+                      renderCard(rec.pkg, {
+                        tier: rec.tier,
+                        label: TIER_LABEL[rec.tier],
+                      }),
+                    )}
+                  </div>
+                </Disclosure>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--dn-text-50)]">
+              No packages match that use case.
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
