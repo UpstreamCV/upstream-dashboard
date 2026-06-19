@@ -4,6 +4,23 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-18 — P5-K curated model + package catalog expansion (BYOM-first)
+
+**Subject:** Dashboard-side support for the expanded api-server package catalog (~23 packages — per-model variants, a Vehicle package, a line-crossing variant, and the AGPL/restrictive Ultralytics YOLO11/YOLOv8 packages). Two new provenance fields on `ProcessingPackage`, a **BYOM** badge for non-first-party packages, and a one-line use-case-picker-first nudge so the bigger catalog stays navigable. Curated package+model expansion — **not** BYOM-upload.
+
+**Why:** P5-F/P5-H/P5-I shipped the catalog + selector + guided setup against a small probe catalog; P5-K grows it. The dashboard needs to (a) render the new provenance so customers can tell which packages they must license themselves, and (b) keep a much larger list legible without a redesign — lean on the existing use-case picker (one recommendation per intent) + category grouping rather than family sub-grouping.
+
+**What changed:**
+- **Types:** `src/lib/api/types.ts` — `ProcessingPackage` gains `license_class: string` and `first_party: boolean` (mirrors the api-server schema; provenance, orthogonal to `status`).
+- **BYOM badge:** `src/components/dashboard-next/processing/package-card.tsx` — a yellow **"BYOM"** badge (title: "Bring your own license — not an Upstream-provided package") renders when `first_party === false`, marking AGPL/restrictive packages the customer must license themselves.
+- **Use-case-picker-first nudge:** `src/components/dashboard-next/processing/processing-package-panel.tsx` — a one-line helper under the "available packages" heading when no use case is selected ("Not sure? Pick what this camera should do above to see the recommended package for that use case."). MINIMAL grouping approach — no family sub-grouping, no redesign.
+- **Recommendation behavior (code unchanged):** with the expanded catalog the *winner per use case* now reflects specialization — the dedicated Occupancy package wins "occupancy", Dwell wins "dwell" (vs the generic YOLOX package elsewhere). The single-recommendation invariant still holds (exactly one "recommended"); all the new per-model, vehicle, line-crossing, and BYOM packages are experimental → NEVER recommended, only opt-in alternatives.
+- **Demo fixtures:** `src/lib/demo/fixtures.ts` — `demoProcessingPackages()` grew to a richer curated subset (YOLOX variants + a Vehicle package in a new `vehicle_analytics` category + a YOLO11-S package with `first_party:false` to exercise the BYOM badge + Occupancy/Dwell to exercise use-case specialization). Demo-mode preview is unaffected by the api-server gate.
+- **Policy framing:** BYOM-first. Non-first-party packages are visible in dev (badged BYOM) but hidden in production by the api-server's `catalog_first_party_only` gate until legal approval. The dashboard just renders what the catalog returns.
+- **Docs:** `dashboard-next.md` (P5-K note appended to the Processing-packages section).
+
+**Verification:** `npm test` 773/773. No code changes in this commit (docs only). Backend: the expanded catalog + the `catalog_first_party_only` production gate are api-server (P5-K) changes; the dashboard renders whatever the catalog endpoint returns. Not committed/pushed.
+
 ## 2026-06-17 — P5-J runtime evidence panel (read-only visibility)
 
 **Subject:** A read-only **Runtime Evidence** panel below the package selector on the Processing tab: current runtime (requested/applied package + lineage + status), windowed observation counts, lifecycle signals (inferred zone exits), and a package-change timeline — over a 1h/24h window. Visibility, not recommendations (observational copy only).

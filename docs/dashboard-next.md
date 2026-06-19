@@ -417,6 +417,17 @@ The **Processing** tab (`/cameras/[cameraId]/processing`, a top-level camera tab
 - **Write:** Save → `saveCameraPackageAction` (PUT `…/processing-config/package`), Apply → `applyCameraPackageAction` (POST `…/processing-config/apply`) — both in `processing/actions.ts`. They re-validate server-side (defense-in-depth, via `src/lib/perception/package-config-schema.ts`), map `UpstreamApiError` through `friendlyMessage` (incl. 409 `no_requested_config`), `revalidatePath('/cameras/{id}/processing')`, and return a `{ ok, message, issues? }` envelope; the panel toasts + `router.refresh()`es on success (which re-derives requested/applied/state).
 - **Non-goals (P5-H):** no live worker restart, no package recommendations, no BYOM / model upload, no raw config editor, no billing-by-package. The catalog is all probe/experimental today, so the UI presents readiness honestly and never implies production-grade.
 
+### Catalog expansion + BYOM (P5-K)
+
+P5-K grows the api-server catalog to ~23 packages (per-model variants, a Vehicle package, a line-crossing variant, and the AGPL/restrictive Ultralytics YOLO11/YOLOv8 packages). The dashboard absorbs this without a redesign:
+
+- **Two new `ProcessingPackage` fields** (`src/lib/api/types.ts`): `license_class: string` and `first_party: boolean` — licensing/provenance mirrored from the api-server schema, **orthogonal to `status`**.
+- **BYOM badge** — `package-card.tsx` renders a yellow **"BYOM"** badge (title "Bring your own license — not an Upstream-provided package") when `first_party === false`, marking the AGPL/restrictive packages a customer must license themselves rather than receive auto-provided as first-party.
+- **Use-case-picker-first nudge** — with the bigger catalog, `processing-package-panel.tsx` shows a one-line helper under the "available packages" heading when no use case is selected ("Not sure? Pick what this camera should do above to see the recommended package for that use case."). This is the chosen MINIMAL grouping approach: lean on the existing use-case picker (one recommendation per intent) + the existing category grouping — **no family sub-grouping, no redesign**.
+- **Recommendation specialization (code unchanged)** — with the expanded catalog the winner per use case now reflects specialization (the dedicated Occupancy package wins "occupancy", Dwell wins "dwell"); the single-recommendation invariant still holds, and the new per-model / vehicle / line-crossing / BYOM packages are experimental → never recommended, only opt-in alternatives.
+- **Production gate** — non-first-party packages are visible in dev (badged BYOM) but hidden in production by the api-server's `catalog_first_party_only` gate until legal approval. The dashboard simply renders whatever the catalog endpoint returns; the gate lives server-side. This is curated package+model expansion, **not** BYOM-upload.
+- **Demo:** `demoProcessingPackages()` (`src/lib/demo/fixtures.ts`) grew to a richer curated subset — YOLOX variants + a Vehicle package (new `vehicle_analytics` category) + a YOLO11-S package with `first_party:false` (exercises the BYOM badge) + Occupancy/Dwell (exercise use-case specialization). Demo-mode preview is unaffected by the api-server gate.
+
 ## Guided package setup (P5-I)
 
 P5-I layers a guided setup experience onto the Processing tab (P5-H) without replacing it. Three pieces, all dashboard-only (no api-server changes):

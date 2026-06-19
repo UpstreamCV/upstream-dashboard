@@ -24,6 +24,8 @@ function pkg(over: Partial<ProcessingPackage> = {}): ProcessingPackage {
     compute_tier: "medium",
     pricing_tier: "free_probe",
     observation_volume_risk: "medium",
+    license_class: "permissive",
+    first_party: true,
     warnings: [],
     limitations: [],
     best_for: [],
