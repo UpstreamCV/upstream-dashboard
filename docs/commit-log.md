@@ -4,6 +4,23 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-19 — P5-L Processing tab redesign: browse & compare (Advanced | Guided)
+
+**Subject:** Redesign the Processing tab from a ~23-card "pick a package" stack into **browse-and-compare**: an **Advanced | Guided** segmented toggle (Advanced default) over the **same** gated package catalog. Advanced is a rich model picker + tracker picker that resolves the (model, tracker) pair to an existing catalog `package_id`; Guided is the lighter use-case picker → one recommendation + a collapsed alternatives list. Published reference model stats (with an honesty label) and progressive disclosure throughout. Dashboard-only presentation redesign — **no backend selection-contract change**.
+
+**Why:** P5-K grew the catalog to ~23 near-identical cards, so package selection had become a long scroll of look-alikes. P5-L lets operators *compare* models in place (stats + status/BYOM badges) instead of guessing, while keeping recommendation, readiness, the state header, and runtime evidence intact and reusing the existing request/apply flow + first-party/BYOM gate (no new contract).
+
+**What changed:**
+- **Resolution helper (pure):** `src/lib/perception/advanced-resolution.ts` — `modelsFromCatalog` (distinct detection models DERIVED from the gated catalog, so it inherits the P5-K gate; excludes probes + the mock detector), `trackersForModel`, and `resolveCanonicalPackage` ((model, tracker) → the canonical full-chain package: all analytics triggers, then better `status`, ties by catalog order — no hardcoded id; narrowed use-case variants stay in Guided). Plus `modelLabel` / `trackerLabel` / `formatMetric`.
+- **UI:** `processing/` gains `mode-toggle.tsx` (Advanced | Guided `aria-pressed` pills, `useState("advanced")` default), `model-picker.tsx` (accessible popover listbox — `aria-haspopup=listbox`, `role=option`, arrow-key roving focus; rows show the stat line + `exp`/`BYOM` badges), `tracker-picker.tsx` (disabled single-value field for one-tracker models, native `<select>` when >1 — today only YOLOX-S), and `model-stats.tsx` (`ModelStatLine` / `ModelStatsDetail` + the `PUBLISHED_STATS_NOTE`). `processing-package-panel.tsx` rewires around the mode toggle: Advanced renders the two pickers → the resolved package's shared editor; Guided renders the use-case picker → top recommendation + an "Other compatible packages (N)" disclosure. The editor moves model stats / settings / readiness behind `<details>` `Disclosure` expanders (experimental opt-in + Save stay visible).
+- **Types:** `src/lib/api/types.ts` — new `ModelMetrics` interface (COCO mAP 50-95 / mAP50 / params / input / backbone for YOLO families; clearly-labelled NVIDIA `vendor_kpi_*` for TAO models; `upstream_measured` always false + `metric_source` provenance) and `ProcessingPackage.model_metrics: ModelMetrics | null`, sourced from the api-server package response.
+- **Honesty:** every stats surface carries "Published reference benchmarks — not measured on your cameras."; TAO models show a separate NVIDIA-KPI line (not comparable to COCO); **no fabricated FPS**.
+- **Preserved:** `package-recommendation.ts` (Guided recommendation), `package-readiness.ts`, `package-state-header.tsx`, and the P5-J runtime-evidence panel are unchanged — P5-L only redesigns the selection surface above them. The dead `detection/model-detection-panel.tsx` (route already redirects to `/processing`) was left untouched, not resurfaced.
+- **Demo fixtures:** `src/lib/demo/fixtures.ts` — a per-`model_id` `DEMO_MODEL_METRICS` map attached as `model_metrics` so the local preview shows the stat lines; the existing `first_party:false` package keeps the BYOM badge live.
+- **Docs:** `dashboard-next.md` (new "Processing tab redesign — browse & compare (P5-L)" section).
+
+**Verification:** `npm test` 767/767 (51 files); `tsc` clean. Backend: the new `model_metrics` is an additive field on the existing package response (api-server P5-L); the dashboard renders whatever the catalog returns and degrades to "No published benchmarks recorded" when it's null. No selection-contract change — Save/Apply reuse the P5-H actions + the P5-K first-party gate. Not committed/pushed.
+
 ## 2026-06-18 — P5-K curated model + package catalog expansion (BYOM-first)
 
 **Subject:** Dashboard-side support for the expanded api-server package catalog (~23 packages — per-model variants, a Vehicle package, a line-crossing variant, and the AGPL/restrictive Ultralytics YOLO11/YOLOv8 packages). Two new provenance fields on `ProcessingPackage`, a **BYOM** badge for non-first-party packages, and a one-line use-case-picker-first nudge so the bigger catalog stays navigable. Curated package+model expansion — **not** BYOM-upload.

@@ -27,6 +27,7 @@ import type {
   ObservationRecord,
   ProcessingEvidenceRange,
   ProcessingEvidenceResponse,
+  ModelMetrics,
   ProcessingPackage,
   ProcessingPackageCatalogResponse,
   ProcessorStatusRecord,
@@ -652,6 +653,7 @@ function demoPkg(over: Partial<ProcessingPackage>): ProcessingPackage {
     requires_restart: true,
     readiness_notes: null,
     related_packages: [],
+    model_metrics: null,
     ...over,
   };
 }
@@ -669,9 +671,94 @@ const ANALYTICS_OUTPUTS = [
   "processor.dwell_exceeded",
 ];
 
-export function demoProcessingPackages(): ProcessingPackageCatalogResponse {
+// P5-L — published reference metrics by model_id, attached to demo packages so
+// the model picker shows real comparison stats (and a TAO vendor KPI).
+const YOLOX_SRC = "Published reference — YOLOX repo (Megvii)";
+const ULTRA_SRC = "Published reference — Ultralytics docs";
+
+function demoCoco(
+  coco_map50_95: number,
+  params_m: number,
+  input_size: number,
+  metric_source: string,
+): ModelMetrics {
   return {
-    packages: [
+    metric_source,
+    upstream_measured: false,
+    metric_dataset: "COCO val2017",
+    coco_map50_95,
+    coco_map50: null,
+    params_m,
+    input_size,
+    backbone: null,
+    vendor_kpi_label: null,
+    vendor_kpi_value: null,
+    vendor_kpi_note: null,
+  };
+}
+
+const DEMO_MODEL_METRICS: Record<string, ModelMetrics> = {
+  yolox_nano_v1: demoCoco(25.8, 0.91, 416, YOLOX_SRC),
+  yolox_tiny_v1: demoCoco(32.8, 5.06, 416, YOLOX_SRC),
+  yolox_s_v1: demoCoco(40.5, 9.0, 640, YOLOX_SRC),
+  yolox_m_v1: demoCoco(46.9, 25.3, 640, YOLOX_SRC),
+  yolov8n_v1: demoCoco(37.3, 3.2, 640, ULTRA_SRC),
+  yolo11n_v1: demoCoco(39.5, 2.6, 640, ULTRA_SRC),
+  yolo11s_v1: demoCoco(47.0, 9.4, 640, ULTRA_SRC),
+  yolo11m_v1: demoCoco(51.5, 20.1, 640, ULTRA_SRC),
+  peoplenet_v1: {
+    metric_source: "Published reference — NVIDIA TAO PeopleNet model card (NGC)",
+    upstream_measured: false,
+    metric_dataset: "NVIDIA proprietary eval (IoU>0.5)",
+    coco_map50_95: null,
+    coco_map50: null,
+    params_m: null,
+    input_size: null,
+    backbone: "ResNet-34",
+    vendor_kpi_label: "NVIDIA mAP — person (proprietary eval)",
+    vendor_kpi_value: 94.19,
+    vendor_kpi_note:
+      "NVIDIA-reported on 90k+ proprietary images (IoU>0.5); not comparable to COCO mAP.",
+  },
+  trafficcamnet_v1: {
+    metric_source: "Published reference — NVIDIA TAO TrafficCamNet model card (NGC)",
+    upstream_measured: false,
+    metric_dataset: "NVIDIA proprietary eval (IoU>0.5)",
+    coco_map50_95: null,
+    coco_map50: null,
+    params_m: null,
+    input_size: null,
+    backbone: "ResNet-18",
+    vendor_kpi_label: "NVIDIA TAO KPI",
+    vendor_kpi_value: null,
+    vendor_kpi_note:
+      "NVIDIA reports precision/recall on a proprietary eval (IoU>0.5); not comparable to COCO mAP.",
+  },
+};
+
+const DEMO_PEOPLE_TRIGGERS = ["line_crossing", "roi_occupancy", "zone_exited", "dwell_exceeded"];
+
+// A per-model people-analytics demo package (mirrors the real *_people_probe.v0
+// catalog entries) so every model shows up in the Advanced model picker.
+function demoPeoplePkg(over: Partial<ProcessingPackage>): ProcessingPackage {
+  return demoPkg({
+    status: "experimental",
+    tracker_profile_id: "deepstream_iou_fast_v1",
+    analytics_profile_id: "deepstream_nvdsanalytics_probe_v1",
+    supported_classes: ["person"],
+    supported_outputs: ANALYTICS_OUTPUTS,
+    supported_shapes: ["polygon_roi", "line_segment"],
+    supported_triggers: DEMO_PEOPLE_TRIGGERS,
+    default_settings: { confidence_threshold: 0.4, target_fps: 30 },
+    allowed_overrides: ["confidence_threshold", "selected_classes", "processing_fps"],
+    best_for: ["person_entry_exit", "zone_presence", "dwell_monitoring"],
+    requires_geometry: true,
+    ...over,
+  });
+}
+
+export function demoProcessingPackages(): ProcessingPackageCatalogResponse {
+  const packages: ProcessingPackage[] = [
       demoPkg({
         package_id: "deepstream.yolox_analytics_probe.v0",
         display_name: "People Analytics — YOLOX",
@@ -825,6 +912,57 @@ export function demoProcessingPackages(): ProcessingPackageCatalogResponse {
         best_for: ["person_entry_exit", "zone_presence", "dwell_monitoring"],
         requires_geometry: true,
       }),
+      demoPeoplePkg({
+        package_id: "deepstream.yolox_nano_people_probe.v0",
+        display_name: "People Analytics — YOLOX-Nano",
+        model_id: "yolox_nano_v1",
+        compute_tier: "low",
+      }),
+      demoPeoplePkg({
+        package_id: "deepstream.yolox_tiny_people_probe.v0",
+        display_name: "People Analytics — YOLOX-Tiny",
+        model_id: "yolox_tiny_v1",
+        compute_tier: "low",
+      }),
+      demoPeoplePkg({
+        package_id: "deepstream.yolox_m_people_probe.v0",
+        display_name: "People Analytics — YOLOX-M",
+        model_id: "yolox_m_v1",
+        compute_tier: "high",
+      }),
+      demoPeoplePkg({
+        package_id: "deepstream.yolo11n_people_probe.v0",
+        display_name: "People Analytics — YOLO11-N",
+        model_id: "yolo11n_v1",
+        compute_tier: "low",
+        license_class: "restrictive",
+        first_party: false,
+        warnings: ["BYOM / requires your own Ultralytics license."],
+      }),
+      demoPeoplePkg({
+        package_id: "deepstream.yolo11m_people_probe.v0",
+        display_name: "People Analytics — YOLO11-M",
+        model_id: "yolo11m_v1",
+        compute_tier: "high",
+        license_class: "restrictive",
+        first_party: false,
+        warnings: ["BYOM / requires your own Ultralytics license."],
+      }),
+      demoPeoplePkg({
+        package_id: "deepstream.yolov8n_people_probe.v0",
+        display_name: "People Analytics — YOLOv8-N",
+        model_id: "yolov8n_v1",
+        compute_tier: "low",
+        license_class: "restrictive",
+        first_party: false,
+        warnings: ["BYOM / requires your own Ultralytics license."],
+      }),
+      demoPeoplePkg({
+        package_id: "deepstream.peoplenet_people_probe.v0",
+        display_name: "People Analytics — PeopleNet",
+        model_id: "peoplenet_v1",
+        compute_tier: "low",
+      }),
       demoPkg({
         package_id: "deepstream.decode_probe.v0",
         display_name: "DeepStream Decode Probe",
@@ -836,7 +974,12 @@ export function demoProcessingPackages(): ProcessingPackageCatalogResponse {
         allowed_overrides: [],
         requires_geometry: false,
       }),
-    ],
+  ];
+  return {
+    packages: packages.map((p) => ({
+      ...p,
+      model_metrics: p.model_id ? (DEMO_MODEL_METRICS[p.model_id] ?? null) : null,
+    })),
     categories: [
       { id: "people_analytics", display_name: "People Analytics" },
       { id: "vehicle_analytics", display_name: "Vehicle Analytics" },

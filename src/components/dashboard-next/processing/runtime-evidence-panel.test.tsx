@@ -4,8 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 const { useUpstreamList } = vi.hoisted(() => ({ useUpstreamList: vi.fn() }));
 vi.mock("@/lib/api/use-list", () => ({ useUpstreamList }));
-// Avoid loading the server-only client module in jsdom.
-vi.mock("@/lib/api/processing-evidence", () => ({
+// The panel imports the client-safe path helper (not the server-only module).
+vi.mock("@/lib/api/processing-evidence-path", () => ({
   buildProcessingEvidencePath: (id: string, r: string) =>
     `/v1/cameras/${id}/processing/evidence?range=${r}`,
 }));

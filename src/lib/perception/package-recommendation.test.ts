@@ -48,6 +48,7 @@ function pkg(over: Partial<ProcessingPackage>): ProcessingPackage {
     requires_restart: true,
     readiness_notes: null,
     related_packages: [],
+    model_metrics: null,
     ...over,
   };
 }

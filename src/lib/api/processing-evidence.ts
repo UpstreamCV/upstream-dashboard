@@ -7,6 +7,10 @@ import type {
   ProcessingEvidenceResponse,
 } from "./types";
 
+// Re-exported for server-side / test importers; clients must import it from
+// ./processing-evidence-path directly (this module is server-only).
+export { buildProcessingEvidencePath } from "./processing-evidence-path";
+
 // Processing runtime evidence wrapper (P5-J).
 //
 // Endpoint exists on upstream-api-server; no backend changes here.
@@ -18,14 +22,6 @@ import type {
 // selector, so it degrades ALL errors to `null` (the panel shows an
 // "unavailable" state) — it must never break the Processing tab above it. Same
 // posture as getReliabilityConfidenceTrend.
-
-/** SWR/proxy key for the client poller — must match the server fetch's target. */
-export function buildProcessingEvidencePath(
-  cameraId: string,
-  range: ProcessingEvidenceRange,
-): string {
-  return `/v1/cameras/${cameraId}/processing/evidence?range=${range}`;
-}
 
 export async function getProcessingEvidence(opts: {
   accountId: string;

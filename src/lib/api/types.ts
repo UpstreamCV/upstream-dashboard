@@ -510,6 +510,28 @@ export type ProcessingPackageStatus =
   | "deprecated";
 
 /**
+ * P5-L — PUBLISHED reference benchmarks for a package's backing model, for the
+ * model-comparison UI. These are NOT measured by Upstream on customer hardware
+ * (`upstream_measured` is always false; `metric_source` is the provenance).
+ * COCO fields apply to COCO-trained detectors (YOLOX/Ultralytics); NVIDIA TAO
+ * models (TrafficCamNet/PeopleNet) have no COCO mAP, so those are null and a
+ * clearly-labelled vendor KPI rides in `vendor_kpi_*` (NOT comparable to COCO).
+ */
+export interface ModelMetrics {
+  metric_source: string;
+  upstream_measured: boolean;
+  metric_dataset: string | null;
+  coco_map50_95: number | null;
+  coco_map50: number | null;
+  params_m: number | null;
+  input_size: number | null;
+  backbone: string | null;
+  vendor_kpi_label: string | null;
+  vendor_kpi_value: number | null;
+  vendor_kpi_note: string | null;
+}
+
+/**
  * One processing package from the catalog (GET /v1/processing/packages). A
  * package is a curated bundle: a detection model + (optional) tracker +
  * (optional) analytics profile, plus the safe operator overrides it allows.
@@ -554,6 +576,9 @@ export interface ProcessingPackage {
   requires_restart: boolean;
   readiness_notes: string | null;
   related_packages: string[];
+  // P5-L: published reference benchmarks for the backing model (null for
+  // diagnostic/mock packages or models with no curated stats).
+  model_metrics: ModelMetrics | null;
 }
 
 /** A catalog category bucket (e.g. people_analytics → "People Analytics"). */
