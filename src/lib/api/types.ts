@@ -539,6 +539,13 @@ export interface ProcessingPackage {
   compute_tier: string | null;
   pricing_tier: string | null;
   observation_volume_risk: string | null;
+  // P5-K licensing/provenance (orthogonal to status). license_class:
+  // "permissive" | "commercial_agreement" | "restrictive". first_party: may
+  // Upstream auto-provide this as a first-party package? false for AGPL/
+  // restrictive models — BYOM / your own license (badged in the UI; hidden by
+  // the catalog gate in production).
+  license_class: string;
+  first_party: boolean;
   warnings: string[];
   limitations: string[];
   best_for: string[];

@@ -115,6 +115,14 @@ export function PackageCard({
             >
               {badge.label}
             </span>
+            {!pkg.first_party ? (
+              <span
+                className="rounded-full bg-[var(--dn-yellow-soft)] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[var(--dn-yellow)]"
+                title="Bring your own license — not an Upstream-provided package"
+              >
+                BYOM
+              </span>
+            ) : null}
             {!pkg.production_ready ? (
               <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
                 not production-ready

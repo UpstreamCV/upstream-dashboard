@@ -67,6 +67,8 @@ function pkg(over: Partial<ProcessingPackage> = {}): ProcessingPackage {
     compute_tier: "medium",
     pricing_tier: "free_probe",
     observation_volume_risk: "medium",
+    license_class: "permissive",
+    first_party: true,
     warnings: [],
     limitations: [],
     best_for: [],
@@ -103,6 +105,14 @@ const CATALOG: ProcessingPackageCatalogResponse = {
       supported_triggers: [],
       allowed_overrides: [],
       requires_geometry: false,
+    }),
+    pkg({
+      package_id: "yolo11s",
+      display_name: "People Analytics — YOLO11-S",
+      status: "experimental",
+      license_class: "restrictive",
+      first_party: false,
+      warnings: ["BYOM / requires your own Ultralytics license."],
     }),
   ],
   categories: [
@@ -216,6 +226,19 @@ describe("ProcessingPackagePanel", () => {
     expect(screen.getByText("DeepStream Decode Probe")).toBeDefined();
   });
 
+  test("P5-K: BYOM badge shown only for a non-first-party (AGPL) package", () => {
+    renderPanel(config());
+    // Exactly one BYOM badge — the YOLO11-S (first_party=false) card; the
+    // first-party IOU/decode cards have none.
+    expect(screen.getAllByText("BYOM")).toHaveLength(1);
+    expect(screen.getByText("People Analytics — YOLO11-S")).toBeDefined();
+  });
+
+  test("P5-K: use-case-picker-first nudge shown before a use case is picked", () => {
+    renderPanel(config());
+    expect(screen.getByText(/Pick what this camera should do above/i)).toBeDefined();
+  });
+
   test("active: renders the Active state badge and applied row", () => {
     renderPanel(
       config({
@@ -269,8 +292,8 @@ describe("ProcessingPackagePanel", () => {
 
   test("an experimental package marks its card and shows its warning", () => {
     renderPanel(config());
-    // The status badge + the catalog warning both render on the card.
-    expect(screen.getByText("Experimental")).toBeDefined();
+    // At least one "Experimental" status badge (NvDCF + the BYOM package).
+    expect(screen.getAllByText("Experimental").length).toBeGreaterThanOrEqual(1);
     expect(
       screen.getByText(/Prefer the IOU package today/i),
     ).toBeDefined();

@@ -420,6 +420,12 @@ export function ProcessingPackagePanel({
         <h2 className="font-mono text-[11px] uppercase tracking-wider text-[var(--dn-text-50)]">
           {recommendations ? "recommended packages" : "available packages"}
         </h2>
+        {!recommendations ? (
+          <p className="text-xs text-[var(--dn-text-50)]">
+            Not sure? Pick what this camera should do above to see the recommended
+            package for that use case.
+          </p>
+        ) : null}
         {catalog.packages.length === 0 ? (
           <p className="text-sm text-[var(--dn-text-50)]">
             No processing packages are available for this account.

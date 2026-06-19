@@ -38,6 +38,8 @@ function pkg(over: Partial<ProcessingPackage>): ProcessingPackage {
     compute_tier: null,
     pricing_tier: "free_probe",
     observation_volume_risk: null,
+    license_class: "permissive",
+    first_party: true,
     warnings: [],
     limitations: [],
     best_for: [],
@@ -84,6 +86,42 @@ const NVDCF = pkg({
   warnings: ["Experimental. Prefer the IOU package today."],
   requires_geometry: true,
 });
+// P5-K specialized variants: narrowed triggers + use-case best_for so they
+// out-rank the generic IOU package for their own use case.
+const OCC = pkg({
+  package_id: "deepstream.yolox_people_occupancy_probe.v0",
+  display_name: "People Occupancy",
+  status: "probe",
+  supported_triggers: ["roi_occupancy"],
+  supported_shapes: ["polygon_roi"],
+  best_for: ["occupancy", "capacity", "presence"],
+  not_recommended_for: ["dense_crowds", "production_sla"],
+  requires_geometry: true,
+});
+const DWELL = pkg({
+  package_id: "deepstream.yolox_people_dwell_probe.v0",
+  display_name: "People Dwell / Loitering",
+  status: "probe",
+  supported_triggers: ["dwell_exceeded"],
+  supported_shapes: ["polygon_roi"],
+  best_for: ["dwell", "dwell_monitoring", "loitering"],
+  not_recommended_for: ["dense_crowds", "production_sla"],
+  requires_geometry: true,
+});
+// P5-K BYOM package (AGPL / first_party=false) — still ranks like any
+// experimental package (never recommended).
+const YOLO11S = pkg({
+  package_id: "deepstream.yolo11s_people_probe.v0",
+  display_name: "People Analytics — YOLO11-S",
+  status: "experimental",
+  license_class: "restrictive",
+  first_party: false,
+  supported_triggers: ALL_TRIGGERS,
+  supported_shapes: ["polygon_roi", "line_segment"],
+  best_for: ["person_entry_exit", "zone_presence", "dwell_monitoring"],
+  warnings: ["BYOM / requires your own Ultralytics license."],
+  requires_geometry: true,
+});
 const DECODE = pkg({
   package_id: "deepstream.decode_probe.v0",
   display_name: "DeepStream Decode Probe",
@@ -99,7 +137,16 @@ const DEPRECATED = pkg({
   supported_shapes: ["polygon_roi", "line_segment"],
 });
 
-const CATALOG = [IOU, TRAFFICCAMNET, NVDCF, DECODE, DEPRECATED];
+const CATALOG = [IOU, TRAFFICCAMNET, NVDCF, OCC, DWELL, YOLO11S, DECODE, DEPRECATED];
+
+// P5-K: the expanded catalog makes the specialized variant win its use case.
+const EXPECTED_WINNER: Record<string, string> = {
+  zone_presence: IOU.package_id,
+  line_crossing: IOU.package_id,
+  occupancy: OCC.package_id,
+  dwell: DWELL.package_id,
+  general: IOU.package_id,
+};
 
 const uc = (id: Parameters<typeof getUseCase>[0]) => getUseCase(id)!;
 const tierOf = (recs: ReturnType<typeof recommendPackages>, id: string) =>
@@ -139,10 +186,15 @@ describe("isCapable", () => {
 
 describe("recommendPackages — people use cases", () => {
   for (const id of ["zone_presence", "line_crossing", "occupancy", "dwell", "general"] as const) {
-    test(`${id}: IOU recommended, NvDCF experimental, decode not_recommended`, () => {
+    test(`${id}: ${EXPECTED_WINNER[id]} recommended, experimental never recommended`, () => {
       const recs = recommendPackages(CATALOG, uc(id));
-      expect(tierOf(recs, IOU.package_id)).toBe("recommended");
+      // The specialized variant wins occupancy/dwell; the generic IOU wins the
+      // rest. Exactly one recommendation regardless.
+      expect(tierOf(recs, EXPECTED_WINNER[id])).toBe("recommended");
+      expect(recs.filter((r) => r.tier === "recommended")).toHaveLength(1);
       expect(tierOf(recs, NVDCF.package_id)).toBe("experimental");
+      // Experimental BYOM packages are never recommended (opt-in alternatives).
+      expect(tierOf(recs, YOLO11S.package_id)).toBe("experimental");
       expect(tierOf(recs, DECODE.package_id)).toBe("not_recommended");
       expect(tierOf(recs, DEPRECATED.package_id)).toBe("not_recommended");
     });
@@ -154,10 +206,11 @@ describe("recommendPackages — people use cases", () => {
     });
   }
 
-  test("NvDCF is never tiered 'recommended' across any use case", () => {
+  test("NvDCF / BYOM are never tiered 'recommended' across any use case", () => {
     for (const u of USE_CASES) {
       const recs = recommendPackages(CATALOG, u);
       expect(tierOf(recs, NVDCF.package_id)).not.toBe("recommended");
+      expect(tierOf(recs, YOLO11S.package_id)).not.toBe("recommended");
     }
   });
 

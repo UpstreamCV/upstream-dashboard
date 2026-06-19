@@ -33,6 +33,8 @@ function pkg(over: Partial<ProcessingPackage>): ProcessingPackage {
     compute_tier: null,
     pricing_tier: "free_probe",
     observation_volume_risk: null,
+    license_class: "permissive",
+    first_party: true,
     warnings: [],
     limitations: [],
     best_for: [],
