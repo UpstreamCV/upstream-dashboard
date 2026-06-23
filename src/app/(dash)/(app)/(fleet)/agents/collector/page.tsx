@@ -1,19 +1,15 @@
-import { notFound } from "next/navigation";
 import { CollectorDashboardClient } from "@/components/dashboard-next/collector-dashboard-client";
 import { CollectorIssuesClient } from "@/components/dashboard-next/collector-issues-client";
 import { CollectorSetupCard } from "@/components/dashboard-next/collector-setup-card";
 import { getActiveAccount } from "@/lib/account/active";
 import { getCollectorStatus, listReliabilityIssues } from "@/lib/api/reliability-collector";
 import type { CollectorStatus } from "@/lib/api/types";
-import { FLAGS } from "@/lib/nav/feature-flags";
 
 // Upstream Collector command center (M1c). A compartmentalized view under the
 // Agents area for the collector workflow — separate from the managed camera
 // pipeline. Shows CLOUD-visible ingest status (from DB rows; the browser can't
 // reach the collector's localhost /status), the sources sending observations,
 // recent ingest activity, observation issues, and setup instructions.
-//
-// Gated behind NEXT_PUBLIC_FF_COLLECTOR so the route isn't exposed until ready.
 
 const EMPTY_STATUS: CollectorStatus = {
   last_received_at: null,
@@ -27,8 +23,6 @@ const EMPTY_STATUS: CollectorStatus = {
 };
 
 export default async function CollectorPage() {
-  if (!FLAGS.collector) notFound();
-
   const { activeAccountId, activeAccount } = await getActiveAccount();
   const canResolve =
     activeAccount.role === "owner" || activeAccount.role === "admin";
