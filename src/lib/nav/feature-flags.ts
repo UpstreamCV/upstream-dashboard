@@ -21,6 +21,7 @@
 //   webhooks     — outbound webhook config (endpoint/signing/delivery logs)
 //   team         — account members CRUD
 //   network      — network/diagnostics telemetry
+//   collector    — /agents/collector command center (Upstream Collector)
 export const FLAGS = {
   issues: process.env.NEXT_PUBLIC_FF_ISSUES === "1",
   destinations: process.env.NEXT_PUBLIC_FF_DESTINATIONS === "1",
@@ -28,6 +29,7 @@ export const FLAGS = {
   webhooks: process.env.NEXT_PUBLIC_FF_WEBHOOKS === "1",
   team: process.env.NEXT_PUBLIC_FF_TEAM === "1",
   network: process.env.NEXT_PUBLIC_FF_NETWORK === "1",
+  collector: process.env.NEXT_PUBLIC_FF_COLLECTOR === "1",
 } as const;
 
 export type FeatureFlag = keyof typeof FLAGS;
