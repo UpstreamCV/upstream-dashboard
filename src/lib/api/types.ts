@@ -1235,3 +1235,91 @@ export interface AuditLogListResponse {
   // created_at keyset cursor — pass back as ?before= for the next page.
   next_cursor: IsoDateTime | null;
 }
+
+// ---------------------------------------------------------------------------
+// Upstream Reliability — Collector (M1a/M1c). Mirrors
+// ../upstream-api-server/src/upstream_api/schemas/reliability_observations.py.
+// `cv_issues` shape — distinct from the processor-side ReliabilityFinding.
+// ---------------------------------------------------------------------------
+
+export type ReliabilityIssueCategory =
+  | "count"
+  | "confidence"
+  | "liveness"
+  | "tracker";
+
+export interface ReliabilityIssue {
+  id: Uuid;
+  camera_id: Uuid | null;
+  source_batch_id: Uuid | null;
+  external_camera_key: string | null;
+  issue_type: string;
+  category: ReliabilityIssueCategory;
+  severity: ReliabilitySeverity;
+  status: ReliabilityStatus;
+  title: string;
+  message: string;
+  likely_cause: string | null;
+  recommended_action: string | null;
+  evidence: Record<string, unknown>;
+  dedupe_key: string;
+  detector_version: string;
+  source_observation_ids: string[] | null;
+  first_seen_at: IsoDateTime;
+  last_seen_at: IsoDateTime;
+  resolved_at: IsoDateTime | null;
+  resolved_reason: string | null;
+  created_at: IsoDateTime;
+  updated_at: IsoDateTime;
+}
+
+export interface ReliabilityIssueListResponse {
+  issues: ReliabilityIssue[];
+}
+
+export interface CollectorBatch {
+  id: Uuid;
+  source: string;
+  external_camera_key: string | null;
+  observation_count: number;
+  status: string;
+  received_at: IsoDateTime;
+}
+
+export interface CollectorSource {
+  source: string;
+  external_camera_key: string | null;
+  last_seen_at: IsoDateTime | null;
+  recent_observations: number;
+  recent_events: number;
+  recent_detection_summaries: number;
+  open_issues: number;
+}
+
+// Cloud-visible collector heartbeat — safe counters only (no tokens/payloads).
+export interface CollectorHeartbeat {
+  observed_at: IsoDateTime;
+  source: string | null;
+  version: string | null;
+  running: boolean | null;
+  cloud_reachable: boolean | null;
+  spooled_batches: number | null;
+  spooled_observations: number | null;
+  uploaded_batches: number | null;
+  uploaded_observations: number | null;
+  dropped_batches: number | null;
+  dropped_observations: number | null;
+  last_upload_at: IsoDateTime | null;
+  last_error_code: string | null;
+}
+
+export interface CollectorStatus {
+  last_received_at: IsoDateTime | null;
+  recent_batch_count: number;
+  recent_observation_count: number;
+  active_source_count: number;
+  open_issue_count: number;
+  latest_collector_heartbeat: CollectorHeartbeat | null;
+  sources: CollectorSource[];
+  recent_batches: CollectorBatch[];
+}
