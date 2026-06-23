@@ -3,7 +3,6 @@ import { Radio, Search } from "lucide-react";
 import { AgentsGridClient } from "@/components/dashboard-next/agents-grid-client";
 import { getActiveAccount } from "@/lib/account/active";
 import { listAgents } from "@/lib/api/agents";
-import { FLAGS } from "@/lib/nav/feature-flags";
 
 // dashboard-next Agents. Mirrors the live src/app/(dash)/agents/page.tsx:
 // server-fetch listAgents, hand to a polling client wrapper. Counts are
@@ -44,21 +43,19 @@ export default async function AgentsPage() {
         </div>
       </header>
 
-      {FLAGS.collector ? (
-        <Link
-          href="/agents/collector"
-          className="dn-tile flex items-center gap-3 p-[clamp(0.9rem,1.4vw,1.2rem)] transition-transform hover:-translate-y-0.5 focus-visible:-translate-y-0.5 focus-visible:outline-none"
-        >
-          <Radio className="h-5 w-5 shrink-0 text-[var(--dn-text-50)]" aria-hidden />
-          <div className="min-w-0">
-            <p className="font-bold text-white">Upstream Collector</p>
-            <p className="text-sm text-[var(--dn-text-50)]">
-              Send observations from your existing CV system to Upstream — status,
-              sources, activity, and issues.
-            </p>
-          </div>
-        </Link>
-      ) : null}
+      <Link
+        href="/agents/collector"
+        className="dn-tile flex items-center gap-3 p-[clamp(0.9rem,1.4vw,1.2rem)] transition-transform hover:-translate-y-0.5 focus-visible:-translate-y-0.5 focus-visible:outline-none"
+      >
+        <Radio className="h-5 w-5 shrink-0 text-[var(--dn-text-50)]" aria-hidden />
+        <div className="min-w-0">
+          <p className="font-bold text-white">Upstream Collector</p>
+          <p className="text-sm text-[var(--dn-text-50)]">
+            Send observations from your existing CV system to Upstream — status,
+            sources, activity, and issues.
+          </p>
+        </div>
+      </Link>
 
       <AgentsGridClient initialAgents={agents} />
     </section>
