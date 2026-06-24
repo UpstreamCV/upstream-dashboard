@@ -24,6 +24,14 @@ const EMPTY_STATUS: CollectorStatus = {
   latest_collector_heartbeat: null,
   sources: [],
   recent_batches: [],
+  source_health_counts: {
+    healthy: 0,
+    delayed: 0,
+    silent: 0,
+    collector_offline: 0,
+    unknown: 0,
+    disabled: 0,
+  },
 };
 
 export default async function CollectorPage() {

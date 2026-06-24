@@ -24,6 +24,14 @@ const EMPTY_STATUS: CollectorStatus = {
   latest_collector_heartbeat: null,
   sources: [],
   recent_batches: [],
+  source_health_counts: {
+    healthy: 0,
+    delayed: 0,
+    silent: 0,
+    collector_offline: 0,
+    unknown: 0,
+    disabled: 0,
+  },
 };
 
 function source(overrides: Partial<ReliabilitySource> = {}): ReliabilitySource {
@@ -49,6 +57,16 @@ function source(overrides: Partial<ReliabilitySource> = {}): ReliabilitySource {
     config_changed_count_total: 0,
     open_issue_count: 0,
     status_hint: "active",
+    health_status: "healthy",
+    health_reason: null,
+    health_message: null,
+    liveness_enabled: true,
+    expected_interval_seconds: 600,
+    liveness_grace_seconds: 300,
+    last_liveness_checked_at: "2026-06-24T18:00:00Z",
+    last_health_status_changed_at: "2026-06-24T18:00:00Z",
+    liveness_silence_started_at: null,
+    last_liveness_issue_id: null,
     ...overrides,
   };
 }
@@ -72,6 +90,25 @@ describe("CollectorDashboardClient", () => {
     const paths = useUpstreamList.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/v1/reliability/collector-status");
     expect(paths).toContain("/v1/reliability/sources");
+  });
+
+  test("renders the source-health summary when counts are present", () => {
+    const html = renderToStaticMarkup(
+      <CollectorDashboardClient
+        initialStatus={{
+          ...EMPTY_STATUS,
+          last_received_at: "2026-06-24T18:00:00Z",
+          source_health_counts: {
+            ...EMPTY_STATUS.source_health_counts,
+            healthy: 2,
+            silent: 1,
+          },
+        }}
+        initialSources={[source()]}
+      />,
+    );
+    expect(html).toContain("Healthy sources");
+    expect(html).toContain("Silent sources");
   });
 
   test("shows the empty state when no data has arrived", () => {
