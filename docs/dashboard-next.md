@@ -581,6 +581,29 @@ denial phrases like "not … a recommendation" explicitly allowed), and the FPS
 caveat states output-cadence-only / no GPU reduction. Resilient null posture;
 hidden in demo mode.
 
+## Upstream Collector (`/agents/collector`)
+
+A compartmentalized command center under the **Agents** area for the Upstream
+Collector workflow — deliberately separate from the global `/issues` page and the
+managed-camera pipeline. It shows **cloud-visible** ingest health (the browser
+can't reach the collector's `127.0.0.1:8756/status`): the server-component page
+(`src/app/(dash)/(app)/(fleet)/agents/collector/page.tsx`) parallel-fetches
+`getCollectorStatus`, `getReliabilitySources`, and `listReliabilityIssues`
+(`src/lib/api/reliability-collector.ts`, all 404-tolerant) and hands them to
+polling clients. No nav/feature-flag gate — the page is GA and degrades to an
+empty state if the api-server lacks the endpoints.
+
+Sections: status cards → **Sources** → ingest activity → Observation Issues →
+setup snippets. `collector-dashboard-client.tsx` runs two 10s `useUpstreamList`
+polls — `/v1/reliability/collector-status` (cards + recent batches) and, since
+**M2a**, `/v1/reliability/sources` (the **source registry**: `collector-sources-table.tsx`,
+columns Source / External key / Kind / Status / Last seen / Last data / Model /
+Events / Detection summaries / Open issues). Copy throughout makes clear these are
+**external collector / CV sources, not managed Upstream cameras** — `status_hint`
+is a display-only freshness chip (active/recent/unknown), not real liveness (M2b).
+Resolve actions go through the server action in `agents/collector/actions.ts`
+(owner/admin). Reads use the dashboard JWT (account membership), not an API token.
+
 ## Token security
 
 The plaintext API token is shown exactly once at creation, then never again — neither stored nor logged. `src/components/dashboard-next/token-create-dialog-next.tsx` is the *only* component in the entire app that ever holds the plaintext (in its `secret` React state).
