@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
-import type { CollectorBatch, ReliabilitySource } from "@/lib/api/types";
+import type {
+  CollectorBatch,
+  ReliabilitySource,
+  SourceHealthStatus,
+} from "@/lib/api/types";
 
 vi.mock("@/components/data/relative-time", () => ({
   RelativeTime: ({ value }: { value: string | null }) => value ?? "—",
@@ -32,6 +36,16 @@ function source(overrides: Partial<ReliabilitySource> = {}): ReliabilitySource {
     config_changed_count_total: 0,
     open_issue_count: 1,
     status_hint: "active",
+    health_status: "healthy",
+    health_reason: null,
+    health_message: null,
+    liveness_enabled: true,
+    expected_interval_seconds: 600,
+    liveness_grace_seconds: 300,
+    last_liveness_checked_at: "2026-06-24T18:00:00Z",
+    last_health_status_changed_at: "2026-06-24T18:00:00Z",
+    liveness_silence_started_at: null,
+    last_liveness_issue_id: null,
     ...overrides,
   };
 }
@@ -56,18 +70,50 @@ describe("CollectorSourcesTable", () => {
     expect(html).toContain("not managed Upstream cameras");
   });
 
-  test("renders an external-source row with kind, model, counts, status", () => {
+  test("renders an external-source row with kind, health, model, counts", () => {
     const html = renderToStaticMarkup(
       <CollectorSourcesTable sources={[source()]} />,
     );
     expect(html).toContain("edge-box-4");
     expect(html).toContain("dock-12");
     expect(html).toContain("External source");
-    expect(html).toContain("active");
+    expect(html).toContain("Healthy"); // M2b health badge (replaces status_hint)
+    expect(html).toContain("10m"); // expected interval (600s)
     expect(html).toContain("detector-v1");
     expect(html).toContain("2026-06-22");
     expect(html).toContain("112"); // detection summaries total
     expect(html).toContain("80"); // events total
+  });
+
+  test("renders a health badge for every state", () => {
+    const states: SourceHealthStatus[] = [
+      "healthy",
+      "delayed",
+      "silent",
+      "collector_offline",
+      "unknown",
+      "disabled",
+    ];
+    const html = renderToStaticMarkup(
+      <CollectorSourcesTable
+        sources={states.map((h, i) => source({ id: `s-${i}`, health_status: h }))}
+      />,
+    );
+    expect(html).toContain("Healthy");
+    expect(html).toContain("Delayed");
+    expect(html).toContain("Silent");
+    expect(html).toContain("Collector offline");
+    expect(html).toContain("Unknown");
+    expect(html).toContain("Disabled");
+  });
+
+  test("disabled liveness shows Off for expected interval", () => {
+    const html = renderToStaticMarkup(
+      <CollectorSourcesTable
+        sources={[source({ liveness_enabled: false, health_status: "disabled" })]}
+      />,
+    );
+    expect(html).toContain("Off");
   });
 
   test("renders a collector row cleanly (null external key, Collector kind)", () => {

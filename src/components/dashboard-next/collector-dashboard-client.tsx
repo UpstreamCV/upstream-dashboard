@@ -7,6 +7,7 @@ import type {
 } from "@/lib/api/types";
 import { useUpstreamList } from "@/lib/api/use-list";
 import { CollectorActivityTable } from "./collector-activity-table";
+import { CollectorHealthSummary } from "./collector-health-summary";
 import { CollectorSourcesTable } from "./collector-sources-table";
 import { CollectorStatusCards } from "./collector-status-cards";
 
@@ -58,6 +59,7 @@ export function CollectorDashboardClient({
   return (
     <div className="space-y-5 md:space-y-6">
       <CollectorStatusCards status={status} />
+      <CollectorHealthSummary status={status} />
       <CollectorSourcesTable sources={sources} />
       <CollectorActivityTable batches={status.recent_batches} />
     </div>

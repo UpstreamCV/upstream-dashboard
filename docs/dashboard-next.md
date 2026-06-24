@@ -593,16 +593,25 @@ can't reach the collector's `127.0.0.1:8756/status`): the server-component page
 polling clients. No nav/feature-flag gate — the page is GA and degrades to an
 empty state if the api-server lacks the endpoints.
 
-Sections: status cards → **Sources** → ingest activity → Observation Issues →
-setup snippets. `collector-dashboard-client.tsx` runs two 10s `useUpstreamList`
-polls — `/v1/reliability/collector-status` (cards + recent batches) and, since
-**M2a**, `/v1/reliability/sources` (the **source registry**: `collector-sources-table.tsx`,
-columns Source / External key / Kind / Status / Last seen / Last data / Model /
-Events / Detection summaries / Open issues). Copy throughout makes clear these are
-**external collector / CV sources, not managed Upstream cameras** — `status_hint`
-is a display-only freshness chip (active/recent/unknown), not real liveness (M2b).
-Resolve actions go through the server action in `agents/collector/actions.ts`
-(owner/admin). Reads use the dashboard JWT (account membership), not an API token.
+Sections: status cards → **source-health summary** → **Sources** → ingest
+activity → Observation Issues → setup snippets. `collector-dashboard-client.tsx`
+runs two 10s `useUpstreamList` polls — `/v1/reliability/collector-status` (cards +
+recent batches + the M2b `source_health_counts` driving `collector-health-summary.tsx`)
+and, since **M2a**, `/v1/reliability/sources` (the **source registry**:
+`collector-sources-table.tsx`). As of **M2b** the registry table shows the real
+**Health** state — `healthy/delayed/silent/collector_offline/unknown/disabled` via
+a `StatusDot` badge (`HEALTH_DOT`/`HEALTH_LABEL`, reusing the status-accent system)
+— plus an **Expected interval** column ("Off" when liveness is disabled); columns
+are Source / External key / Kind / Health / Last seen / Last data / Expected
+interval / Model / Events / Detection summaries / Open issues. (`status_hint`
+remains in the type but the table now shows the real `health_status`.) Health is
+computed server-side by the liveness sweep; **liveness issues (`source_silent` /
+`collector_offline`) appear in the existing Observation Issues section** — no
+global `/issues` integration. M2b is read-only (the `PATCH …/liveness` endpoint is
+the foundation; no edit UI yet). Copy throughout makes clear these are **external
+collector / CV sources, not managed Upstream cameras**. Resolve actions go through
+the server action in `agents/collector/actions.ts` (owner/admin). Reads use the
+dashboard JWT (account membership), not an API token.
 
 ## Token security
 

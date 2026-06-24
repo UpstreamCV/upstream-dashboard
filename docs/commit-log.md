@@ -4,6 +4,21 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-25 — Reliability M2b: source health states on /agents/collector
+
+**Subject:** Add real source-health states to the `/agents/collector` Sources table + a health-summary card, fed by the M2b liveness fields on `GET /v1/reliability/sources` and `source_health_counts` on collector-status.
+
+**Why:** M2a showed *that* sources exist and a display-only freshness hint; M2b's backend now actively monitors liveness (healthy/delayed/silent/collector_offline/unknown/disabled) and opens issues when data stops. The dashboard should surface those real states so an operator can see at a glance which sources are silent or which collector went offline. Read-only this milestone — the `PATCH …/liveness` endpoint exists but no edit UI yet.
+
+**What changed:**
+- `src/lib/api/types.ts` — `SourceHealthStatus`; `ReliabilitySource` health fields (health_status/reason/message, liveness_enabled, effective expected/grace intervals, liveness timestamps, last_liveness_issue_id); `CollectorStatus.source_health_counts`.
+- `src/components/dashboard-next/collector-sources-table.tsx` — **Health** column (StatusDot badge via `HEALTH_DOT`/`HEALTH_LABEL`, replacing the status_hint column) + **Expected interval** column ("Off" when disabled); health_message as a row tooltip.
+- `src/components/dashboard-next/collector-health-summary.tsx` (NEW) — Healthy/Delayed/Silent/Collector-offline count tiles from `source_health_counts`, rendered above the Sources table; hidden until a source exists.
+- `src/app/(dash)/(app)/(fleet)/agents/collector/page.tsx` — `EMPTY_STATUS` gains `source_health_counts`.
+- Tests: extended `collector-tables.test.tsx` (all 6 badges, expected interval, disabled "Off") + `collector-dashboard-client.test.tsx` (health summary). Full vitest 798 passed; `npm run build` green.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/dashboard-next.md` (Upstream Collector health states).
+
 ## 2026-06-24 — Reliability M2a: wire /agents/collector Sources to the source registry (5a9fe33)
 
 **Subject:** Replace the `/agents/collector` Sources section's transient 24h-aggregate table with the durable M2a source registry, polled from `GET /v1/reliability/sources`.

@@ -1322,6 +1322,8 @@ export interface CollectorStatus {
   latest_collector_heartbeat: CollectorHeartbeat | null;
   sources: CollectorSource[];
   recent_batches: CollectorBatch[];
+  // M2b: per-account source health rollup (all 6 states present, default 0).
+  source_health_counts: Record<SourceHealthStatus, number>;
 }
 
 // M2a source registry. ``source_kind`` classifies a registry row;
@@ -1334,6 +1336,15 @@ export type SourceKind =
   | "unknown";
 
 export type SourceStatusHint = "active" | "recent" | "unknown";
+
+// M2b real liveness health state (vs the M2a display-only status_hint).
+export type SourceHealthStatus =
+  | "healthy"
+  | "delayed"
+  | "silent"
+  | "collector_offline"
+  | "unknown"
+  | "disabled";
 
 // One durable cv_sources registry row. open_issue_count is keyed by
 // external_camera_key (0 for keyless collector/observation_source rows).
@@ -1359,6 +1370,18 @@ export interface ReliabilitySource {
   config_changed_count_total: number;
   open_issue_count: number;
   status_hint: SourceStatusHint;
+  // M2b liveness/health. expected_interval_seconds/liveness_grace_seconds are
+  // EFFECTIVE (resolved from the per-kind default when unset), so always concrete.
+  health_status: SourceHealthStatus;
+  health_reason: string | null;
+  health_message: string | null;
+  liveness_enabled: boolean;
+  expected_interval_seconds: number;
+  liveness_grace_seconds: number;
+  last_liveness_checked_at: IsoDateTime | null;
+  last_health_status_changed_at: IsoDateTime | null;
+  liveness_silence_started_at: IsoDateTime | null;
+  last_liveness_issue_id: Uuid | null;
 }
 
 export interface ReliabilitySourcesResponse {
