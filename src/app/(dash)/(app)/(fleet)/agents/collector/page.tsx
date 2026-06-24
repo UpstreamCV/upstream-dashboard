@@ -2,7 +2,11 @@ import { CollectorDashboardClient } from "@/components/dashboard-next/collector-
 import { CollectorIssuesClient } from "@/components/dashboard-next/collector-issues-client";
 import { CollectorSetupCard } from "@/components/dashboard-next/collector-setup-card";
 import { getActiveAccount } from "@/lib/account/active";
-import { getCollectorStatus, listReliabilityIssues } from "@/lib/api/reliability-collector";
+import {
+  getCollectorStatus,
+  getReliabilitySources,
+  listReliabilityIssues,
+} from "@/lib/api/reliability-collector";
 import type { CollectorStatus } from "@/lib/api/types";
 
 // Upstream Collector command center (M1c). A compartmentalized view under the
@@ -27,8 +31,9 @@ export default async function CollectorPage() {
   const canResolve =
     activeAccount.role === "owner" || activeAccount.role === "admin";
 
-  const [status, issues] = await Promise.all([
+  const [status, sources, issues] = await Promise.all([
     getCollectorStatus({ accountId: activeAccountId }),
+    getReliabilitySources({ accountId: activeAccountId }),
     listReliabilityIssues({ accountId: activeAccountId, status: "open" }),
   ]);
 
@@ -42,13 +47,18 @@ export default async function CollectorPage() {
           Upstream Collector
         </h1>
         <p className="mt-1 max-w-prose text-sm text-white/70">
-          Cloud-visible status for observations your local collector uploads.
-          Spool/upload detail that only the collector machine knows lives at its
-          own <span className="font-mono">/status</span>.
+          Cloud-visible status for observations your collector or external CV
+          system uploads. Sources here are external collector sources — not
+          necessarily managed Upstream cameras. Spool/upload detail that only the
+          collector machine knows lives at its own{" "}
+          <span className="font-mono">/status</span>.
         </p>
       </header>
 
-      <CollectorDashboardClient initialStatus={status ?? EMPTY_STATUS} />
+      <CollectorDashboardClient
+        initialStatus={status ?? EMPTY_STATUS}
+        initialSources={sources}
+      />
       <CollectorIssuesClient initialIssues={issues} canResolve={canResolve} />
       <CollectorSetupCard />
     </section>

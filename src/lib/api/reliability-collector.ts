@@ -6,19 +6,24 @@ import type {
   CollectorStatus,
   ReliabilityIssue,
   ReliabilityIssueListResponse,
+  ReliabilitySource,
+  ReliabilitySourcesResponse,
   ReliabilityStatus,
+  SourceKind,
+  SourceStatusHint,
 } from "./types";
 
-// Upstream Reliability Collector wrappers (M1a/M1c).
+// Upstream Reliability Collector wrappers (M1a/M1c/M2a).
 // Contract: ../upstream-api-server/src/upstream_api/routers/reliability_issues.py
 //   GET  /v1/reliability/collector-status          → CollectorStatus
+//   GET  /v1/reliability/sources?source_kind=…&…    → { sources }  (M2a registry)
 //   GET  /v1/reliability/issues?status=…&limit=…    → { issues }
 //   POST /v1/reliability/issues/{id}/resolve        → ReliabilityIssue (owner/admin)
 //
-// These observations/issues come from the local Upstream Collector, not the
-// managed camera pipeline. The status endpoint always returns 200 (empty when
-// no data); a 404 (e.g. an older api-server without the endpoint) degrades to
-// null so the page can still render its empty state.
+// These observations/sources/issues come from the local Upstream Collector or an
+// external CV system, not the managed camera pipeline. List endpoints return 200
+// (empty when no data); a 404 (e.g. an older api-server without the endpoint)
+// degrades to null/[] so the page can still render its empty state.
 
 export async function getCollectorStatus(opts: {
   accountId: string;
@@ -29,6 +34,31 @@ export async function getCollectorStatus(opts: {
     });
   } catch (err) {
     if (err instanceof UpstreamApiError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function getReliabilitySources(opts: {
+  accountId: string;
+  sourceKind?: SourceKind;
+  statusHint?: SourceStatusHint;
+  limit?: number;
+}): Promise<ReliabilitySource[]> {
+  try {
+    const res = await serverFetch<ReliabilitySourcesResponse>(
+      "/v1/reliability/sources",
+      {
+        accountId: opts.accountId,
+        query: {
+          source_kind: opts.sourceKind,
+          status_hint: opts.statusHint,
+          limit: opts.limit,
+        },
+      },
+    );
+    return res.sources;
+  } catch (err) {
+    if (err instanceof UpstreamApiError && err.status === 404) return [];
     throw err;
   }
 }
