@@ -4,6 +4,22 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-24 — Reliability M2a: wire /agents/collector Sources to the source registry (5a9fe33)
+
+**Subject:** Replace the `/agents/collector` Sources section's transient 24h-aggregate table with the durable M2a source registry, polled from `GET /v1/reliability/sources`.
+
+**Why:** M1c showed sources as a rolling re-aggregation of raw observations — fine for "what came in lately," but not a stable answer to "which sources exist, when did each last send, what types, which model, which have open issues." M2a's `cv_sources` registry makes sources first-class; the dashboard should read it.
+
+**What changed:**
+- `src/lib/api/types.ts` — `ReliabilitySource` / `ReliabilitySourcesResponse` + `SourceKind` / `SourceStatusHint`.
+- `src/lib/api/reliability-collector.ts` — `getReliabilitySources({accountId, sourceKind?, statusHint?, limit?})` (404 → []).
+- `src/components/dashboard-next/collector-sources-table.tsx` — rewritten to the registry: columns Source / External key / Kind / Status / Last seen / Last data / Model / Events / Detection summaries / Open issues, with a "not managed Upstream cameras" caption.
+- `src/components/dashboard-next/collector-dashboard-client.tsx` — second `useUpstreamList` poll of `/v1/reliability/sources` (status poll → cards + activity; sources poll → registry table).
+- `src/app/(dash)/(app)/(fleet)/agents/collector/page.tsx` — server-fetches sources in the parallel load; header copy clarifies external sources ≠ managed cameras.
+- Tests: `reliability-collector.test.ts`, `collector-tables.test.tsx`, new `collector-dashboard-client.test.tsx` (38 collector-related; full vitest 795 passed; `npm run build` green).
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/dashboard-next.md` (Upstream Collector section).
+
 ## 2026-06-19 — P5-L Processing tab redesign: browse & compare (Advanced | Guided)
 
 **Subject:** Redesign the Processing tab from a ~23-card "pick a package" stack into **browse-and-compare**: an **Advanced | Guided** segmented toggle (Advanced default) over the **same** gated package catalog. Advanced is a rich model picker + tracker picker that resolves the (model, tracker) pair to an existing catalog `package_id`; Guided is the lighter use-case picker → one recommendation + a collapsed alternatives list. Published reference model stats (with an honesty label) and progressive disclosure throughout. Dashboard-only presentation redesign — **no backend selection-contract change**.
