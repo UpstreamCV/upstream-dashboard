@@ -6,6 +6,7 @@ vi.mock("./server", () => ({ serverFetch: vi.fn() }));
 import { UpstreamApiError } from "./errors";
 import {
   getCollectorStatus,
+  getReliabilitySources,
   listReliabilityIssues,
   resolveReliabilityIssue,
 } from "./reliability-collector";
@@ -37,6 +38,29 @@ describe("getCollectorStatus", () => {
   test("returns null on 404 (older api-server)", async () => {
     mockFetch.mockRejectedValue(notFound());
     expect(await getCollectorStatus({ accountId: "acc-1" })).toBeNull();
+  });
+});
+
+describe("getReliabilitySources", () => {
+  test("unwraps the sources array with filters", async () => {
+    const sources = [{ id: "s-1" }];
+    mockFetch.mockResolvedValue({ sources });
+    const res = await getReliabilitySources({
+      accountId: "acc-1",
+      sourceKind: "external_camera",
+      statusHint: "active",
+      limit: 50,
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/v1/reliability/sources", {
+      accountId: "acc-1",
+      query: { source_kind: "external_camera", status_hint: "active", limit: 50 },
+    });
+    expect(res).toBe(sources);
+  });
+
+  test("returns [] on 404", async () => {
+    mockFetch.mockRejectedValue(notFound());
+    expect(await getReliabilitySources({ accountId: "acc-1" })).toEqual([]);
   });
 });
 

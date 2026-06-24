@@ -1323,3 +1323,44 @@ export interface CollectorStatus {
   sources: CollectorSource[];
   recent_batches: CollectorBatch[];
 }
+
+// M2a source registry. ``source_kind`` classifies a registry row;
+// ``status_hint`` is a display-only freshness label (active ≤5m, recent ≤24h).
+// These are external collector/CV sources, not managed Upstream cameras.
+export type SourceKind =
+  | "collector"
+  | "external_camera"
+  | "observation_source"
+  | "unknown";
+
+export type SourceStatusHint = "active" | "recent" | "unknown";
+
+// One durable cv_sources registry row. open_issue_count is keyed by
+// external_camera_key (0 for keyless collector/observation_source rows).
+export interface ReliabilitySource {
+  id: Uuid;
+  source: string;
+  external_camera_key: string | null;
+  display_name: string | null;
+  source_kind: SourceKind;
+  first_seen_at: IsoDateTime;
+  last_seen_at: IsoDateTime;
+  last_observation_at: IsoDateTime | null;
+  last_event_at: IsoDateTime | null;
+  last_detection_summary_at: IsoDateTime | null;
+  last_collector_heartbeat_at: IsoDateTime | null;
+  last_config_changed_at: IsoDateTime | null;
+  last_model_name: string | null;
+  last_model_version: string | null;
+  observation_count_total: number;
+  event_count_total: number;
+  detection_summary_count_total: number;
+  collector_heartbeat_count_total: number;
+  config_changed_count_total: number;
+  open_issue_count: number;
+  status_hint: SourceStatusHint;
+}
+
+export interface ReliabilitySourcesResponse {
+  sources: ReliabilitySource[];
+}
