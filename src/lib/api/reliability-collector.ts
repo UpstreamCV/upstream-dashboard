@@ -11,6 +11,7 @@ import type {
   ReliabilityStatus,
   SourceKind,
   SourceStatusHint,
+  UpdateSourceLivenessInput,
 } from "./types";
 
 // Upstream Reliability Collector wrappers (M1a/M1c/M2a).
@@ -81,6 +82,19 @@ export async function listReliabilityIssues(opts: {
     if (err instanceof UpstreamApiError && err.status === 404) return [];
     throw err;
   }
+}
+
+export async function updateReliabilitySourceLiveness(opts: {
+  accountId: string;
+  sourceId: string;
+  input: UpdateSourceLivenessInput;
+}): Promise<ReliabilitySource> {
+  // `input` carries only the fields to change; serverFetch JSON-stringifies it,
+  // preserving an explicit `null` (= reset to default) and dropping omitted keys.
+  return serverFetch<ReliabilitySource>(
+    `/v1/reliability/sources/${opts.sourceId}/liveness`,
+    { accountId: opts.accountId, method: "PATCH", body: opts.input },
+  );
 }
 
 export async function resolveReliabilityIssue(opts: {

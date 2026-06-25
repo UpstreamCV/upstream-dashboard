@@ -4,6 +4,21 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-06-25 — Reliability M2c: per-source liveness settings UI on /agents/collector
+
+**Subject:** Add a per-source **Configure liveness** modal + an Expected-cadence column to the `/agents/collector` Sources table, so operators can adjust each source's expected reporting interval / grace (or disable monitoring) — wired to the existing M2b `PATCH /v1/reliability/sources/{id}/liveness`. Dashboard-only; no backend change.
+
+**Why:** M2b monitors liveness but the cadence was fixed, causing false alarms for slow sources and missed outages for fast ones. Operators need to tune expected interval + grace per source (dock-12 every 10s vs a nightly job vs the 60s heartbeat).
+
+**What changed:**
+- `src/lib/api/types.ts` — `UpdateSourceLivenessInput`; `src/lib/api/reliability-collector.ts` — `updateReliabilitySourceLiveness` (PATCH; preserves `null` resets, omits absent fields); `agents/collector/actions.ts` — `updateSourceLivenessAction(sourceId, input)` (typed-arg, revalidates, safe envelope).
+- `src/components/dashboard-next/collector-health.ts` (NEW) — shared `HEALTH_DOT`/`HEALTH_LABEL`/`KIND_LABEL` + `formatInterval`/`formatExpected`/`healthExplanation`/`secondsToUnit`.
+- `src/components/dashboard-next/configure-liveness-modal.tsx` (NEW) — Radix dialog: identity + current health, Monitor toggle, expected/grace number+unit (s/m/h, disabled when off), Reset to defaults, Save; **dirty-tracking sends only changed fields** (avoids M2b's `liveness_enabled`→`health_status='unknown'` re-baseline); collector heartbeat/offline vs external observation/silent wording.
+- `collector-sources-table.tsx` → `"use client"`: columns Source / External key / Kind / Health / **Expected** ("Every 10m · 5m grace" / "Off") / Last seen / Last data / Model / Open issues / **Actions (Configure)** — dropped the Events/Detection-summary count columns to fit. `collector-dashboard-client.tsx` + `page.tsx` pass `canConfigure` (owner/admin) + `mutate`-on-save.
+- Tests: `configure-liveness-modal.test.tsx` (NEW, jsdom + @testing-library, 11 tests); updated reliability-collector / actions / collector-tables / collector-dashboard-client tests. Full vitest 817 passed; `npm run build` green.
+
+**Docs updated:** `docs/commit-log.md` (this entry), `docs/dashboard-next.md` (Upstream Collector Configure modal + Expected column).
+
 ## 2026-06-25 — Reliability M2b: source health states on /agents/collector
 
 **Subject:** Add real source-health states to the `/agents/collector` Sources table + a health-summary card, fed by the M2b liveness fields on `GET /v1/reliability/sources` and `source_health_counts` on collector-status.

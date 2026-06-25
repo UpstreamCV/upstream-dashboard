@@ -66,6 +66,7 @@ export default async function CollectorPage() {
       <CollectorDashboardClient
         initialStatus={status ?? EMPTY_STATUS}
         initialSources={sources}
+        canConfigure={canResolve}
       />
       <CollectorIssuesClient initialIssues={issues} canResolve={canResolve} />
       <CollectorSetupCard />

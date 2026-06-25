@@ -20,9 +20,11 @@ import { CollectorStatusCards } from "./collector-status-cards";
 export function CollectorDashboardClient({
   initialStatus,
   initialSources,
+  canConfigure,
 }: {
   initialStatus: CollectorStatus;
   initialSources: ReliabilitySource[];
+  canConfigure: boolean;
 }) {
   const { data: statusData } = useUpstreamList<CollectorStatus>(
     "/v1/reliability/collector-status",
@@ -30,10 +32,10 @@ export function CollectorDashboardClient({
   );
   const status = statusData ?? initialStatus;
 
-  const { data: sourcesData } = useUpstreamList<ReliabilitySourcesResponse>(
-    "/v1/reliability/sources",
-    { fallbackData: { sources: initialSources } },
-  );
+  const { data: sourcesData, mutate: mutateSources } =
+    useUpstreamList<ReliabilitySourcesResponse>("/v1/reliability/sources", {
+      fallbackData: { sources: initialSources },
+    });
   const sources = sourcesData?.sources ?? initialSources;
 
   const isEmpty =
@@ -60,7 +62,11 @@ export function CollectorDashboardClient({
     <div className="space-y-5 md:space-y-6">
       <CollectorStatusCards status={status} />
       <CollectorHealthSummary status={status} />
-      <CollectorSourcesTable sources={sources} />
+      <CollectorSourcesTable
+        sources={sources}
+        canConfigure={canConfigure}
+        onConfigured={() => void mutateSources()}
+      />
       <CollectorActivityTable batches={status.recent_batches} />
     </div>
   );

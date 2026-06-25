@@ -1387,3 +1387,12 @@ export interface ReliabilitySource {
 export interface ReliabilitySourcesResponse {
   sources: ReliabilitySource[];
 }
+
+// M2c PATCH /v1/reliability/sources/{id}/liveness body. All fields optional:
+// a `null` interval RESETS it to the per-kind default; an absent field is left
+// unchanged (the dashboard sends only the fields the user actually changed).
+export type UpdateSourceLivenessInput = {
+  liveness_enabled?: boolean;
+  expected_interval_seconds?: number | null;
+  liveness_grace_seconds?: number | null;
+};

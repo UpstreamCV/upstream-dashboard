@@ -607,11 +607,22 @@ interval / Model / Events / Detection summaries / Open issues. (`status_hint`
 remains in the type but the table now shows the real `health_status`.) Health is
 computed server-side by the liveness sweep; **liveness issues (`source_silent` /
 `collector_offline`) appear in the existing Observation Issues section** — no
-global `/issues` integration. M2b is read-only (the `PATCH …/liveness` endpoint is
-the foundation; no edit UI yet). Copy throughout makes clear these are **external
-collector / CV sources, not managed Upstream cameras**. Resolve actions go through
-the server action in `agents/collector/actions.ts` (owner/admin). Reads use the
-dashboard JWT (account membership), not an API token.
+global `/issues` integration. As of **M2c** the table adds an **Expected** cadence
+cell (`formatExpected` → "Every 10m · 5m grace" / "Off") + an **Actions** column
+with a **Configure** button (owner/admin) that opens `configure-liveness-modal.tsx`
+— a Radix dialog to toggle monitoring and set expected interval + grace
+(number + seconds/minutes/hours) or Reset to defaults, wired to the M2b
+`PATCH /v1/reliability/sources/{id}/liveness` via `updateSourceLivenessAction`. The
+modal **dirty-tracks** and sends only the fields the user changed (a `null`
+interval resets to the per-kind default) — important because M2b's PATCH
+re-baselines `health_status='unknown'` whenever `liveness_enabled` is sent. Shared
+health labels/colors + duration + `healthExplanation` helpers live in
+`collector-health.ts` (used by the table + modal); the table dropped the
+Events/Detection-summary count columns to fit. Copy throughout makes clear these
+are **external collector / CV sources, not managed Upstream cameras** (collector
+rows use heartbeat/offline wording, external rows observation/silent). Resolve +
+Configure actions go through server actions in `agents/collector/actions.ts`
+(owner/admin). Reads use the dashboard JWT (account membership), not an API token.
 
 ## Token security
 

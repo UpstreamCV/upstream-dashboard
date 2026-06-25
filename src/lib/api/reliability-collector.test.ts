@@ -9,6 +9,7 @@ import {
   getReliabilitySources,
   listReliabilityIssues,
   resolveReliabilityIssue,
+  updateReliabilitySourceLiveness,
 } from "./reliability-collector";
 import { serverFetch } from "./server";
 
@@ -108,6 +109,36 @@ describe("resolveReliabilityIssue", () => {
       accountId: "acc-1",
       method: "POST",
       body: undefined,
+    });
+  });
+});
+
+describe("updateReliabilitySourceLiveness", () => {
+  test("PATCHes the liveness endpoint with the input body", async () => {
+    mockFetch.mockResolvedValue({ id: "s-1" });
+    await updateReliabilitySourceLiveness({
+      accountId: "acc-1",
+      sourceId: "s-1",
+      input: { liveness_enabled: false },
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/v1/reliability/sources/s-1/liveness", {
+      accountId: "acc-1",
+      method: "PATCH",
+      body: { liveness_enabled: false },
+    });
+  });
+
+  test("preserves null reset values and omits absent fields", async () => {
+    mockFetch.mockResolvedValue({ id: "s-1" });
+    await updateReliabilitySourceLiveness({
+      accountId: "acc-1",
+      sourceId: "s-1",
+      input: { expected_interval_seconds: null, liveness_grace_seconds: null },
+    });
+    expect(mockFetch).toHaveBeenCalledWith("/v1/reliability/sources/s-1/liveness", {
+      accountId: "acc-1",
+      method: "PATCH",
+      body: { expected_interval_seconds: null, liveness_grace_seconds: null },
     });
   });
 });
