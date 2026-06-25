@@ -12,6 +12,11 @@ const useUpstreamList = vi.fn(() => ({ data: undefined }));
 vi.mock("@/lib/api/use-list", () => ({
   useUpstreamList: (...args: unknown[]) => useUpstreamList(...args),
 }));
+// The Sources table renders the Configure modal (server action + sonner).
+vi.mock("@/app/(dash)/(app)/(fleet)/agents/collector/actions", () => ({
+  updateSourceLivenessAction: vi.fn(),
+}));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { CollectorDashboardClient } from "./collector-dashboard-client";
 
@@ -79,6 +84,7 @@ describe("CollectorDashboardClient", () => {
       <CollectorDashboardClient
         initialStatus={{ ...EMPTY_STATUS, last_received_at: "2026-06-24T18:00:00Z" }}
         initialSources={[source()]}
+        canConfigure
       />,
     );
     // The stable registry table (kind/model), not the managed-camera pipeline.
@@ -105,6 +111,7 @@ describe("CollectorDashboardClient", () => {
           },
         }}
         initialSources={[source()]}
+        canConfigure
       />,
     );
     expect(html).toContain("Healthy sources");
@@ -113,7 +120,11 @@ describe("CollectorDashboardClient", () => {
 
   test("shows the empty state when no data has arrived", () => {
     const html = renderToStaticMarkup(
-      <CollectorDashboardClient initialStatus={EMPTY_STATUS} initialSources={[]} />,
+      <CollectorDashboardClient
+        initialStatus={EMPTY_STATUS}
+        initialSources={[]}
+        canConfigure
+      />,
     );
     expect(html).toContain("No observations received yet");
   });
