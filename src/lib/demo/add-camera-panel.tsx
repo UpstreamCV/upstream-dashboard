@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Radio, X } from "lucide-react";
@@ -8,6 +15,10 @@ import { satoshi } from "@/app/(dash)/fonts";
 import { DEMO_TERMINAL_LINES } from "./fixtures";
 import { setDemoSceneAction } from "./actions";
 import { TerminalLog } from "./terminal-log";
+
+// Inert subscription for the useSyncExternalStore mounted-flag below — the
+// value never changes after hydration, so there is nothing to subscribe to.
+const emptySubscribe = () => () => {};
 
 // Part 1: a clean "Add a camera" modal. Shows the agent running in a terminal
 // (reusing TerminalLog), then "Detecting camera…" → "✓ connected" and advances
@@ -32,8 +43,14 @@ export function AddCameraPanel({ onClose }: { onClose: () => void }) {
   // the `--dn-*` tokens and `.dn-*` classes (the card, buttons, text colors)
   // wouldn't resolve and the modal would lose its container / fall back to a
   // system font.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // SSR-hydration flag without the setState-in-effect lint smell: the server
+  // snapshot is false, the client snapshot is true from the first post-
+  // hydration render.
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
   useEffect(
     () => () => {

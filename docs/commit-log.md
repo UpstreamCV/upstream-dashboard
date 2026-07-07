@@ -4,6 +4,12 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-07 — CI: GitHub Actions gate (lint + vitest + build) + dependabot
+
+**What**: `.github/workflows/ci.yml` running `npm run lint` (explicit — Next 16 build no longer auto-lints), `npm test` (vitest, 817 tests), and `npm run build` on Node 22 with npm cache and concurrency cancel-in-progress; weekly dependabot for npm + github-actions. Fixed the one lint error blocking a green gate: `add-camera-panel.tsx`'s mounted flag used the setState-in-effect idiom (`react-hooks/set-state-in-effect`); replaced with a `useSyncExternalStore` hydration flag (server snapshot `false`, client snapshot `true`) — behavior identical, portal still never renders during SSR.
+
+**Why**: repo had no CI; every gate verified green locally before enabling so the workflow lands green.
+
 ## 2026-06-25 — Reliability M2c: per-source liveness settings UI on /agents/collector
 
 **Subject:** Add a per-source **Configure liveness** modal + an Expected-cadence column to the `/agents/collector` Sources table, so operators can adjust each source's expected reporting interval / grace (or disable monitoring) — wired to the existing M2b `PATCH /v1/reliability/sources/{id}/liveness`. Dashboard-only; no backend change.
