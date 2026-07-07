@@ -32,3 +32,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # src/lib/env.ts zod-validates these at build time (NEXT_PUBLIC_*
+          # are inlined by `next build`). Placeholders are fine: public-by-
+          # design values, and the CI artifact is never deployed.
+          NEXT_PUBLIC_UPSTREAM_API_URL: https://ci-placeholder.invalid
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
