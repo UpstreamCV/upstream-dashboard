@@ -2,6 +2,7 @@ import { RecentObservationsPanelNext } from "@/components/dashboard-next/recent-
 import { getActiveAccount } from "@/lib/account/active";
 import { getCameraPackageConfig } from "@/lib/api/camera-package-config";
 import { UpstreamApiError } from "@/lib/api/errors";
+import { reportError } from "@/lib/error";
 import { listRecentObservations } from "@/lib/api/observations";
 import { getProcessingPackage } from "@/lib/api/processing-packages";
 import type { ObservationRecord } from "@/lib/api/types";
@@ -24,8 +25,10 @@ import type { PackageOutputContext } from "@/components/dashboard-next/recent-ob
 
 /**
  * Resolve the camera's package → whether it emits observations at all.
- * Best-effort: any failure returns null, which falls back to the generic empty
- * copy. This is explanatory garnish and must never break the tab.
+ * Degrades ALL errors to `null`, which falls back to the generic empty copy.
+ * This is explanatory garnish and must never break the tab above it — same
+ * posture as getReliabilityConfidenceTrend / getProcessingEvidence, including
+ * routing the swallowed error through reportError so it isn't invisible.
  */
 async function resolvePackageOutputs(
   accountId: string,
@@ -43,8 +46,10 @@ async function resolvePackageOutputs(
     return {
       displayName: pkg.display_name,
       emitsObservations: pkg.supported_outputs.length > 0,
+      readinessNotes: pkg.readiness_notes,
     };
-  } catch {
+  } catch (err) {
+    reportError(err, { area: "camera-observations-package" });
     return null;
   }
 }

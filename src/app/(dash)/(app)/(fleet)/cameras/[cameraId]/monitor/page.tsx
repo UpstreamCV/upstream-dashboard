@@ -12,6 +12,7 @@ import { getActiveAccount } from "@/lib/account/active";
 import { getAgent } from "@/lib/api/agents";
 import { getCamera } from "@/lib/api/cameras";
 import { UpstreamApiError } from "@/lib/api/errors";
+import { reportError } from "@/lib/error";
 import { getLatestPerception } from "@/lib/api/perception";
 import { getProcessingConfig } from "@/lib/api/processing-config";
 import { getLatestProcessorStatus } from "@/lib/api/processor-status";
@@ -86,10 +87,18 @@ export default async function CameraMonitorPage({
       }),
       // Seeds the live perception overlay's initial boxes.
       getLatestPerception({ accountId: activeAccountId, cameraId: camera.id }),
-      // Key image behind the non-streaming states. Wrapper returns null on
-      // snapshot_not_found, which is every camera until the streaming server's
-      // snapshot uploader is enabled (UPSTREAM_SNAPSHOT_UPLOAD_ENABLED).
-      getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }),
+      // Key image behind the non-streaming states. The wrapper returns null on
+      // snapshot_not_found — every camera today, until the streaming server's
+      // snapshot uploader is enabled (UPSTREAM_SNAPSHOT_UPLOAD_ENABLED) — but
+      // re-throws anything else. This tab is the camera's landing view and the
+      // frame is decorative, so a Storage/5xx must not take the page down with
+      // it: degrade to no key image and report.
+      getLatestFrame({ accountId: activeAccountId, cameraId: camera.id }).catch(
+        (err) => {
+          reportError(err, { area: "camera-monitor-latest-frame" });
+          return null;
+        },
+      ),
       // Reliability M0/M1-A — evaluates on read in the api-server. Returns
       // null on 404 so an unavailable endpoint doesn't crash the tab.
       getReliabilitySummary({
