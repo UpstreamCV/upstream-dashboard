@@ -8,8 +8,9 @@
 //
 // Also enables <Link> partial-prefetch of the tab routes (Next 16 prefetches a
 // dynamic route only when it has a loading boundary), so hovering a tab warms
-// it. Layout roughly mirrors the Monitor tab (the heaviest one): a two-column
-// stream/frame row, a full-width overlay strip, and the meta-panel grid.
+// it. Layout mirrors the Monitor tab, which is both the heaviest and — since it
+// absorbed Command Center — the landing tab every camera visit lands on: a
+// full-width reliability strip, a 2/3 stream + 1/3 rail row, and the meta grid.
 export default function Loading() {
   return (
     <div
@@ -17,15 +18,18 @@ export default function Loading() {
       aria-busy="true"
       aria-label="Loading camera"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="dn-tile h-[clamp(220px,30vw,420px)] animate-pulse" />
-        <div className="dn-tile h-[clamp(220px,30vw,420px)] animate-pulse" />
+      <div className="dn-tile h-[clamp(140px,16vw,200px)] animate-pulse" />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="lg:col-span-2 dn-tile h-[clamp(220px,30vw,420px)] animate-pulse" />
+        <div className="space-y-4 md:space-y-6">
+          <div className="dn-tile h-[clamp(100px,14vw,200px)] animate-pulse" />
+          <div className="dn-tile h-[clamp(100px,14vw,200px)] animate-pulse" />
+        </div>
       </div>
 
-      <div className="dn-tile h-[clamp(180px,24vw,340px)] animate-pulse" />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
-        {[0, 1, 2, 3].map((i) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+        {[0, 1, 2].map((i) => (
           <div key={i} className="dn-tile h-28 animate-pulse" />
         ))}
       </div>

@@ -88,8 +88,8 @@ hrefs stay valid since those URLs don't move.)
 | Page | Route | Backing | Disposition |
 |---|---|---|---|
 | Camera List | `/cameras` (+ `/cameras/new`) | `listCameras`, `listAgents` | keep |
-| **Camera Command Center** | `/cameras/[id]/overview` (new `TABS[0]`; flip bare redirect `./monitor`→`./overview`) | reuse Monitor's fetches: `getCamera`/`getAgent`/`listStreamSessions`/reliability | **new** (compose existing panels) |
-| Live Monitor | `/cameras/[id]/monitor` | (unchanged) | keep — **relabel tab only** |
+| ~~Camera Command Center~~ | `/cameras/[id]/overview` | — | **REVERSED 2026-07-16** — shipped, then consolidated back into Live Monitor: it composed the same six panels minus the stream, so it carried no unique surface. Route survives as a redirect to `./monitor` for old bookmarks. |
+| **Live Monitor** | `/cameras/[id]/monitor` (`TABS[0]`; bare root redirects here) | (unchanged) + `getLatestFrame` | keep — the camera's landing tab |
 | Configure | `/cameras/[id]/configure` (+ detection/geometry/rules) | (unchanged) | keep |
 | Events | `/cameras/[id]/observations` | `listRecentObservations` | keep route — **relabel tab "Events"** |
 | Reliability | `/cameras/[id]/reliability` | `reliability.ts` | keep |
@@ -182,7 +182,7 @@ hrefs stay valid since those URLs don't move.)
 |---|---|---|
 | **0 — Foundations** (additive; no moves, no backend) | `feature-flags.ts`; `section-tabs.tsx` (new); `NavSection` type; doc stubs | — |
 | **1 — Nav regroup + route groups** (Home & Camera intact) | Flat `NAV`→6 grouped sections (rail physics untouched, flag filtering); create `(event-outputs)`/`(dev-settings)`/`(account)` groups + shared layouts; move existing folders in (URLs unchanged → **no redirects**); camera tab **relabels** (Monitor→Live Monitor, Observations→Events); active-section test | Phase 0 |
-| **2 — Composition-only new surfaces** (no new backend) | Command Center (`/cameras/[id]/overview`, new `TABS[0]`, flip bare redirect); per-camera Issues tab; Agent Detail + **heartbeat timeline** (`getAgentHeartbeats` wrapper); Session Detail + Diagnostics (list-and-find + `listValidations`); session Active/History filters; Setup Checklist tile; split `/billing`→`/plan-usage` + `/billing`; Security Events audit filter | Phase 1; correct import paths (see corrections) |
+| **2 — Composition-only new surfaces** (no new backend) | ~~Command Center (`/cameras/[id]/overview`, new `TABS[0]`, flip bare redirect)~~ **reversed 2026-07-16 — see the Cameras section table**; per-camera Issues tab; Agent Detail + **heartbeat timeline** (`getAgentHeartbeats` wrapper); Session Detail + Diagnostics (list-and-find + `listValidations`); session Active/History filters; Setup Checklist tile; split `/billing`→`/plan-usage` + `/billing`; Security Events audit filter | Phase 1; correct import paths (see corrections) |
 | **3 — Static-content surfaces** (no backend) | Shared `CodeBlock` (factor from token dialog); `/event-schema`; `/api-docs`; account-wide read-only `/rules` roll-up; read-only Workspace card; Alert Detail (`/alerts/[alertId]`) | Phase 1 |
 | **4 — Issues aggregation** (synthesized, gated) | `src/lib/api/issues.ts` fan-out (`listAlerts` + stale-heartbeat agents + failed/expired sessions + failed/action-required workflow runs + per-camera `getReliabilityFindings` via `listCameras` fan-out) + normalizers + `IssuesQueue`/`IssueRow`/`IssueFacetTabs`; `/issues` behind `FF_ISSUES`; facets+status = client filters; Suggested Fixes = advisory only | Phases 1–2 |
 | **5 — Backend-dependency stubs** (gated OFF, `notFound()`) | Destinations; Events; Dev Settings Webhooks; Team; Network/Logs — stub + reserved nav slot, **no deep UI**; each lights up when its endpoint family ships | Phase 0 flags |
