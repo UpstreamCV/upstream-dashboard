@@ -20,6 +20,7 @@ import {
   demoCameras,
   demoConfidenceTrend,
   demoDashboardSummary,
+  demoFleetTrend,
   demoFindings,
   demoGeometryConfig,
   demoLatestFrame,
@@ -49,6 +50,7 @@ export function resolveDemoResponse(
 
   // Top-level, exact matches first.
   if (path === "/v1/dashboard/summary") return demoDashboardSummary(scene);
+  if (path === "/v1/dashboard/fleet-trend") return demoFleetTrend(scene);
   if (path === "/v1/agents") return { agents: [demoAgent()] };
   if (path === "/v1/cameras") return { cameras: demoCameras(scene) };
   if (path === "/v1/api-tokens") return demoTokens;

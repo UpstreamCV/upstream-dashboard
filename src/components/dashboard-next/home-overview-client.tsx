@@ -25,6 +25,7 @@ import type {
   Camera,
   CameraListResponse,
   DashboardSummary,
+  FleetTrendResponse,
 } from "@/lib/api/types";
 
 // Client wrapper for the Home redesign (Figma frames "Some Issues" 390:341 +
@@ -53,6 +54,7 @@ export function HomeOverviewClient({
   initialAlerts,
   initialCameras,
   streamMinutesUsed,
+  fleetTrend,
 }: {
   account: AccountSummary;
   initialSummary: DashboardSummary;
@@ -64,6 +66,11 @@ export function HomeOverviewClient({
   // Completed stream minutes this period (null while the endpoint is
   // unavailable; renders as an unknown meter, never a fake 0).
   streamMinutesUsed: number | null;
+  // Hourly fleet health for the Fleet Overview chart + its legend. Null when
+  // the endpoint is unavailable — the tile says so rather than drawing a shape.
+  // Server-rendered only: unlike the KPI feeds above there's no poll, since an
+  // hourly bucket can't change faster than the hour it covers.
+  fleetTrend: FleetTrendResponse | null;
 }) {
   const demo = isDemoMode();
 
@@ -261,11 +268,7 @@ export function HomeOverviewClient({
       {/* (2) MIDDLE ROW — Triage + Fleet Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5">
         <TriagePanel items={triageItems} moreCount={triageMoreCount} />
-        <FleetOverview
-          critical={camsErrors}
-          review={needsReview}
-          healthy={camsOnline}
-        />
+        <FleetOverview trend={fleetTrend} />
       </div>
 
       {/* (3) BOTTOM ROW — Recent Events + System Status */}
