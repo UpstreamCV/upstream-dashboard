@@ -22,6 +22,12 @@ const FULL_TRIGGERS = [
   "dwell_exceeded",
 ];
 
+// Synthetic tracker id for self-contained (bundled) packages — the whole
+// detect→track→analytics chain ships inside the runtime container, so there is
+// no real tracker profile to pick. Client-side only: the save path sends the
+// resolved package_id, never this sentinel.
+export const BUNDLED_TRACKER = "__bundled__";
+
 // The catalog carries only ids; these small maps give friendly labels (same
 // posture as the rest of the UI — ids are stable and few; unknowns fall back to
 // a prettified id).
@@ -42,6 +48,7 @@ const TRACKER_LABELS: Record<string, string> = {
   deepstream_iou_fast_v1: "IOU (fast)",
   deepstream_nvdcf_balanced_v1: "NvDCF (balanced)",
   deepstream_nvsort_fast_v1: "NvSORT",
+  [BUNDLED_TRACKER]: "Built-in (bundled)",
 };
 
 function prettifyId(id: string): string {
@@ -81,17 +88,43 @@ export interface ModelOption {
 }
 
 // An "analytics" package is one with a real backing model + analytics profile
-// (people/vehicle). Diagnostic probes (no model / no analytics) and the mock
-// detector are excluded from the Advanced model list.
+// (people/vehicle). Diagnostic probes (no model / no analytics / no triggers)
+// and the mock detector are excluded from the Advanced model list.
 function isAdvancedModelPackage(p: ProcessingPackage): boolean {
   return Boolean(p.model_id) && p.runtime !== "mock" && Boolean(p.analytics_profile_id);
 }
+
+// A self-contained (bundled) package: no model/analytics ids to compose, but
+// real analytics capability (declared triggers). It appears in the Advanced
+// picker as its own entry keyed by package_id, with one synthetic "Built-in"
+// tracker. Probes stay out — they declare no triggers.
+function isBundledPackage(p: ProcessingPackage): boolean {
+  return (
+    !p.model_id &&
+    !p.analytics_profile_id &&
+    p.runtime !== "mock" &&
+    p.supported_triggers.length > 0
+  );
+}
+
+const BUNDLED_TRACKER_OPTION: TrackerOption = {
+  profileId: BUNDLED_TRACKER,
+  label: TRACKER_LABELS[BUNDLED_TRACKER],
+};
 
 /** Distinct detection models across the (gated) catalog, in catalog order. */
 export function modelsFromCatalog(packages: ProcessingPackage[]): ModelOption[] {
   const order: string[] = [];
   const byModel = new Map<string, ProcessingPackage[]>();
+  const bundled = new Map<string, ProcessingPackage>();
   for (const p of packages) {
+    if (isBundledPackage(p)) {
+      if (!bundled.has(p.package_id)) {
+        bundled.set(p.package_id, p);
+        order.push(p.package_id);
+      }
+      continue;
+    }
     if (!isAdvancedModelPackage(p)) continue;
     const modelId = p.model_id as string;
     if (!byModel.has(modelId)) {
@@ -100,14 +133,25 @@ export function modelsFromCatalog(packages: ProcessingPackage[]): ModelOption[] 
     }
     byModel.get(modelId)!.push(p);
   }
-  return order.map((modelId) => {
-    const pkgs = byModel.get(modelId)!;
+  return order.map((key) => {
+    const self = bundled.get(key);
+    if (self) {
+      return {
+        modelId: self.package_id,
+        label: self.display_name,
+        metrics: self.model_metrics,
+        firstParty: self.first_party,
+        trackers: [BUNDLED_TRACKER_OPTION],
+        representative: self,
+      };
+    }
+    const pkgs = byModel.get(key)!;
     return {
-      modelId,
-      label: modelLabel(modelId),
+      modelId: key,
+      label: modelLabel(key),
       metrics: pkgs.find((p) => p.model_metrics)?.model_metrics ?? null,
       firstParty: pkgs.every((p) => p.first_party),
-      trackers: trackersForModel(packages, modelId),
+      trackers: trackersForModel(packages, key),
       representative: pkgs[0],
     };
   });
@@ -118,6 +162,9 @@ export function trackersForModel(
   packages: ProcessingPackage[],
   modelId: string,
 ): TrackerOption[] {
+  if (packages.some((p) => p.package_id === modelId && isBundledPackage(p))) {
+    return [BUNDLED_TRACKER_OPTION];
+  }
   const seen = new Set<string>();
   const out: TrackerOption[] = [];
   for (const p of packages) {
@@ -146,6 +193,8 @@ export function resolveCanonicalPackage(
   modelId: string,
   trackerProfileId: string,
 ): ProcessingPackage | null {
+  const self = packages.find((p) => p.package_id === modelId && isBundledPackage(p));
+  if (self) return self;
   const matches = packages
     .map((p, i) => ({ p, i }))
     .filter(
