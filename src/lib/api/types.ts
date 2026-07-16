@@ -167,12 +167,53 @@ export interface StreamValidationListResponse {
 
 export interface DashboardSummary {
   total_cameras: number;
+  /** Cameras whose owning agent reported within 5 minutes. */
   online_cameras: number;
+  /** Complement of online_cameras — the two sum to total_cameras. */
   offline_cameras: number;
   streaming_cameras: number;
   cameras_with_errors: number;
   active_streams: number;
   validation_errors_24h: number;
+}
+
+// --- Fleet health trend (Home chart) ----------------------------------------
+// TS mirror of ../upstream-api-server/src/upstream_api/schemas/dashboard.py.
+
+export type FleetTrendRange = "24h" | "7d";
+
+/**
+ * One hourly bucket. Each camera is counted once, by the status of its LAST
+ * heartbeat in the hour, so the three series partition `reporting_cameras`.
+ * A camera that sent no heartbeat is in none of them — an idle or disconnected
+ * camera is absent by construction, not zeroed.
+ */
+export interface FleetTrendPoint {
+  bucket_start: IsoDateTime;
+  bucket_end: IsoDateTime;
+  critical: number;
+  review: number;
+  healthy: number;
+  reporting_cameras: number;
+}
+
+/** Legend counts. These read the LATEST point, so the legend can't drift from
+ * the plotted line. `total_cameras` is the account's full count — compare it to
+ * tell "3 healthy of 40" from "3 healthy of 3". */
+export interface FleetTrendSummary {
+  point_count: number;
+  latest_bucket_start: IsoDateTime | null;
+  latest_critical: number;
+  latest_review: number;
+  latest_healthy: number;
+  total_cameras: number;
+}
+
+export interface FleetTrendResponse {
+  range: FleetTrendRange;
+  bucket_size: "1h";
+  points: FleetTrendPoint[];
+  summary: FleetTrendSummary;
 }
 
 export interface MembershipSummary {

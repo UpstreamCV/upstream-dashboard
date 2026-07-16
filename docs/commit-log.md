@@ -4,6 +4,29 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-16 — Home: the Fleet Overview chart plots real fleet health
+
+**Subject:** Replace the Fleet Overview chart's hard-coded sine wave with real hourly data from the new `GET /v1/dashboard/fleet-trend`, and take its legend from the same source so the two can't disagree.
+
+**Why:** The chart's three lines were `fakeSeries()` — a deterministic sine wave, hard-coded bases (critical ~1–5, review ~4–10, healthy ~16–24), mitigated only by a small "Illustrative" corner label. Of the four surfaces `(home)/page.tsx` listed as illustrative, this was the only one that *fabricated telemetry*: System Status / Network / Billing all render an honest `—`. Its own page comment set the rule it broke ("rendered with honest placeholders, never fabricated telemetry"), and Home is the first screen an operator sees. The legend beside it was real but wrong twice over — `healthy` was fed `online_cameras`, which the api-server computed as the online-**agent** count, and `critical ⊆ review`, so the "partition" double-counted every critical camera.
+
+**Why it works now, when the previous note said it couldn't:** `cameras.status` is mutable current state with no history table, which is why this looked unbackable. But `heartbeats` already historizes per-camera status with `reported_at`. Verified against prod: **two months** of history (2026-05-14 → now, 21,942 rows) and nothing prunes it, despite the table comment claiming an out-of-band retention job. So the chart populates from existing data immediately — no rollup table, no sampler warm-up, no `pg_cron` (which this project deliberately does not have).
+
+**What changed:**
+- `src/components/dashboard-next/home/fleet-overview.tsx` — `fakeSeries()` and the "Illustrative" label **deleted**. `FleetOverview` now takes a single `trend` prop; the three lines are `points.map(p => p.critical|review|healthy)` and the legend reads `summary.latest_*`. Three distinct states: no trend → "Fleet health is unavailable right now"; trend with zero points → "No heartbeats in the last 24 hours"; otherwise the chart. An all-zero fleet still plots — quiet is not missing. The header now reads "Last 24 hours · n of m reporting", because a camera that never heartbeats is in none of the three series and "1 Healthy" must not imply a one-camera fleet.
+- `src/lib/api/dashboard.ts` — new `getFleetTrend()`. Degrades **all** errors to `null` via `reportError`, matching `getReliabilityConfidenceTrend`: Home fetches every tile in one `Promise.all` where a rejection would blank the whole page.
+- `src/lib/api/types.ts` — `FleetTrendPoint` / `FleetTrendSummary` / `FleetTrendResponse` / `FleetTrendRange`; `DashboardSummary.online_cameras` / `offline_cameras` documented with their corrected meanings.
+- `(home)/page.tsx` — `getFleetTrend` joins the `Promise.all`; the header's illustrative list drops the Fleet chart.
+- `home-overview-client.tsx` — passes `fleetTrend` through. Server-rendered only, no poll: an hourly bucket cannot change faster than the hour it covers.
+- `src/lib/demo/fixtures.ts` + `router.ts` — `demoFleetTrend(scene)`. Without a router branch the new path fell through to the catch-all `{}` and the demo would have shown an empty chart. The fixture follows the narrative (healthy once connected, `critical` on the `problem`/`fixing` beats) so the chart agrees with the Triage panel beside it.
+- Tests: `fleet-overview.test.tsx` (6) — legend reads the latest bucket not the first, the reporting denominator renders, unavailable vs no-heartbeats are distinct states, and **neither draws a polyline** (the anti-regression guard for the sine wave).
+
+**Backend (separate repo, `upstream-api-server` @ `feat/fleet-trend`):** new `GET /v1/dashboard/fleet-trend?range=24h|7d`; each camera counted once per hourly bucket by its **last** heartbeat that hour, so critical/review/healthy partition `reporting_cameras`; `summary.latest_*` read the newest bucket. Also fixes `online_cameras` (was the agent count) and `offline_cameras` (was `total - streaming`, so an idle-but-connected camera read as offline and the pair never summed to `total_cameras`) — the value, not the name, since `/dashboard-legacy` reads the field. Plus a `heartbeats(account_id, reported_at desc)` index; every existing index is per-device, so an account-wide scan would seq-scan a write-heavy table. `make ci` green (1620).
+
+**Considered and rejected:** a `fleet_health_hourly_rollups` table + runner (the M6 rollup precedent needs a manual script and would silently stop producing points; the `health_sampler` in-process precedent is global, not account-scoped — and both start empty, when `heartbeats` can answer today); a topology/node-edge graph instead (buildable with zero backend, but it's a different visualization than the one on screen); leaving `fakeSeries` in until something better landed.
+
+**Docs updated:** `AGENTS.md` (the illustrative-tile count was already wrong — it said two, the page lists four), `docs/commit-log.md` (this entry). Contract lives in `upstream-api-server/docs/api-contracts.md`.
+
 ## 2026-07-16 — Cameras: Live Monitor becomes the landing tab; Command Center consolidated into it
 
 **Subject:** Make Live Monitor the camera's landing tab, retire Command Center into it, put the last captured frame behind the non-streaming stream states as a key image, and tell the Events tab to explain itself when the camera's package emits no observations.
