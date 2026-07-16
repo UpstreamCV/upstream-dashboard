@@ -8,8 +8,9 @@ import {
 } from "@/lib/perception/package-recommendation";
 
 // P5-I guided setup — "what do you want this camera to do?". Selecting a use
-// case drives the metadata-driven package recommendation. Optional: with none
-// selected, the Processing tab behaves exactly as it did in P5-H.
+// case drives the metadata-driven package recommendation. Since P5-L, Guided
+// shows nothing until a use case is picked; browsing the whole catalog is
+// Advanced's job.
 
 export function UseCasePicker({
   selected,
@@ -29,8 +30,8 @@ export function UseCasePicker({
         What do you want this camera to do?
       </h2>
       <p className="mt-1.5 text-sm text-[var(--dn-text-50)]">
-        Pick a use case and we&rsquo;ll recommend a package. Optional — you can
-        still browse every package below.
+        Pick a use case and we&rsquo;ll recommend a package. To browse every
+        package, switch to Advanced.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {USE_CASES.map((uc) => {
