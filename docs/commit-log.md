@@ -4,6 +4,20 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-16 — Processing: use-case picker copy + P5-L docs currency after PR #11
+
+**Subject:** Docs/copy-only follow-up to PR #11. Correct the Guided use-case picker's stale P5-I copy and bring the `docs/dashboard-next.md` P5-L section up to date with the bundled-package path. No behavior change.
+
+**Why:** Two staleness bugs found by the 2026-07-16 CrowdCount→Upstream migration sweep (RANK 5). The picker told operators they could "still browse every package below", which has been false since P5-L: Guided renders nothing until a use case is clicked, then exactly one recommended card + a collapsed disclosure — the browse-everything surface is Advanced (the default mode). The P5-L docs still described `modelsFromCatalog()` as excluding everything without a `model_id` + `analytics_profile_id`, which PR #11 changed.
+
+**What changed:**
+- `src/components/dashboard-next/processing/use-case-picker.tsx` — the picker's sub-copy now points at Advanced for browsing ("To browse every package, switch to Advanced.", matching the `mode-toggle.tsx` pill label) instead of a browse-all list that no longer exists. The module header's "with none selected, the Processing tab behaves exactly as it did in P5-H" was stale for the same reason and now describes the P5-L behavior.
+- `docs/dashboard-next.md` (P5-L section) — `modelsFromCatalog()` bullet reworded around `isAdvancedModelPackage()`; new bullet documents the bundled path: `isBundledPackage()` (and that the non-empty `supported_triggers` clause is what keeps real probes out), the `BUNDLED_TRACKER` "Built-in (bundled)" sentinel being client-side only (the save path sends the resolved `package_id`), entries keyed by `package_id` + labelled by `display_name`, and the panel's initial selection recognizing an already-assigned bundled package.
+
+**Considered and rejected:** the sweep also floated adding `categories: ["people_counting"]` (and/or keywords) to the `line_crossing` use case in `package-recommendation.ts` so `overhead_people_counter.v1` would rank "Recommended" in Guided. Verified against a transcription of the real api-server catalog: it **already is** `Recommended` for `line_crossing` (score 7.0 vs 6.5 for the next package) on its trigger match alone, so the change is a no-op for tiering — it only widens the margin to 9.0. It also carries a semantic cost: `categories` means "satisfies this use case *even with no trigger match*" (`isCapable()`), so any future `people_counting` package would be marked line-crossing-capable without declaring the trigger. Left alone. Adding keywords (`counting`/`people`) was rejected outright — keywords are matched against every package's `best_for`/`not_recommended_for`, so they would move other packages' scores.
+
+**Docs updated:** `docs/dashboard-next.md`, `docs/commit-log.md` (this entry).
+
 ## 2026-07-16 — Processing: bundled (self-contained) packages selectable in the Advanced picker
 
 **Subject:** Make self-contained packages — no model/tracker/analytics ids, whole chain inside the runtime container — selectable in the Processing tab's Advanced picker, as their own model-list entry with a synthetic "Built-in (bundled)" tracker.
