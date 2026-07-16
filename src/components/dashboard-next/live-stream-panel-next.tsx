@@ -60,16 +60,23 @@ function StreamState({
   // Key image + why there's no live video, in one tile. The signed URL is
   // minted per render (60s TTL); the layout's Realtime listener re-renders this
   // page on session transitions, so a shown frame is never many minutes stale.
+  //
+  // min-h floors the frame box at the message's own height: the message is
+  // absolutely positioned and the tile clips, so a wide/short frame (or a
+  // narrow viewport) would otherwise scale the image below the text and cut it
+  // off. The image is centered/cropped rather than stretched so the floor never
+  // distorts its aspect ratio.
   return (
     <div className="dn-tile overflow-hidden">
-      <div className="relative bg-black">
+      <div className="relative bg-black min-h-[clamp(200px,22vw,300px)]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={latestFrame.signed_url}
-          alt="Last captured frame from this camera"
-          className="w-full h-auto block opacity-40"
+          alt=""
+          aria-hidden
+          className="absolute inset-0 w-full h-full object-cover opacity-40"
         />
-        <div className="absolute inset-0 flex items-center justify-center p-[clamp(1rem,2vw,2rem)]">
+        <div className="relative flex min-h-[clamp(200px,22vw,300px)] items-center justify-center p-[clamp(1rem,2vw,2rem)]">
           {message}
         </div>
       </div>

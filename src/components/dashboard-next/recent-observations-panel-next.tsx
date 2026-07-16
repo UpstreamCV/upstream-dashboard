@@ -42,10 +42,18 @@ function shortId(value: string | null): string {
  * The camera's package and whether it emits Upstream observations at all,
  * resolved server-side from the catalog's `supported_outputs`. Null when the
  * camera has no package or the lookup failed.
+ *
+ * `readinessNotes` is the catalog's own prose for WHY a package emits nothing.
+ * Six packages currently declare no outputs — five diagnostic probes (which say
+ * nothing further) and the Overhead People Counter (which explains that its
+ * counts of record go to crowdcount-server). The panel renders whatever the
+ * catalog says rather than hard-coding any one package's story, so a package
+ * whose reasons change doesn't strand stale copy here.
  */
 export interface PackageOutputContext {
   displayName: string;
   emitsObservations: boolean;
+  readinessNotes: string | null;
 }
 
 /**
@@ -128,14 +136,17 @@ export function RecentObservationsPanelNext({
       ? friendlyMessage(error)
       : "Couldn't load recent observations.";
   // A package with no declared outputs never writes observations, so "yet" would
-  // be a lie — say what it does instead. The type-filtered case keeps its own
-  // copy: the operator narrowed the view themselves.
+  // be a lie — state the fact instead, and let the catalog supply the reason.
+  // Deliberately claims nothing beyond "declares no outputs": this branch also
+  // covers the diagnostic probes, for which any story about where the results
+  // go instead would be invented. The type-filtered case keeps its own copy —
+  // the operator narrowed the view themselves.
   const silentPackage =
     packageOutputs && !packageOutputs.emitsObservations ? packageOutputs : null;
   const emptyMessage = queryType
     ? `No ${typeLabel(queryType)} observations for this camera.`
     : silentPackage
-      ? `${silentPackage.displayName} doesn't write observations — it reports its results directly and streams detections to the live view. This tab stays empty by design.`
+      ? `${silentPackage.displayName} declares no observation outputs, so this tab stays empty by design.`
       : "No processor observations recorded for this camera yet.";
 
   return (
@@ -310,6 +321,11 @@ export function RecentObservationsPanelNext({
         <div className="py-12 text-center">
           <Activity className="mx-auto h-7 w-7 text-[var(--dn-text-50)]" />
           <p className="mt-3 text-sm text-[var(--dn-text-50)]">{emptyMessage}</p>
+          {silentPackage?.readinessNotes && !queryType ? (
+            <p className="mx-auto mt-2 max-w-prose text-xs text-[var(--dn-text-50)]">
+              {silentPackage.readinessNotes}
+            </p>
+          ) : null}
         </div>
       )}
       </div>
