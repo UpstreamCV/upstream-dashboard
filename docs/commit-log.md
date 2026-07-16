@@ -4,6 +4,19 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-16 — Processing: bundled (self-contained) packages selectable in the Advanced picker
+
+**Subject:** Make self-contained packages — no model/tracker/analytics ids, whole chain inside the runtime container — selectable in the Processing tab's Advanced picker, as their own model-list entry with a synthetic "Built-in (bundled)" tracker.
+
+**Why:** The catalog's first bundled package (`overhead_people_counter.v1`, the CrowdCount counting container, the only `status="supported"` entry) was completely invisible: Advanced mode (the default) derives its picker from `modelsFromCatalog()`, whose `isAdvancedModelPackage()` filter requires `model_id` + `analytics_profile_id` — written to exclude diagnostic probes, but catching bundled packages as collateral. Guided mode only shows cards after a use-case click, so nothing surfaced it.
+
+**What changed:**
+- `src/lib/perception/advanced-resolution.ts` — new exported `BUNDLED_TRACKER` sentinel (client-side only; the save path still sends the resolved `package_id`) + `isBundledPackage()` (`!model_id && !analytics_profile_id && runtime !== "mock" && supported_triggers.length > 0` — probes declare no triggers, so they stay excluded). `modelsFromCatalog()` emits bundled packages as their own entries keyed by `package_id` (label = `display_name`), `trackersForModel()` returns the single Built-in option for them, `resolveCanonicalPackage()` resolves a bundled selection to the package itself.
+- `src/components/dashboard-next/processing/processing-package-panel.tsx` — initial Advanced selection recognizes a camera whose current package is bundled (keys on `package_id` before the `model_id` path), so an already-assigned camera shows its real selection instead of defaulting to the first DeepStream model.
+- Tests: `advanced-resolution.test.ts` — bundled fixture appears in the model list with the Built-in tracker and resolves canonically; DECODE/MOCK fixtures corrected to declare no triggers (mirroring the real catalog, where probes have none).
+
+**Docs updated:** `docs/commit-log.md` (this entry).
+
 ## 2026-07-07 — CI: GitHub Actions gate (lint + vitest + build) + dependabot
 
 **What**: `.github/workflows/ci.yml` running `npm run lint` (explicit — Next 16 build no longer auto-lints), `npm test` (vitest, 817 tests), and `npm run build` on Node 22 with npm cache and concurrency cancel-in-progress; weekly dependabot for npm + github-actions. Fixed the one lint error blocking a green gate: `add-camera-panel.tsx`'s mounted flag used the setState-in-effect idiom (`react-hooks/set-state-in-effect`); replaced with a `useSyncExternalStore` hydration flag (server snapshot `false`, client snapshot `true`) — behavior identical, portal still never renders during SSR.

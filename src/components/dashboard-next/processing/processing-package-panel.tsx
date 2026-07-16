@@ -134,11 +134,14 @@ export function ProcessingPackagePanel({
 
   const models = useMemo(() => modelsFromCatalog(packages), [packages]);
 
-  // Initial advanced model/tracker: the requested package's, else the first model.
+  // Initial advanced model/tracker: the requested package's, else the first
+  // model. Bundled packages appear in the model list keyed by package_id.
   const initialModelId =
-    initialPkg?.model_id && models.some((m) => m.modelId === initialPkg.model_id)
-      ? initialPkg.model_id
-      : (models[0]?.modelId ?? null);
+    initialPkg && models.some((m) => m.modelId === initialPkg.package_id)
+      ? initialPkg.package_id
+      : initialPkg?.model_id && models.some((m) => m.modelId === initialPkg.model_id)
+        ? initialPkg.model_id
+        : (models[0]?.modelId ?? null);
   const initialTrackerId = (() => {
     const tks = initialModelId ? trackersForModel(packages, initialModelId) : [];
     if (initialPkg?.tracker_profile_id && initialPkg.model_id === initialModelId) {

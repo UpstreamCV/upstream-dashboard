@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { ModelMetrics, ProcessingPackage } from "@/lib/api/types";
 import {
+  BUNDLED_TRACKER,
   formatMetric,
   modelLabel,
   modelsFromCatalog,
@@ -108,6 +109,7 @@ const DECODE = pkg({
   model_id: null,
   tracker_profile_id: null,
   analytics_profile_id: null,
+  supported_triggers: [], // real probes declare no analytics triggers
 });
 const MOCK = pkg({
   package_id: "mock.detect.v0",
@@ -116,14 +118,45 @@ const MOCK = pkg({
   model_id: null,
   tracker_profile_id: null,
   analytics_profile_id: null,
+  supported_triggers: [],
+});
+// Self-contained (bundled) package: the whole chain ships inside the runtime
+// container — no model/tracker/analytics ids, but real declared triggers.
+const BUNDLED = pkg({
+  package_id: "overhead_people_counter.v1",
+  display_name: "Overhead People Counter",
+  category: "people_counting",
+  status: "supported",
+  production_ready: true,
+  runtime: "crowdcount",
+  model_id: null,
+  tracker_profile_id: null,
+  analytics_profile_id: null,
+  supported_triggers: ["line_crossing"],
+  requires_geometry: false,
+  requires_restart: false,
 });
 
-const CATALOG = [BASE, NVDCF, FAST, OCC, NANO, YOLO11S, PEOPLENET, DECODE, MOCK];
+const CATALOG = [BASE, NVDCF, FAST, OCC, NANO, YOLO11S, PEOPLENET, BUNDLED, DECODE, MOCK];
 
 describe("modelsFromCatalog", () => {
-  test("lists distinct real models, excluding diagnostics + mock", () => {
+  test("lists distinct real models + bundled packages, excluding diagnostics + mock", () => {
     const models = modelsFromCatalog(CATALOG).map((m) => m.modelId);
-    expect(models).toEqual(["yolox_s_v1", "yolox_nano_v1", "yolo11s_v1", "peoplenet_v1"]);
+    expect(models).toEqual([
+      "yolox_s_v1",
+      "yolox_nano_v1",
+      "yolo11s_v1",
+      "peoplenet_v1",
+      "overhead_people_counter.v1",
+    ]);
+  });
+  test("a bundled package is its own entry with a built-in tracker", () => {
+    const entry = modelsFromCatalog(CATALOG).find(
+      (m) => m.modelId === "overhead_people_counter.v1",
+    );
+    expect(entry?.label).toBe("Overhead People Counter");
+    expect(entry?.trackers.map((t) => t.profileId)).toEqual([BUNDLED_TRACKER]);
+    expect(entry?.representative.package_id).toBe("overhead_people_counter.v1");
   });
   test("carries metrics + first-party provenance per model", () => {
     const by = Object.fromEntries(modelsFromCatalog(CATALOG).map((m) => [m.modelId, m]));
@@ -135,6 +168,11 @@ describe("modelsFromCatalog", () => {
 });
 
 describe("trackersForModel", () => {
+  test("a bundled package id yields the synthetic built-in tracker", () => {
+    expect(trackersForModel(CATALOG, "overhead_people_counter.v1").map((t) => t.profileId)).toEqual(
+      [BUNDLED_TRACKER],
+    );
+  });
   test("IOU only for most models; IOU + NvDCF for yolox_s", () => {
     expect(trackersForModel(CATALOG, "yolox_nano_v1").map((t) => t.profileId)).toEqual([
       "deepstream_iou_fast_v1",
@@ -162,6 +200,11 @@ describe("resolveCanonicalPackage", () => {
   });
   test("returns null for an unavailable combination", () => {
     expect(resolveCanonicalPackage(CATALOG, "yolox_nano_v1", "deepstream_nvdcf_balanced_v1")).toBeNull();
+  });
+  test("a bundled selection resolves to the bundled package itself", () => {
+    expect(
+      resolveCanonicalPackage(CATALOG, "overhead_people_counter.v1", BUNDLED_TRACKER)?.package_id,
+    ).toBe("overhead_people_counter.v1");
   });
 });
 
