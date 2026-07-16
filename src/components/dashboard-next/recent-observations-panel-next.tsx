@@ -39,6 +39,16 @@ function shortId(value: string | null): string {
 }
 
 /**
+ * The camera's package and whether it emits Upstream observations at all,
+ * resolved server-side from the catalog's `supported_outputs`. Null when the
+ * camera has no package or the lookup failed.
+ */
+export interface PackageOutputContext {
+  displayName: string;
+  emitsObservations: boolean;
+}
+
+/**
  * Dashboard-next port of the Recent Observations panel (P5-B). Server-rendered
  * initial rows are handed in via `initialObservations`; the panel then
  * refreshes on demand (and optionally on a 5 s poll) through the dashboard
@@ -52,9 +62,11 @@ function shortId(value: string | null): string {
 export function RecentObservationsPanelNext({
   cameraId,
   initialObservations,
+  packageOutputs = null,
 }: {
   cameraId: string;
   initialObservations: ObservationRecord[];
+  packageOutputs?: PackageOutputContext | null;
 }) {
   const [type, setType] = useState<string>("all");
   const [limit, setLimit] = useState<number>(DEFAULT_OBSERVATION_LIMIT);
@@ -115,9 +127,16 @@ export function RecentObservationsPanelNext({
     error instanceof UpstreamApiError
       ? friendlyMessage(error)
       : "Couldn't load recent observations.";
+  // A package with no declared outputs never writes observations, so "yet" would
+  // be a lie — say what it does instead. The type-filtered case keeps its own
+  // copy: the operator narrowed the view themselves.
+  const silentPackage =
+    packageOutputs && !packageOutputs.emitsObservations ? packageOutputs : null;
   const emptyMessage = queryType
     ? `No ${typeLabel(queryType)} observations for this camera.`
-    : "No processor observations recorded for this camera yet.";
+    : silentPackage
+      ? `${silentPackage.displayName} doesn't write observations — it reports its results directly and streams detections to the live view. This tab stays empty by design.`
+      : "No processor observations recorded for this camera yet.";
 
   return (
     <div className="space-y-4 md:space-y-5">

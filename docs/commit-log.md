@@ -4,6 +4,28 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-16 — Cameras: Live Monitor becomes the landing tab; Command Center consolidated into it
+
+**Subject:** Make Live Monitor the camera's landing tab, retire Command Center into it, put the last captured frame behind the non-streaming stream states as a key image, and tell the Events tab to explain itself when the camera's package emits no observations.
+
+**Why:** Command Center (`./overview`) shipped as `TABS[0]` in the sitemap reorg, but it renders **zero** widgets Live Monitor lacks — Monitor is a strict superset (same ReliabilityPanel / SessionPanel / AppliedGeometryPanel / AgentPanel / CameraMetaPanel / ValidationPanel, plus the WHEP player and perception overlay). Its only real contribution was giving the verdict panels a roomy 2/3 column instead of Monitor's narrow rail, so "merge Command Center into Live Monitor" is a layout change plus a redirect flip, not a port. The key image and the Events copy are the two honesty fixes that fall out of landing operators on this tab.
+
+**What changed:**
+- `src/app/(dash)/(app)/(fleet)/cameras/[cameraId]/page.tsx` — bare-root redirect `./overview` → `./monitor`.
+- `src/app/(dash)/(app)/(fleet)/cameras/[cameraId]/overview/page.tsx` — the whole Command Center page replaced by a redirect stub to `./monitor`, mirroring the `configure/detection/page.tsx` precedent so existing bookmarks/deep links don't 404. **Nothing in-app linked to `/overview`** (verified by grep); every external deep link targets the bare root and follows the redirect for free.
+- `src/components/dashboard-next/camera-tabs.tsx` — drop the Command Center tab (Live Monitor becomes `TABS[0]`); the bare-root special case is **retargeted** to `monitor`, not deleted — deleting it would leave the pre-redirect frame with no highlighted tab.
+- `src/app/(dash)/(app)/(fleet)/cameras/[cameraId]/monitor/page.tsx` — ReliabilityPanel promoted out of the rail to a full-width strip above the stream row (this is the room Command Center gave it); rail keeps AppliedGeometry + Session; new `getLatestFrame` fetch joins the existing `Promise.all`.
+- `src/components/dashboard-next/live-stream-panel-next.tsx` — the three non-streaming states (no session / waiting / terminal) refactored into one `StreamState` helper that renders the last captured frame behind the message when a `latestFrame` is supplied. Default `null` reproduces the previous icon-only states byte-for-byte. This is deliberately **not** the standalone latest-frame card that was removed here as "redundant with the live stream": that objection only held while video was playing, which is exactly when this doesn't render.
+- `src/app/(dash)/(app)/(fleet)/cameras/[cameraId]/observations/page.tsx` + `recent-observations-panel-next.tsx` — resolve the camera's package via `getCameraPackageConfig` → `getProcessingPackage` and, when its catalog `supported_outputs` is empty, replace "No processor observations recorded for this camera **yet**" (a lie — they are never coming) with copy naming the package and saying it reports directly and streams to the live view. Best-effort: any lookup failure falls back to the generic copy, and the type-filtered empty case is untouched. Driven by the catalog's machine-readable signal, so it covers every no-output package, not just `overhead_people_counter.v1`.
+- `src/app/(dash)/(app)/(fleet)/cameras/[cameraId]/loading.tsx` — skeleton re-shaped to the new Monitor layout (full-width strip + 2/3 stream + 1/3 rail + 3-tile row). It is now the landing-tab skeleton, i.e. the first thing every camera visit paints.
+- Tests: `camera-tabs.test.tsx` — pathname fixtures moved off the retired `/overview`; two new cases assert Command Center is gone and that the bare root marks Live Monitor `aria-current="page"`.
+
+**Known follow-up (not in this commit):** the key image renders for **no camera in prod today** — the streaming-server's uploader is env-gated off (`UPSTREAM_SNAPSHOT_UPLOAD_ENABLED=0`, `docker-compose.yml:156`), so `/v1/cameras/{id}/latest-frame` 404s `snapshot_not_found` fleet-wide and `getLatestFrame` returns null. The api-server capture/upload/storage/serving chain is fully shipped; only the flag is off. Flipping it needs a cadence decision first — `UPSTREAM_SNAPSHOT_UPLOAD_EVERY_N_FRAMES` defaults to 1 against a 10s grab, i.e. ~8,640 uploads/day/camera at a fresh storage key each, and no janitor prunes them.
+
+**Considered and rejected:** deleting `/overview` outright (404s live bookmarks — the redirect stub costs ~6 lines and the repo already has this exact precedent); mounting the orphaned `LatestFrameCardNext` as its own tile (re-creates the redundancy that got it removed, and stacks two empty states — "No session yet" above "No frame yet" — on the landing tab); filtering no-output packages' Events tab client-side (hides a real, reachable API state instead of explaining it).
+
+**Docs updated:** `docs/sitemap-reorg-plan.md` (Cameras table + Phase 2 row — both specified the *opposite* redirect direction and would have been a trap for the next reader), `docs/commit-log.md` (this entry).
+
 ## 2026-07-16 — Processing: use-case picker copy + P5-L docs currency after PR #11
 
 **Subject:** Docs/copy-only follow-up to PR #11. Correct the Guided use-case picker's stale P5-I copy and bring the `docs/dashboard-next.md` P5-L section up to date with the bundled-package path. No behavior change.
