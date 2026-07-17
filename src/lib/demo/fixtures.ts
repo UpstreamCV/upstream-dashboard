@@ -249,6 +249,9 @@ export const demoTokens = {
 export const demoProcessingConfig = { processing_enabled: true };
 
 export function demoDashboardSummary(scene: DemoScene): DashboardSummary {
+  // The agent (dock-pi-01) exists in every scene — /v1/agents returns it even
+  // before a camera is added, and its last_seen_at is 25s old, so it is online
+  // throughout. The CAMERA is the thing the narrative adds.
   if (!cameraAdded(scene)) {
     return {
       total_cameras: 0,
@@ -256,6 +259,8 @@ export function demoDashboardSummary(scene: DemoScene): DashboardSummary {
       offline_cameras: 0,
       streaming_cameras: 0,
       cameras_with_errors: 0,
+      online_agents: 1,
+      total_agents: 1,
       active_streams: 0,
       validation_errors_24h: 0,
     };
@@ -266,6 +271,8 @@ export function demoDashboardSummary(scene: DemoScene): DashboardSummary {
     offline_cameras: 0,
     streaming_cameras: 1,
     cameras_with_errors: 0,
+    online_agents: 1,
+    total_agents: 1,
     active_streams: 1,
     validation_errors_24h: 0,
   };
@@ -274,30 +281,36 @@ export function demoDashboardSummary(scene: DemoScene): DashboardSummary {
 /**
  * 24 hourly fleet-health buckets for the Home chart.
  *
- * The real endpoint buckets `heartbeats`, which the demo has no DB for. This
- * tracks the narrative instead: the single demo camera is healthy once it's
- * connected, and flips to `critical` for the `problem` beat before recovering —
- * so the chart tells the same story the rest of the demo is telling rather than
- * contradicting the Triage panel beside it.
+ * The real endpoint buckets `heartbeats`, which the demo has no DB for, so this
+ * mirrors what the rest of the demo already asserts: the single camera is
+ * `streaming` (demoCamera) and demoDashboardSummary reports zero errors in
+ * EVERY scene from `connected` on — so the camera is healthy throughout, and
+ * this returns a flat healthy line.
+ *
+ * Deliberately does NOT spike `critical` on the `problem`/`fixing` beats. The
+ * demo tells that beat through a reliability finding (see findingOpen()), not a
+ * camera failure — a red spike here would contradict the KPI row directly above
+ * it, which still reads "Active Cameras 1/1" and "Needs Review 0" with green
+ * dots on those scenes. Fixing the contradiction the other way (teaching the
+ * summary to report an error) would ripple through the KPI tiles, the status
+ * dots and the camera card for a tile that is scenery in this narrative.
  *
  * Before the camera is added there is no fleet, so there are no points and the
  * tile renders its honest "nothing to chart yet" state.
  */
 export function demoFleetTrend(scene: DemoScene): FleetTrendResponse {
   const buckets = 24;
-  const broken = scene === "problem" || scene === "fixing";
   const points: FleetTrendPoint[] = cameraAdded(scene)
     ? Array.from({ length: buckets }, (_, i) => {
         const hoursAgo = buckets - 1 - i;
-        // Only the newest bucket carries the current beat; the history behind
-        // it is a healthy camera.
-        const critical = broken && hoursAgo === 0 ? 1 : 0;
         return {
           bucket_start: isoAgo(hoursAgo * 3_600_000),
+          // The newest bucket is the current partial hour, so its end is in the
+          // future — same as the real endpoint's bucket_start + 1h.
           bucket_end: isoAgo((hoursAgo - 1) * 3_600_000),
-          critical,
+          critical: 0,
           review: 0,
-          healthy: 1 - critical,
+          healthy: 1,
           reporting_cameras: 1,
         };
       })

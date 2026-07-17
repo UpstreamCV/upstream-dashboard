@@ -40,6 +40,16 @@ function trend(points: FleetTrendPoint[], totalCameras = 3): FleetTrendResponse 
   };
 }
 
+/**
+ * LegendItem renders `{count} <span>{label}</span>`, so the label's parent
+ * carries "4 Critical". Assert the WHOLE string: `toContain("4")` would also
+ * pass on "14 Critical", and the point of these tests is that the number is
+ * exactly the latest bucket's.
+ */
+function legendText(label: string): string {
+  return screen.getByText(label).parentElement?.textContent?.trim() ?? "";
+}
+
 describe("FleetOverview", () => {
   test("legend reads the LATEST bucket, not the first", () => {
     render(
@@ -51,9 +61,10 @@ describe("FleetOverview", () => {
       />,
     );
 
-    expect(screen.getByText("Critical").parentElement?.textContent).toContain("4");
-    expect(screen.getByText("Review").parentElement?.textContent).toContain("1");
-    expect(screen.getByText("Healthy").parentElement?.textContent).toContain("2");
+    expect(legendText("Critical")).toBe("4 Critical");
+    expect(legendText("Review")).toBe("1 Review");
+    // 2, not the first bucket's 9.
+    expect(legendText("Healthy")).toBe("2 Healthy");
   });
 
   test("states the reporting denominator so a small count can't imply a small fleet", () => {
@@ -66,6 +77,28 @@ describe("FleetOverview", () => {
     expect(screen.getByText(/unavailable right now/i)).toBeTruthy();
     // No fabricated series: the old tile drew a sine wave here.
     expect(document.querySelector("polyline")).toBeNull();
+  });
+
+  test("legend shows — not 0 when the trend is unavailable", () => {
+    // "0 Critical" is the most reassuring lie this tile could tell: it reads as
+    // "nothing is wrong" when the truth is "we don't know". The chart says
+    // unavailable; the legend above it must not contradict that with hard zeros.
+    // Reachable in prod — the dashboard deploys on merge while the api-server
+    // needs a manual EC2 deploy, so the endpoint can 404 for real.
+    render(<FleetOverview trend={null} />);
+
+    expect(legendText("Critical")).toBe("— Critical");
+    expect(legendText("Review")).toBe("— Review");
+    expect(legendText("Healthy")).toBe("— Healthy");
+  });
+
+  test("legend shows real 0s when the fleet is genuinely quiet", () => {
+    // The counterpart to the above: a reporting fleet with nothing wrong must
+    // still say 0, not —. Absent data and zero data are different claims.
+    render(<FleetOverview trend={trend([point(1), point(2)], 5)} />);
+
+    expect(legendText("Critical")).toBe("0 Critical");
+    expect(legendText("Healthy")).toBe("0 Healthy");
   });
 
   test("distinguishes 'no heartbeats' from 'unavailable'", () => {

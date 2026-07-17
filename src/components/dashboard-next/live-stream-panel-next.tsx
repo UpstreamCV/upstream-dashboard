@@ -76,6 +76,15 @@ function StreamState({
           aria-hidden
           className="absolute inset-0 w-full h-full object-cover opacity-40"
         />
+        {/* Scrim. The body copy is --dn-text-50 = rgba(255,255,255,0.5); over a
+            blown-out frame (a daylight doorway) the image's own 40% opacity
+            leaves it at 2.7:1, well under WCAG AA 4.5. This floors the backdrop
+            so the copy holds regardless of what the camera was looking at:
+            measured worst case across the full tonal range is 4.80:1 at /60
+            (/50 only reaches 4.43 and still fails on highlights). Same
+            treatment the player uses for text over live video — see
+            live-stream-player-next.tsx. */}
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden />
         <div className="relative flex min-h-[clamp(200px,22vw,300px)] items-center justify-center p-[clamp(1rem,2vw,2rem)]">
           {message}
         </div>
