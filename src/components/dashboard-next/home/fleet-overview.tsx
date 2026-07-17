@@ -45,7 +45,11 @@ function LegendItem({
 }: {
   icon: LucideIcon;
   color: string;
-  count: number;
+  // null when the trend is unavailable — renders "—". A hard 0 would be a
+  // fabricated count, and "0 Critical" is the most reassuring lie this tile
+  // could tell: it reads as "nothing is wrong" when the truth is "we don't
+  // know". The chart beside it says unavailable; the legend must agree.
+  count: number | null;
   label: string;
 }) {
   return (
@@ -67,7 +71,7 @@ function LegendItem({
         />
       </span>
       <span className="font-bold text-[clamp(0.82rem,1.05vw,1rem)] whitespace-nowrap">
-        {count}{" "}
+        {count ?? "—"}{" "}
         <span className="text-[var(--dn-text-70)] font-bold">{label}</span>
       </span>
     </span>
@@ -247,19 +251,19 @@ export function FleetOverview({ trend }: { trend: FleetTrendResponse | null }) {
         <LegendItem
           icon={AlertCircle}
           color="var(--dn-red)"
-          count={summary?.latest_critical ?? 0}
+          count={summary?.latest_critical ?? null}
           label="Critical"
         />
         <LegendItem
           icon={AlertCircle}
           color="var(--dn-orange)"
-          count={summary?.latest_review ?? 0}
+          count={summary?.latest_review ?? null}
           label="Review"
         />
         <LegendItem
           icon={CheckCircle2}
           color="var(--dn-green)"
-          count={summary?.latest_healthy ?? 0}
+          count={summary?.latest_healthy ?? null}
           label="Healthy"
         />
       </div>

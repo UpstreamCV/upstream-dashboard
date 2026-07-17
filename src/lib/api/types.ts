@@ -173,6 +173,10 @@ export interface DashboardSummary {
   offline_cameras: number;
   streaming_cameras: number;
   cameras_with_errors: number;
+  /** Agent liveness. Read these for agents — `online_cameras` used to hold the
+   * online-agent count and no longer does. */
+  online_agents: number;
+  total_agents: number;
   active_streams: number;
   validation_errors_24h: number;
 }
