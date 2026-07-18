@@ -14,7 +14,6 @@ import clsx from "clsx";
 // camera header.
 
 const TABS = [
-  { label: "Command Center", segment: "overview" },
   { label: "Live Monitor", segment: "monitor" },
   { label: "Events", segment: "observations" },
   { label: "Configure", segment: "configure" },
@@ -37,14 +36,13 @@ export function CameraTabs({ cameraId }: { cameraId: string }) {
         // Prefix match so sub-routes (e.g. /configure/geometry) keep their
         // parent tab highlighted. Safe today because no tab href is a prefix
         // of another tab href; revisit if a sibling tab grows that overlap.
-        // The bare camera root redirects to Command Center (./overview), so
+        // The bare camera root redirects to Live Monitor (./monitor), so
         // highlight that tab there too (covers the pre-redirect frame / a deep
         // link to the root).
         const active =
           pathname === href ||
           pathname.startsWith(`${href}/`) ||
-          (tab.segment === "overview" &&
-            pathname === `/cameras/${cameraId}`);
+          (tab.segment === "monitor" && pathname === `/cameras/${cameraId}`);
         return (
           <Link
             key={tab.segment}

@@ -6,7 +6,7 @@ import { listCameras } from "@/lib/api/cameras";
 import { listTokens } from "@/lib/api/api-tokens";
 import { getAccount, getAccountLimits } from "@/lib/api/accounts";
 import { getUsageSummary } from "@/lib/api/usage";
-import { getDashboardSummary } from "@/lib/api/dashboard";
+import { getDashboardSummary, getFleetTrend } from "@/lib/api/dashboard";
 
 // Dashboard-next Home (redesign — Figma "Some Issues" 390:341 + "All Good"
 // 409:196). Server-fetches every datum in parallel, then hands it off to a
@@ -20,19 +20,29 @@ import { getDashboardSummary } from "@/lib/api/dashboard";
 //   System Status — no service-health endpoint exists; the four service rows
 //                   show a neutral dot + "—" and a "Monitoring coming soon"
 //                   note.
-//   Fleet chart   — no fleet-health time-series endpoint; the chart area is a
-//                   labelled placeholder (a faint decorative bar trio derived
-//                   from the three REAL counts, never historical telemetry).
 //   Network       — illustrative; no aggregate-latency endpoint exists in
 //                   upstream-api-server today (only per-device heartbeats).
 //   Billing       — intentional mock; no billing/metering service.
+//
+// The Fleet chart used to be listed here, and was the one surface that broke
+// the rule above: it drew a fabricated sine wave rather than an honest
+// placeholder. It is now backed by GET /v1/dashboard/fleet-trend (2026-07-16).
 //
 // See HomeOverviewClient for the per-tile derivation logic.
 export default async function DashboardNextHome() {
   const { activeAccountId } = await getActiveAccount();
 
-  const [summary, agents, tokens, account, limits, usage, alerts, cameras] =
-    await Promise.all([
+  const [
+    summary,
+    agents,
+    tokens,
+    account,
+    limits,
+    usage,
+    alerts,
+    cameras,
+    fleetTrend,
+  ] = await Promise.all([
       getDashboardSummary({ accountId: activeAccountId }),
       listAgents({ accountId: activeAccountId }),
       listTokens(activeAccountId),
@@ -46,6 +56,9 @@ export default async function DashboardNextHome() {
       // Cameras resolve the triage rows' name + location (alerts only carry a
       // camera_id). Tolerate an unavailable endpoint — the client re-polls.
       listCameras({ accountId: activeAccountId, limit: 200 }).catch(() => []),
+      // Fleet health for the chart + its legend. The wrapper already degrades
+      // every error to null (the tile renders an unavailable state).
+      getFleetTrend({ accountId: activeAccountId }),
     ]);
 
   return (
@@ -58,6 +71,7 @@ export default async function DashboardNextHome() {
       initialAlerts={alerts}
       initialCameras={cameras}
       streamMinutesUsed={usage?.usage.stream_minutes ?? null}
+      fleetTrend={fleetTrend}
     />
   );
 }

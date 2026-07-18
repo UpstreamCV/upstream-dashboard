@@ -1,28 +1,24 @@
 import { AlertCircle, CheckCircle2, type LucideIcon } from "lucide-react";
+import type { FleetTrendResponse } from "@/lib/api/types";
 
 // Fleet Overview (Figma "Some Issues" / "All Good" — right middle card). A
-// legend of three REAL current counts (Critical / Review / Healthy) above a
-// "Fleet health over time" line chart.
+// legend of three counts (Critical / Review / Healthy) above a "Fleet health
+// over time" line chart.
 //
-// DATA NOTE: this chart is NOT wired to any data source — there is no
-// fleet-health time-series endpoint. It renders purely FAKE sample data so the
-// visualization can be seen, and is marked "Illustrative" in the corner. (The
-// legend above still shows the real current counts.) When a real endpoint
-// lands, feed fetched series into <FleetHealthChart> and drop the label.
-
-const HOURS = 24; // 24h of hourly points (+ the current point)
-
-// Deterministic fake series: a smooth wave around `base` (peak deviation `amp`),
-// clamped ≥ 0. Pure + seedless (no Math.random / no Date) so SSR and client
-// render identically — no hydration mismatch.
-function fakeSeries(base: number, amp: number, phase: number): number[] {
-  const n = HOURS + 1;
-  return Array.from({ length: n }, (_, i) => {
-    const wave =
-      Math.sin(i * 0.55 + phase) * 0.6 + Math.sin(i * 0.23 + phase * 1.7) * 0.4;
-    return Math.max(0, Math.round(base + wave * amp));
-  });
-}
+// Both are fed by GET /v1/dashboard/fleet-trend, which buckets `heartbeats`
+// hourly: each camera counted once per hour by its last heartbeat that hour, so
+// critical/review/healthy partition the reporting cameras. The legend reads the
+// trend's LATEST bucket rather than a separate current-state query, so it can
+// never disagree with the right-hand end of the line above it.
+//
+// Until 2026-07-16 the three lines were a hard-coded sine wave (`fakeSeries`)
+// with an "Illustrative" corner label — the one surface in this dashboard that
+// fabricated telemetry rather than admitting it had none. If the endpoint is
+// unreachable the tile now says so; it never invents a shape.
+//
+// SCOPE: the series covers cameras that HEARTBEAT. An idle or disconnected
+// camera emits nothing and is in none of the three, which is why the header
+// reports "n of m reporting" rather than implying the fleet total.
 
 // Round a max value up to a clean axis ceiling.
 function niceMax(v: number): number {
@@ -49,7 +45,11 @@ function LegendItem({
 }: {
   icon: LucideIcon;
   color: string;
-  count: number;
+  // null when the trend is unavailable — renders "—". A hard 0 would be a
+  // fabricated count, and "0 Critical" is the most reassuring lie this tile
+  // could tell: it reads as "nothing is wrong" when the truth is "we don't
+  // know". The chart beside it says unavailable; the legend must agree.
+  count: number | null;
   label: string;
 }) {
   return (
@@ -71,7 +71,7 @@ function LegendItem({
         />
       </span>
       <span className="font-bold text-[clamp(0.82rem,1.05vw,1rem)] whitespace-nowrap">
-        {count}{" "}
+        {count ?? "—"}{" "}
         <span className="text-[var(--dn-text-70)] font-bold">{label}</span>
       </span>
     </span>
@@ -108,10 +108,6 @@ function FleetHealthChart({
         borderRadius: "var(--dn-radius-inner)",
       }}
     >
-      <span className="pointer-events-none absolute right-3 top-2.5 z-10 text-[clamp(0.58rem,0.72vw,0.68rem)] font-bold uppercase tracking-wider text-[var(--dn-text-40)]">
-        Illustrative
-      </span>
-
       {/* No min-height: the plot purely flexes (flex-1, min-h-0) to fill
           whatever height the grid gives the tile, so Fleet Overview defers to
           the Triage tile's height instead of forcing the shared row taller. */}
@@ -204,22 +200,38 @@ function FleetHealthChart({
   );
 }
 
-export function FleetOverview({
-  critical,
-  review,
-  healthy,
-}: {
-  critical: number;
-  review: number;
-  healthy: number;
-}) {
-  // FAKE illustrative data — deliberately NOT wired to the real counts, so the
-  // chart always renders a populated visualization (see fakeSeries).
+function ChartMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="flex min-h-0 flex-1 items-center justify-center p-[clamp(1rem,1.6vw,1.4rem)] text-center"
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        borderRadius: "var(--dn-radius-inner)",
+      }}
+    >
+      <p className="text-[clamp(0.75rem,0.95vw,0.88rem)] text-[var(--dn-text-50)]">
+        {children}
+      </p>
+    </div>
+  );
+}
+
+export function FleetOverview({ trend }: { trend: FleetTrendResponse | null }) {
+  const summary = trend?.summary ?? null;
+  const points = trend?.points ?? [];
+
   const lines = [
-    { color: "var(--dn-red)", points: fakeSeries(3, 2, 0.4) }, // critical ~1–5
-    { color: "var(--dn-orange)", points: fakeSeries(7, 2.8, 2.1) }, // review ~4–10
-    { color: "var(--dn-green)", points: fakeSeries(20, 4, 3.7) }, // healthy ~16–24
+    { color: "var(--dn-red)", points: points.map((p) => p.critical) },
+    { color: "var(--dn-orange)", points: points.map((p) => p.review) },
+    { color: "var(--dn-green)", points: points.map((p) => p.healthy) },
   ];
+
+  // A camera that never heartbeats is in none of the three series, so state the
+  // denominator rather than letting "1 Healthy" imply a one-camera fleet.
+  const reporting = points.at(-1)?.reporting_cameras ?? 0;
+  const coverage = summary
+    ? `${reporting} of ${summary.total_cameras} reporting`
+    : null;
 
   return (
     <section className="dn-tile flex h-full flex-col gap-[clamp(1rem,1.8vw,1.6rem)] p-[clamp(1.25rem,2.2vw,2.25rem)] min-w-0">
@@ -228,7 +240,7 @@ export function FleetOverview({
           Fleet Overview
         </h2>
         <span className="font-bold text-[clamp(0.82rem,1vw,0.95rem)] text-[var(--dn-text-50)] shrink-0">
-          Last 24 hours
+          {coverage ? `Last 24 hours · ${coverage}` : "Last 24 hours"}
         </span>
       </header>
 
@@ -236,12 +248,35 @@ export function FleetOverview({
         className="flex flex-wrap items-center justify-center gap-x-[clamp(1.25rem,3vw,2.75rem)] gap-y-2 rounded-full px-[clamp(0.9rem,1.4vw,1.25rem)] py-[clamp(0.55rem,0.9vw,0.8rem)]"
         style={{ background: "rgba(255,255,255,0.04)" }}
       >
-        <LegendItem icon={AlertCircle} color="var(--dn-red)" count={critical} label="Critical" />
-        <LegendItem icon={AlertCircle} color="var(--dn-orange)" count={review} label="Review" />
-        <LegendItem icon={CheckCircle2} color="var(--dn-green)" count={healthy} label="Healthy" />
+        <LegendItem
+          icon={AlertCircle}
+          color="var(--dn-red)"
+          count={summary?.latest_critical ?? null}
+          label="Critical"
+        />
+        <LegendItem
+          icon={AlertCircle}
+          color="var(--dn-orange)"
+          count={summary?.latest_review ?? null}
+          label="Review"
+        />
+        <LegendItem
+          icon={CheckCircle2}
+          color="var(--dn-green)"
+          count={summary?.latest_healthy ?? null}
+          label="Healthy"
+        />
       </div>
 
-      <FleetHealthChart lines={lines} />
+      {!trend ? (
+        <ChartMessage>Fleet health is unavailable right now.</ChartMessage>
+      ) : points.length === 0 ? (
+        <ChartMessage>
+          No heartbeats in the last 24 hours — nothing to chart yet.
+        </ChartMessage>
+      ) : (
+        <FleetHealthChart lines={lines} />
+      )}
     </section>
   );
 }

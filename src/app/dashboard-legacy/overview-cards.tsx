@@ -58,12 +58,17 @@ export function OverviewCards({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      {/* Reads online_agents/total_agents. This card used to read
+          `online_cameras`, which was correct only because that field secretly
+          held the online-AGENT count; the api-server fixed it to mean cameras
+          on 2026-07-16, which would have made this read "38 agents online" on a
+          2-agent/40-camera account. The agent counts are now exposed directly. */}
       <Card
         href="/dashboard-legacy/agents"
         icon={Cpu}
         label="Agents online"
-        value={s.online_cameras}
-        sub={`of ${s.total_cameras} total cameras`}
+        value={s.online_agents}
+        sub={`of ${s.total_agents} total agents`}
         tone="positive"
       />
       <Card
