@@ -4,6 +4,24 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-20 — Cameras: real key-frame thumbnails on the fleet cards
+
+**Subject:** The cameras-page cards showed a placeholder icon for every camera; now each shows the camera's real latest key frame.
+
+**Why:** `camera-card.tsx` renders a `previewSrc` background, but it was only ever supplied in demo mode (the bundled warehouse still) — the honest-data note said the card "deliberately does NOT fetch per-camera snapshots." That was true when no snapshots existed, but the streaming-server's snapshot uploader is now live (prod has ~30k frames across the streaming cameras), and `GET /v1/cameras/{id}/latest-frame` serves a signed URL — the same endpoint the camera detail page already uses. So the frames exist and are servable; the cards just never asked for them.
+
+**What changed:**
+- `camera-grid-card.tsx` (new) — a thin client wrapper: `useUpstreamList('/v1/cameras/{id}/latest-frame')` → passes `signed_url` to `CameraCard` as `previewSrc`. Kept separate from the presentational `CameraCard` so the fetch lives at the per-card level. The grid paginates at 6, so at most ~6 of these mount at once (one latest-frame call each) — which is why no batch endpoint is needed. A camera with no snapshot 404s, which `shouldRetryOnError` does NOT retry, so `data` stays undefined and the card falls back to its placeholder icon. Demo passes `demo` so the fetch is skipped (null key) and the bundled still is used.
+- `cameras-grid-client.tsx` — renders `CameraGridCard` instead of `CameraCard` in the grid.
+- `camera-card.tsx` — the background-image URL is now quoted (`url("…")`) since signed URLs carry query params an unquoted CSS `url()` can mis-parse; honest-data note updated (thumbnail is now the real latest frame; the mini-stats remain "—" placeholders — no fleet telemetry endpoint).
+- `camera-grid-card.test.tsx` (new) — asserts the signed URL becomes the thumbnail, the 404 placeholder fallback, and that demo skips the fetch.
+
+**Considered and rejected:** a batch `GET /v1/cameras/latest-frames` endpoint + server-side wiring — unnecessary because the grid is client-paginated to 6 visible cards, so per-card fetching is already bounded and needs no backend change or deploy.
+
+**Validation:** `tsc` clean; the new unit tests pass. Full lint/vitest/build validated via PR CI (this box was too loaded to run them locally).
+
+**Docs updated:** `docs/commit-log.md` (this entry).
+
 ## 2026-07-16 — Fixes from the adversarial recheck of the two branches above
 
 **Subject:** Six defects found by a 20-agent recheck (16 raised, 6 survived refutation) across the fleet-trend + camera-page work. Two were user-visible falsehoods of exactly the kind that work was meant to remove.
