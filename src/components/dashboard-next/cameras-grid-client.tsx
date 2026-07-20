@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
-import { CameraCard } from "./camera-card";
+import { CameraGridCard } from "./camera-grid-card";
 import { CameraBucketStatTile } from "./cameras/camera-bucket-stat-tile";
 import {
   CameraControls,
@@ -293,14 +293,14 @@ export function CamerasGridClient({
             }
           >
             {pageRows.map((d) => (
-              <CameraCard
+              <CameraGridCard
                 key={d.camera.id}
                 camera={d.camera}
                 agentName={d.agentName}
                 bucket={d.bucket}
                 lastHeartbeat={d.lastHeartbeat}
-                previewSrc={demo ? "/demo/dock-frame.jpg" : undefined}
                 list={view === "list"}
+                demo={demo}
               />
             ))}
           </div>

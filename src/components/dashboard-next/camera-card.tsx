@@ -18,11 +18,12 @@ import { BUCKET_META, type CameraBucket } from "./dn-status";
 // and threaded down here so labels, badge color, and the primary action all
 // stay consistent with the chips + summary tiles.
 //
-// Honest-data note: the card deliberately does NOT fetch per-camera snapshots
-// or telemetry. There is no fleet-level reliability/events/uptime list
-// endpoint, so the mini-stats render "—" placeholders (matching the Figma's
-// own "--%" idle card and the illustrative Home tiles). The full snapshot +
-// real reliability live on the camera detail page.
+// Honest-data note: the thumbnail shows the camera's real latest key frame when
+// one exists — `previewSrc` is the signed snapshot URL, fetched per visible card
+// by CameraGridCard (or the bundled still in demo); a camera with no snapshot
+// yet falls back to the placeholder icon. The mini-stats, by contrast, stay "—"
+// placeholders: there is no fleet-level reliability/events/uptime list endpoint,
+// so real reliability lives on the camera detail page.
 
 function formatSpec(c: Camera): string {
   const parts: string[] = [];
@@ -132,7 +133,11 @@ export function CameraCard({
             // card's height is set by the info column, the square follows it.
             "w-full aspect-square sm:h-full sm:w-auto"
       } grid place-items-center`}
-      style={previewSrc ? { backgroundImage: `url(${previewSrc})` } : undefined}
+      style={
+        // Quote the URL: signed snapshot URLs carry query params, and an
+        // unquoted CSS url() can mis-parse them.
+        previewSrc ? { backgroundImage: `url("${previewSrc}")` } : undefined
+      }
     >
       {previewSrc ? null : (
         <ImageIcon
