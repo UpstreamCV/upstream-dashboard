@@ -4,6 +4,20 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-27 — Cameras: fleet-card key frames load once, no polling
+
+**Subject:** The camera grid-card key-frame thumbnails polled every 30s (and re-fetched on every tab refocus); now they fetch once on mount and refresh only on page (re)load.
+
+**Why:** `camera-grid-card.tsx` fetched each card's `latest-frame` via `useUpstreamList({ refreshInterval: 30_000 })`, and the shared `defaultSwrConfig` also sets `revalidateOnFocus: true` — so the ~6 visible cards re-minted signed URLs on a timer *and* on every tab refocus. A card thumbnail doesn't need to track the live scene (the camera detail page is where the live view lives), so that was needless churn on the signed-URL mint path.
+
+**What changed:**
+- `use-list.ts` — `useUpstreamList` now accepts optional `revalidateOnFocus` / `revalidateOnReconnect` overrides. Defaults are unchanged (focus-revalidate on via `defaultSwrConfig`, reconnect-revalidate on via SWR's own default); the overrides are applied pass-through only when defined, matching the existing `dedupingInterval` / `compare` pattern.
+- `camera-grid-card.tsx` — fetch once on mount: `refreshInterval: 0`, `revalidateOnFocus: false`, `revalidateOnReconnect: false`. The comment is updated — the painted `<img>` bytes outlive the 60s signed-URL TTL, so a single mint is enough; dropped the now-stale "revalidateOnFocus re-mints on return" note.
+
+**Validation:** `camera-grid-card.test.tsx` passes (it mocks `useUpstreamList`, so it's unaffected); both changed files lint clean. `tsc` shows only pre-existing unrelated errors (`collector-*` tests, iCloud `" 2"` duplicate type files) — nothing in the two changed files.
+
+**Docs updated:** `docs/commit-log.md` (this entry).
+
 ## 2026-07-20 — Cameras: real key-frame thumbnails on the fleet cards
 
 **Subject:** The cameras-page cards showed a placeholder icon for every camera; now each shows the camera's real latest key frame.

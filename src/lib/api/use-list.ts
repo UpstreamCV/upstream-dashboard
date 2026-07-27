@@ -17,6 +17,13 @@ export function useUpstreamList<T>(
     // multiple cache writers (e.g. the perception overlay's WS + Realtime +
     // poll) use this to refuse out-of-order/stale fetch results.
     compare?: (a: T | undefined, b: T | undefined) => boolean;
+    // Per-hook overrides of the shared revalidation defaults
+    // (revalidateOnFocus is on in defaultSwrConfig; revalidateOnReconnect is
+    // on via SWR's own default). Set both false together with
+    // refreshInterval: 0 for a fetch-once-on-mount consumer that should NOT
+    // re-fetch on tab focus or network reconnect (e.g. a card thumbnail).
+    revalidateOnFocus?: boolean;
+    revalidateOnReconnect?: boolean;
   },
 ): SWRResponse<T> {
   return useSWR<T>(path, proxyFetch, {
@@ -27,5 +34,11 @@ export function useUpstreamList<T>(
       ? { dedupingInterval: options.dedupingInterval }
       : {}),
     ...(options?.compare !== undefined ? { compare: options.compare } : {}),
+    ...(options?.revalidateOnFocus !== undefined
+      ? { revalidateOnFocus: options.revalidateOnFocus }
+      : {}),
+    ...(options?.revalidateOnReconnect !== undefined
+      ? { revalidateOnReconnect: options.revalidateOnReconnect }
+      : {}),
   });
 }
