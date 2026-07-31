@@ -8,7 +8,7 @@ This project pins **Next.js 16.2.6**. APIs, conventions, and file structure diff
 
 Especially relevant Next 16 changes already baked into this repo:
 
-- **`middleware.ts` is now `proxy.ts`** at the project root. See `node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md`. We use it for Supabase session refresh + auth gating.
+- **`middleware.ts` is now `proxy.ts`**, and it lives at **`src/proxy.ts`** — Next resolves it *at the same level as `app`*, and this repo's app is `src/app/`. A `proxy.ts` at the **project root is silently ignored** (no error, no warning): the build simply omits the `ƒ Proxy (Middleware)` line and every request bypasses it. It sat at the root until 2026-07-31, so session refresh and auth gating never ran. If you move it, confirm `next build` still prints `ƒ Proxy (Middleware)`. See `node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md`. We use it for Supabase session refresh + auth gating.
 - **`cookies()` is async.** Always `await cookies()` before calling `.get/.set/.delete`. The `@supabase/ssr` cookies adapter we use returns `Promise<...>` from `getAll/setAll` (verified day-zero against v0.10.3).
 - **Caching defaults changed.** `fetch()` is **not** cached by default; opt-in with `use cache`. We rely on this — `serverFetch` always uses `cache: "no-store"`.
 - **`next build` no longer auto-runs lint.** Run `npm run lint` explicitly. Pre-commit / CI should call it.
