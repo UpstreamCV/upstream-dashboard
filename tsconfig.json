@@ -38,9 +38,11 @@
     // ".next/types/**" include above and break the build with bogus
     // TS2300/TS2428 "duplicate identifier" errors pointing at generated files
     // nobody wrote. Never compile them.
-    "**/* [0-9].ts",
-    "**/* [0-9].tsx",
-    "**/* [0-9].mts",
-    "**/* [0-9].d.ts"
+    // NB: these use "?" (single char), NOT a "[0-9]" class — TypeScript's
+    // include/exclude globs support only *, ? and **/, so a bracket class is
+    // matched literally and silently excludes nothing.
+    "**/* ?.ts",
+    "**/* ?.tsx",
+    "**/* ?.mts"
   ]
 }
