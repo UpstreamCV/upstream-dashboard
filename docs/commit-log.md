@@ -4,6 +4,28 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-31 — Dependency + security sweep; @supabase/ssr 0.12 CDN-cache fix
+
+**Subject:** Consolidates the six open dependabot bumps that survive verification, adds the security bumps none of them covered, and fixes a session-token-caching hole that `@supabase/ssr@0.12` surfaced. Criticals 2 → 0; production-dependency vulns 3 (all `next`-transitive, no fix exists yet).
+
+**Why:** The open dependabot PRs (#4–#10) were *not* vulnerability fixes — they're routine bumps, and the highest-value security change (`next`) had no PR at all. Two of them are actively wrong to merge as-is, which is why this is one verified branch rather than seven merges.
+
+**What changed:**
+- `next` / `eslint-config-next` `16.2.6` → `16.2.12` — security; no dependabot PR covered this.
+- `vitest` + `@vitest/coverage-v8` `^2.1.9` → `^3.2.7` — clears both **criticals** (advisory range `<=3.2.5`). Dependabot #7 proposed `coverage-v8@4.1.10` alone; v4 of the two packages declare each other as *exact-version* peers, and that cycle crashes npm 10.9.2's arborist (`Cannot read properties of null (reading 'edgesOut')`) — install is impossible. 3.2.7 is the audit's own recommended fix and resolves cleanly.
+- `@supabase/ssr` `^0.10.3` → `^0.12.3`, `lucide-react` → `^1.24.0`, `swr` → `^2.4.2` (#9, #6, #8).
+- `actions/checkout` + `actions/setup-node` `v5` → `v7` (#4, #5).
+- **`src/proxy.ts` — `setAll` now applies the `headers` argument.** `@supabase/ssr@0.12` added a required second param `headers: Record<string, string>` carrying `Cache-Control: private, no-cache, no-store, must-revalidate, max-age=0`, `Expires: 0`, `Pragma: no-cache`. Its own docs: *"Responses that set auth cookies must not be cached by CDNs or reverse proxies, otherwise one user's session token can be served to a different user."* We deploy behind Netlify (a CDN). Omitting the param **type-checks silently** — TS permits fewer params — so this would have shipped unnoticed. Caught by the AGENTS.md day-zero `@supabase/ssr` check.
+- `tsconfig.json` — **corrects the exclude added earlier today.** It used `**/* [0-9].ts`; TypeScript's include/exclude globs support only `*`, `?` and `**/`, so a bracket class is matched *literally* and excluded nothing. The earlier version passed only because no conflict copies existed at that moment. Now `**/* ?.ts` etc., verified by planting real copies (`src/proxy 2.ts`, `.next/types/routes.d 2.ts`) and confirming `tsc` stays at 0 errors and neither file enters the program.
+
+**Not taken — `eslint` 9 → 10 (#10):** breaks linting outright. `eslint-plugin-react`, bundled inside `eslint-config-next@16.2.12`, calls `context.getFilename()`, removed in ESLint 10 → `TypeError: contextOrFilename.getFilename is not a function`, `eslint` exits 2 with zero files linted. Held at `^9` (9.39.5) until `eslint-config-next` ships an ESLint-10-compatible plugin set. **#10 should not be merged.**
+
+**Vulnerabilities remaining:** 3 high, all production, all `next`-transitive (`next`, `postcss`, `sharp`). The advisory range is `9.3.4-canary.0 - 16.3.0-preview.7`, so **no fixed 16.x exists** — `npm audit` "resolves" it by proposing `next@9.3.3`, a four-major downgrade. Nothing to do but track it. The other 9 are dev-only tooling (eslint plugins, coverage, `glob`, `test-exclude`) and never reach a bundle.
+
+**Validation:** `eslint` exit 0, no warnings; `tsc --noEmit` exit 0, 0 errors; `vitest` 833/833 across 61 files (on vitest 3); `next build` exit 0 with `ƒ Proxy (Middleware)` present. Auth redirects re-verified live: `/` → 307 `/login`, `/cameras` → 307 `/login?next=%2Fcameras`, `/login` 200.
+
+**Docs updated:** `docs/commit-log.md` (this entry).
+
 ## 2026-07-31 — proxy.ts was never running: moved to src/, build unblocked
 
 **Subject:** `proxy.ts` sat at the project root, where Next silently ignores it — so Supabase session refresh and auth gating never ran on any request. Moved to `src/proxy.ts`. Also unblocked `next build`/`tsc`, which were failing on iCloud conflict-copy files.
