@@ -30,13 +30,23 @@ export async function proxy(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(toSet) {
+        setAll(toSet, headers) {
           for (const { name, value } of toSet) {
             request.cookies.set(name, value);
           }
           response = NextResponse.next({ request });
           for (const { name, value, options } of toSet) {
             response.cookies.set(name, value, options);
+          }
+          // @supabase/ssr >=0.12 hands us no-store headers that MUST ride along
+          // with the auth cookies (Cache-Control: private, no-store… / Expires /
+          // Pragma). A response carrying a session token must never be cached by
+          // a CDN — we deploy behind Netlify — or one user's token can be served
+          // to another. Dropping this argument still type-checks (TS allows
+          // fewer params), so the omission is silent: accepting it is optional,
+          // applying it is not.
+          for (const [key, value] of Object.entries(headers)) {
+            response.headers.set(key, value);
           }
         },
       },
