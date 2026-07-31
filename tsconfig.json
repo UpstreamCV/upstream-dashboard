@@ -30,5 +30,17 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // iCloud Drive syncs this repo (it lives under ~/Documents) and resolves
+    // concurrent writes by dropping conflict copies next to the original:
+    // "routes.d 2.ts", "cache-life.d 3.ts", … Those land inside the
+    // ".next/types/**" include above and break the build with bogus
+    // TS2300/TS2428 "duplicate identifier" errors pointing at generated files
+    // nobody wrote. Never compile them.
+    "**/* [0-9].ts",
+    "**/* [0-9].tsx",
+    "**/* [0-9].mts",
+    "**/* [0-9].d.ts"
+  ]
 }
