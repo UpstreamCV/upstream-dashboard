@@ -4,6 +4,50 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-31 — Dependency + security sweep; @supabase/ssr 0.12 CDN-cache fix
+
+**Subject:** Consolidates the six open dependabot bumps that survive verification, adds the security bumps none of them covered, and fixes a session-token-caching hole that `@supabase/ssr@0.12` surfaced. Criticals 2 → 0; production-dependency vulns 3 (all `next`-transitive, no fix exists yet).
+
+**Why:** The open dependabot PRs (#4–#10) were *not* vulnerability fixes — they're routine bumps, and the highest-value security change (`next`) had no PR at all. Two of them are actively wrong to merge as-is, which is why this is one verified branch rather than seven merges.
+
+**What changed:**
+- `next` / `eslint-config-next` `16.2.6` → `16.2.12` — security; no dependabot PR covered this.
+- `vitest` + `@vitest/coverage-v8` `^2.1.9` → `^3.2.7` — clears both **criticals** (advisory range `<=3.2.5`). Dependabot #7 proposed `coverage-v8@4.1.10` alone; v4 of the two packages declare each other as *exact-version* peers, and that cycle crashes npm 10.9.2's arborist (`Cannot read properties of null (reading 'edgesOut')`) — install is impossible. 3.2.7 is the audit's own recommended fix and resolves cleanly.
+- `@supabase/ssr` `^0.10.3` → `^0.12.3`, `lucide-react` → `^1.24.0`, `swr` → `^2.4.2` (#9, #6, #8).
+- `actions/checkout` + `actions/setup-node` `v5` → `v7` (#4, #5).
+- **`src/proxy.ts` — `setAll` now applies the `headers` argument.** `@supabase/ssr@0.12` added a required second param `headers: Record<string, string>` carrying `Cache-Control: private, no-cache, no-store, must-revalidate, max-age=0`, `Expires: 0`, `Pragma: no-cache`. Its own docs: *"Responses that set auth cookies must not be cached by CDNs or reverse proxies, otherwise one user's session token can be served to a different user."* We deploy behind Netlify (a CDN). Omitting the param **type-checks silently** — TS permits fewer params — so this would have shipped unnoticed. Caught by the AGENTS.md day-zero `@supabase/ssr` check.
+- `tsconfig.json` — **corrects the exclude added earlier today.** It used `**/* [0-9].ts`; TypeScript's include/exclude globs support only `*`, `?` and `**/`, so a bracket class is matched *literally* and excluded nothing. The earlier version passed only because no conflict copies existed at that moment. Now `**/* ?.ts` etc., verified by planting real copies (`src/proxy 2.ts`, `.next/types/routes.d 2.ts`) and confirming `tsc` stays at 0 errors and neither file enters the program.
+
+**Not taken — `eslint` 9 → 10 (#10):** breaks linting outright. `eslint-plugin-react`, bundled inside `eslint-config-next@16.2.12`, calls `context.getFilename()`, removed in ESLint 10 → `TypeError: contextOrFilename.getFilename is not a function`, `eslint` exits 2 with zero files linted. Held at `^9` (9.39.5) until `eslint-config-next` ships an ESLint-10-compatible plugin set. **#10 should not be merged.**
+
+**Vulnerabilities remaining:** 3 high, all production, all `next`-transitive (`next`, `postcss`, `sharp`). The advisory range is `9.3.4-canary.0 - 16.3.0-preview.7`, so **no fixed 16.x exists** — `npm audit` "resolves" it by proposing `next@9.3.3`, a four-major downgrade. Nothing to do but track it. The other 9 are dev-only tooling (eslint plugins, coverage, `glob`, `test-exclude`) and never reach a bundle.
+
+**Validation:** `eslint` exit 0, no warnings; `tsc --noEmit` exit 0, 0 errors; `vitest` 833/833 across 61 files (on vitest 3); `next build` exit 0 with `ƒ Proxy (Middleware)` present. Auth redirects re-verified live: `/` → 307 `/login`, `/cameras` → 307 `/login?next=%2Fcameras`, `/login` 200.
+
+**Docs updated:** `docs/commit-log.md` (this entry).
+
+## 2026-07-31 — proxy.ts was never running: moved to src/, build unblocked
+
+**Subject:** `proxy.ts` sat at the project root, where Next silently ignores it — so Supabase session refresh and auth gating never ran on any request. Moved to `src/proxy.ts`. Also unblocked `next build`/`tsc`, which were failing on iCloud conflict-copy files.
+
+**Why:** Next resolves the proxy *at the same level as `app`*, and this repo's app is `src/app/`. A root-level `proxy.ts` is not an error and produces no warning — the build just omits the `ƒ Proxy (Middleware)` line and every request bypasses it. Confirmed by diffing two builds: with `proxy.ts` at the root, `ƒ Proxy (Middleware)` appears **0** times in the build output; from `src/proxy.ts`, **1**. Behaviour while logged out, before → after: `/` `200`(no redirect) → `307 /login`; `/cameras` `200` → `307 /login?next=%2Fcameras`; same for `/settings`, `/billing`; `/login` stays `200`. The practical damage was the proxy's stated main job — `supabase.auth.getUser()` as a session-refresh side effect — silently not happening, so sessions expired and produced unexplained logouts and failing calls. The `?next=` return path and the logged-in-user bounce off `/login` were dead too. Data was **not** exposed: `(app)/layout.tsx` still gates via `getActiveAccount()` and `/api/upstream` does its own auth — what was lost is session refresh and the defense-in-depth layer. `AGENTS.md` line 11 said "at the project root", which is how this propagated.
+
+Separately, `next build` and `tsc` were failing on files nobody wrote. This repo lives under `~/Documents`, which is iCloud-synced; iCloud resolves concurrent writes by dropping conflict copies (`routes.d 2.ts`, `cache-life.d 2.ts`) beside the original, and `tsconfig`'s `.next/types/**` include compiled them into `TS2300`/`TS2428` duplicate-identifier errors. One such copy, `cameras-grid-client 2.tsx`, had also been committed back in `12d4d18` — a stale `CameraCard`-era version of `cameras-grid-client.tsx`, imported by nothing.
+
+**What changed:**
+- `proxy.ts` → `src/proxy.ts` — the fix. Contents unchanged; `@/*` maps to `./src/*` so its imports resolve as before.
+- `AGENTS.md` — corrects the location to `src/proxy.ts`, records that a root-level file is silently ignored, and says to verify via the `ƒ Proxy (Middleware)` build line.
+- `tsconfig.json` — `exclude` now drops `**/* [0-9].{ts,tsx,mts,d.ts}` so iCloud conflict copies can never break the build again.
+- `cameras-grid-client 2.tsx` — deleted (committed iCloud conflict copy, unreferenced).
+- `collector-dashboard-client.test.tsx` — the `useUpstreamList` mock is typed via `vi.fn<(...args: unknown[]) => …>` rather than a zero-arg implementation, so `mock.calls[n][0]` is indexable (fixes `TS2556`/`TS2493`) without an unused rest param.
+- `collector-status-cards.test.tsx` — the `status()` fixture supplies the required `source_health_counts` (fixes `TS2322`).
+
+**Validation:** `eslint` exit 0 (no warnings); `tsc --noEmit` exit 0, 0 errors (was 7); `vitest` 833/833 across 61 files; `next build` exit 0 with `ƒ Proxy (Middleware)` present. Auth redirects verified live against `next dev` (table above).
+
+**Note for whoever hits slow builds here:** the repo being iCloud-synced means macOS may evict `node_modules` to the cloud under disk pressure, leaving stub files whose reads block for seconds each — that stalls `next build` indefinitely. `rm -rf node_modules && npm ci` rebuilds it fully local in ~10s; waiting for iCloud to re-download would have taken ~110 min.
+
+**Docs updated:** `AGENTS.md`, `docs/commit-log.md` (this entry).
+
 ## 2026-07-27 — Cameras: fleet-card key frames load once, no polling
 
 **Subject:** The camera grid-card key-frame thumbnails polled every 30s (and re-fetched on every tab refocus); now they fetch once on mount and refresh only on page (re)load.
