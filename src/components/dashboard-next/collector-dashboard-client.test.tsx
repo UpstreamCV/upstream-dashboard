@@ -8,7 +8,11 @@ vi.mock("@/components/data/relative-time", () => ({
 
 // useUpstreamList returns no live data here, so the client falls back to the
 // server-fetched initial props (initialStatus / initialSources).
-const useUpstreamList = vi.fn(() => ({ data: undefined }));
+// Typed via the generic (not an unused rest param) so `mock.calls[n][0]` is
+// indexable when we assert which endpoints were polled.
+const useUpstreamList = vi.fn<(...args: unknown[]) => { data: undefined }>(
+  () => ({ data: undefined }),
+);
 vi.mock("@/lib/api/use-list", () => ({
   useUpstreamList: (...args: unknown[]) => useUpstreamList(...args),
 }));

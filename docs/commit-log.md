@@ -4,6 +4,28 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-07-31 — proxy.ts was never running: moved to src/, build unblocked
+
+**Subject:** `proxy.ts` sat at the project root, where Next silently ignores it — so Supabase session refresh and auth gating never ran on any request. Moved to `src/proxy.ts`. Also unblocked `next build`/`tsc`, which were failing on iCloud conflict-copy files.
+
+**Why:** Next resolves the proxy *at the same level as `app`*, and this repo's app is `src/app/`. A root-level `proxy.ts` is not an error and produces no warning — the build just omits the `ƒ Proxy (Middleware)` line and every request bypasses it. Confirmed by diffing two builds: with `proxy.ts` at the root, `ƒ Proxy (Middleware)` appears **0** times in the build output; from `src/proxy.ts`, **1**. Behaviour while logged out, before → after: `/` `200`(no redirect) → `307 /login`; `/cameras` `200` → `307 /login?next=%2Fcameras`; same for `/settings`, `/billing`; `/login` stays `200`. The practical damage was the proxy's stated main job — `supabase.auth.getUser()` as a session-refresh side effect — silently not happening, so sessions expired and produced unexplained logouts and failing calls. The `?next=` return path and the logged-in-user bounce off `/login` were dead too. Data was **not** exposed: `(app)/layout.tsx` still gates via `getActiveAccount()` and `/api/upstream` does its own auth — what was lost is session refresh and the defense-in-depth layer. `AGENTS.md` line 11 said "at the project root", which is how this propagated.
+
+Separately, `next build` and `tsc` were failing on files nobody wrote. This repo lives under `~/Documents`, which is iCloud-synced; iCloud resolves concurrent writes by dropping conflict copies (`routes.d 2.ts`, `cache-life.d 2.ts`) beside the original, and `tsconfig`'s `.next/types/**` include compiled them into `TS2300`/`TS2428` duplicate-identifier errors. One such copy, `cameras-grid-client 2.tsx`, had also been committed back in `12d4d18` — a stale `CameraCard`-era version of `cameras-grid-client.tsx`, imported by nothing.
+
+**What changed:**
+- `proxy.ts` → `src/proxy.ts` — the fix. Contents unchanged; `@/*` maps to `./src/*` so its imports resolve as before.
+- `AGENTS.md` — corrects the location to `src/proxy.ts`, records that a root-level file is silently ignored, and says to verify via the `ƒ Proxy (Middleware)` build line.
+- `tsconfig.json` — `exclude` now drops `**/* [0-9].{ts,tsx,mts,d.ts}` so iCloud conflict copies can never break the build again.
+- `cameras-grid-client 2.tsx` — deleted (committed iCloud conflict copy, unreferenced).
+- `collector-dashboard-client.test.tsx` — the `useUpstreamList` mock is typed via `vi.fn<(...args: unknown[]) => …>` rather than a zero-arg implementation, so `mock.calls[n][0]` is indexable (fixes `TS2556`/`TS2493`) without an unused rest param.
+- `collector-status-cards.test.tsx` — the `status()` fixture supplies the required `source_health_counts` (fixes `TS2322`).
+
+**Validation:** `eslint` exit 0 (no warnings); `tsc --noEmit` exit 0, 0 errors (was 7); `vitest` 833/833 across 61 files; `next build` exit 0 with `ƒ Proxy (Middleware)` present. Auth redirects verified live against `next dev` (table above).
+
+**Note for whoever hits slow builds here:** the repo being iCloud-synced means macOS may evict `node_modules` to the cloud under disk pressure, leaving stub files whose reads block for seconds each — that stalls `next build` indefinitely. `rm -rf node_modules && npm ci` rebuilds it fully local in ~10s; waiting for iCloud to re-download would have taken ~110 min.
+
+**Docs updated:** `AGENTS.md`, `docs/commit-log.md` (this entry).
+
 ## 2026-07-27 — Cameras: fleet-card key frames load once, no polling
 
 **Subject:** The camera grid-card key-frame thumbnails polled every 30s (and re-fetched on every tab refocus); now they fetch once on mount and refresh only on page (re)load.
