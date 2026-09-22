@@ -6,7 +6,6 @@ import { DemoBadge } from "@/lib/demo/demo-badge";
 import { DemoModeProvider } from "@/lib/demo/demo-mode-context";
 import { isDemoMode } from "@/lib/demo/demo-mode.server";
 import { DemoStepper } from "@/lib/demo/demo-stepper";
-import { getDemoScene } from "@/lib/demo/scene-cookie";
 import { AppShell } from "./app-shell";
 
 // Authed shell for the redesign. The (app) route group adds NO URL segment —
@@ -28,7 +27,6 @@ export default async function DashboardNextAppLayout({
   // cookie) and handed to every Client Component below through the provider —
   // they must not read process.env for it.
   const demo = await isDemoMode();
-  const demoScene = demo ? await getDemoScene() : null;
 
   return (
     // h-dvh + overflow-hidden locks the shell to exactly the viewport so the
@@ -37,7 +35,7 @@ export default async function DashboardNextAppLayout({
       <div className="dn-shell-bg relative h-dvh overflow-hidden">
         <ShellBackdrop />
         <CursorGlow />
-        <AppShell name={name} tools={<TopbarTools demoScene={demoScene} />}>
+        <AppShell name={name} tools={<TopbarTools />}>
           {children}
         </AppShell>
         {demo && <DemoStepper />}
