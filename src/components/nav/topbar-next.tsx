@@ -1,21 +1,23 @@
 import Image from "next/image";
 import { Search } from "lucide-react";
-import type { DemoScene } from "@/lib/demo/scene";
-import { DemoNotifications } from "@/lib/demo/demo-notifications";
 
 // The top-RIGHT tools cluster of the dashboard header: search + "Upstream
-// Dashboard" wordmark + logo (+ demo notifications). On Home these render at the
-// top-right INSIDE the content panel, so the panel's background runs behind them
-// (the box "goes over" this area). The user identity (avatar + greeting) lives
-// separately at the top of the left rail. Server Component (display-only); the
-// search input is presentational until search lands.
+// Dashboard" wordmark + logo. On Home these render at the top-right INSIDE the
+// content panel, so the panel's background runs behind them (the box "goes
+// over" this area). The user identity (avatar + greeting) lives separately at
+// the top of the left rail. Server Component (display-only); the search input
+// is presentational until search lands.
+//
+// The demo notification bell used to sit here. It was scene machinery aimed at
+// a guided walkthrough, and in an embedded demo it reads as a real product
+// control that does nothing, so it is gone along with the `demoScene` prop the
+// layout used to pass for it.
 //
 // (Was `TopbarNext`, a full-width bar with identity on the left + tools on the
 // right; identity moved to the rail, so this is now tools-only.)
-export function TopbarTools({ demoScene }: { demoScene?: DemoScene | null }) {
+export function TopbarTools() {
   return (
     <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-      {demoScene ? <DemoNotifications scene={demoScene} /> : null}
       <div className="hidden sm:flex items-center gap-3 sm:gap-4">
         {/* Presentational — search isn't wired yet. WIRE-UP: lift to a client
             component with state + a results action when search lands. */}
