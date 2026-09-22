@@ -129,9 +129,10 @@ export function CameraCard({
       className={`relative shrink-0 overflow-hidden rounded-[var(--dn-radius-inner)] bg-[rgba(255,255,255,0.15)] backdrop-blur-sm bg-cover bg-center ${
         list
           ? "h-[clamp(72px,9vw,96px)] w-[clamp(96px,12vw,128px)]"
-          : // Grid tile: a square preview that fills the card's full height — the
-            // card's height is set by the info column, the square follows it.
-            "w-full aspect-square sm:h-full sm:w-auto"
+          : // Grid tile: a square preview stacked above the info on narrow
+            // cards; beside it, filling the card's height, from `sm` up. The
+            // width comes from the wrapper below, not from the aspect ratio.
+            "w-full aspect-square sm:h-full sm:aspect-auto"
       } grid place-items-center`}
       style={
         // Quote the URL: signed snapshot URLs carry query params, and an
@@ -176,9 +177,14 @@ export function CameraCard({
           : "flex flex-col gap-[clamp(0.8rem,1.2vw,1.1rem)] sm:flex-row"
       }`}
     >
-      {/* shrink-0 with no width on the grid tile: the square thumb (h-full +
-          aspect-square) derives its own width from the card height. */}
-      <div className="shrink-0">{thumb}</div>
+      {/* The grid tile's preview is sized here rather than deriving its width
+          from its own height. It used to be `h-full` + `aspect-square` with no
+          width anywhere, which asks the engine to resolve a width from a
+          percentage height inside a row whose height the sibling column sets.
+          Blink does it; WebKit gives up and returns zero, so in Safari the
+          preview vanished and the card collapsed over itself. Both dimensions
+          are definite now, so neither engine has to guess. */}
+      <div className="shrink-0 sm:w-[clamp(150px,17vw,256px)]">{thumb}</div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-[clamp(0.6rem,1vw,0.85rem)]">
         <div className="min-w-0">
