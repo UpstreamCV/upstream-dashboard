@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { DEMO_MODE } from "@/lib/demo/demo-mode";
 
 const ClientEnvSchema = z.object({
   NEXT_PUBLIC_UPSTREAM_API_URL: z.string().url(),
@@ -13,11 +13,13 @@ const rawEnv = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 };
 
-// In demo mode the dashboard never calls Supabase or the api-server, so fill any
-// unset vars with harmless placeholders instead of failing the boot — the demo
-// then runs with only NEXT_PUBLIC_DEMO_MODE=1 set. (See src/lib/demo.)
+// In a build-time demo build the dashboard never calls Supabase or the
+// api-server, so fill any unset vars with harmless placeholders instead of
+// failing the boot — the demo then runs with only NEXT_PUBLIC_DEMO_MODE=1 set.
+// (Runtime demo mode via the /demo cookie runs inside the normal build, which
+// has the real values.) See src/lib/demo.
 const parsed = ClientEnvSchema.safeParse(
-  isDemoMode()
+  DEMO_MODE
     ? {
         NEXT_PUBLIC_UPSTREAM_API_URL:
           rawEnv.NEXT_PUBLIC_UPSTREAM_API_URL ?? "https://demo.invalid",

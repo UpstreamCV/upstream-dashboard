@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client-lazy";
 import type { StreamSession } from "@/lib/api/types";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { useDemoMode } from "@/lib/demo/demo-mode-context";
 
 // Light-theme port — pure-logic, no visuals — of
 // src/app/(dash)/cameras/[cameraId]/camera-detail-realtime.tsx.
@@ -26,9 +26,10 @@ export function CameraDetailRealtimeNext({
 }) {
   const router = useRouter();
   const lastStateRef = useRef<string | null>(initialSession?.state ?? null);
+  const demo = useDemoMode();
 
   useEffect(() => {
-    if (isDemoMode()) return; // no Supabase in demo mode — the stepper drives refresh
+    if (demo) return; // no Supabase in demo mode — the stepper drives refresh
     // Coalesce bursts of state transitions into one refresh. A normal lifecycle
     // (approved -> streaming -> ended) is 2-3 transitions in quick succession,
     // and a reconnecting agent can flip states rapidly — each router.refresh()
@@ -94,7 +95,7 @@ export function CameraDetailRealtimeNext({
       if (refreshTimer) clearTimeout(refreshTimer);
       if (supabase && channel) void supabase.removeChannel(channel);
     };
-  }, [cameraId, router]);
+  }, [cameraId, demo, router]);
 
   return null;
 }
