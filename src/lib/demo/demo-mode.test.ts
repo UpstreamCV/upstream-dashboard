@@ -31,18 +31,28 @@ describe("inferSecure", () => {
 });
 
 describe("demoCookieOptions", () => {
-  test("cross-site (framed) cookies are SameSite=None; Secure over https", () => {
+  test("cross-site (framed) cookies are SameSite=None; Secure; Partitioned over https", () => {
     expect(demoCookieOptions(true)).toEqual({
       path: "/",
       sameSite: "none",
       secure: true,
       maxAge: DEMO_COOKIE_MAX_AGE_SECONDS,
+      partitioned: true,
     });
   });
-  test("plain http (local next start) falls back to Lax", () => {
-    expect(demoCookieOptions(false)).toMatchObject({ sameSite: "lax", secure: false });
+  test("plain http (local next start) falls back to Lax without Partitioned", () => {
+    expect(demoCookieOptions(false)).toMatchObject({
+      sameSite: "lax",
+      secure: false,
+      partitioned: false,
+    });
   });
   test("clearing keeps the same attributes with maxAge 0", () => {
-    expect(demoCookieOptions(true, 0)).toMatchObject({ sameSite: "none", secure: true, maxAge: 0 });
+    expect(demoCookieOptions(true, 0)).toMatchObject({
+      sameSite: "none",
+      secure: true,
+      partitioned: true,
+      maxAge: 0,
+    });
   });
 });
