@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { safeNextPath } from "@/lib/safe-next";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { isDemoMode } from "@/lib/demo/demo-mode.server";
 
 export type LoginState = {
   error?: string;
@@ -19,7 +19,7 @@ export async function signInAction(
 
   // Demo mode: accept any credentials and land on the Cameras page (empty at
   // the `adding` start) so the recording opens straight on the connect beat.
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     redirect("/cameras");
   }
 

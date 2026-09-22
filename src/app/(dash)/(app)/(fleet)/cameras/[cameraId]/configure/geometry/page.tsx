@@ -8,7 +8,7 @@ import { UpstreamApiError } from "@/lib/api/errors";
 import { getCameraGeometryConfig } from "@/lib/api/geometry";
 import { getLatestFrame } from "@/lib/api/snapshots";
 import type { GeometryConfigRecord, LatestFrame } from "@/lib/api/types";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { isDemoMode } from "@/lib/demo/demo-mode.server";
 import { AlertRuleCard } from "@/lib/demo/alert-rule-card";
 
 // P6-B1 — Latest-Frame Geometry Editor Foundation.
@@ -31,6 +31,7 @@ export default async function CameraGeometryEditorPage({
 }) {
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
+  const demo = await isDemoMode();
 
   // The geometry record (404 -> notFound) and the latest frame are independent
   // reads keyed off (accountId, cameraId), so fetch them concurrently instead of
@@ -80,7 +81,7 @@ export default async function CameraGeometryEditorPage({
           ) : (
             <NoFrameEmptyState />
           )}
-          {isDemoMode() && latestFrame ? <AlertRuleCard /> : null}
+          {demo && latestFrame ? <AlertRuleCard /> : null}
         </div>
         <aside className="space-y-4">
           <StatusPanel record={record} />

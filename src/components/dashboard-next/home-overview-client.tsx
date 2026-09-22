@@ -12,7 +12,7 @@ import { RecentEvents } from "./home/recent-events";
 import { SetupChecklist } from "./home/setup-checklist";
 import { SystemStatus } from "./home/system-status";
 import { useUpstreamList } from "@/lib/api/use-list";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { useDemoMode } from "@/lib/demo/demo-mode-context";
 import type {
   AccountLimits,
   AccountSummary,
@@ -72,7 +72,7 @@ export function HomeOverviewClient({
   // hourly bucket can't change faster than the hour it covers.
   fleetTrend: FleetTrendResponse | null;
 }) {
-  const demo = isDemoMode();
+  const demo = useDemoMode();
 
   const summary =
     useUpstreamList<DashboardSummary>("/v1/dashboard/summary", {
