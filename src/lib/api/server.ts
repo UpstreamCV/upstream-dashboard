@@ -4,7 +4,7 @@ import { cache } from "react";
 import { env } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { UpstreamApiError, type ApiErrorEnvelope } from "./errors";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { isDemoMode } from "@/lib/demo/demo-mode.server";
 import { resolveDemoResponse } from "@/lib/demo/router";
 import { getDemoScene } from "@/lib/demo/scene-cookie";
 
@@ -40,8 +40,11 @@ export async function serverFetch<T>(
     body?: unknown;
   },
 ): Promise<T> {
-  if (isDemoMode()) {
-    return resolveDemoResponse(path, opts.query, await getDemoScene()) as T;
+  if (await isDemoMode()) {
+    return resolveDemoResponse(path, opts.query, await getDemoScene(), {
+      method: opts.method,
+      body: opts.body,
+    }) as T;
   }
 
   const accessToken = await validatedSession();

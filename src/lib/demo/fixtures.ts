@@ -11,9 +11,13 @@ import type {
   AccountLimits,
   AccountSummary,
   Agent,
+  Alert,
+  ApiToken,
+  AuditLogItem,
   Camera,
   CameraPackageConfigResponse,
   CameraProcessingConfigResponse,
+  CollectorStatus,
   ConfidenceTrendPoint,
   ConfidenceTrendRange,
   ConfidenceTrendResponse,
@@ -22,6 +26,7 @@ import type {
   FleetTrendResponse,
   GeometryConfig,
   GeometryConfigRecord,
+  HeartbeatRecord,
   LatestFrame,
   LatestPerceptionPayload,
   LatestPerceptionRecord,
@@ -34,10 +39,16 @@ import type {
   ProcessingPackageCatalogResponse,
   ProcessorStatusRecord,
   ReliabilityFinding,
+  ReliabilitySource,
   ReliabilitySummary,
+  Rule,
   StreamSession,
   StreamValidation,
+  UsageSummary,
+  Workflow,
+  WorkflowRun,
 } from "@/lib/api/types";
+import type { ProcessingConfig } from "@/lib/api/processing-config";
 import {
   cameraAdded,
   counting,
@@ -229,7 +240,7 @@ export function demoLatestFrame(): LatestFrame {
   };
 }
 
-export const demoTokens = {
+export const demoTokens: { tokens: ApiToken[] } = {
   tokens: [
     {
       id: "70000000-0000-4000-8000-000000000071",
@@ -246,7 +257,11 @@ export const demoTokens = {
   ],
 };
 
-export const demoProcessingConfig = { processing_enabled: true };
+// Built per request so `updated_at` stays fresh; the write store overrides
+// `processing_enabled` once the Settings toggle has been flipped.
+export function demoProcessingConfig(enabled = true): ProcessingConfig {
+  return { account_id: ACCOUNT_ID, processing_enabled: enabled, updated_at: nowIso() };
+}
 
 export function demoDashboardSummary(scene: DemoScene): DashboardSummary {
   // The agent (dock-pi-01) exists in every scene — /v1/agents returns it even
@@ -1352,3 +1367,615 @@ export const demoSuggestedFixes: DemoSuggestedFix[] = [
       "The dock light dipped at dusk — a small exposure bump restores contrast for detection.",
   },
 ];
+
+// =============================================================================
+// Account-level fixtures — the sidebar routes outside the camera narrative
+// (Alerts, Rules, Workflows, Plan & Usage, Billing, Audit Logs, Agent detail,
+// Collector). Added for the embeddable /demo so no route lands on `{}`. Where a
+// surface has a scene dependency (an alert for the missed crossing) it follows
+// the same predicates as the camera fixtures; the rest is stable history so the
+// pages read as a lived-in account in every scene. Writes layer on top via
+// ./state.ts — these stay pure.
+// =============================================================================
+
+export const RULE_DOCK_ENTRY_ID = "b0000000-0000-4000-8000-0000000000b1";
+export const RULE_AFTER_HOURS_ID = "b0000000-0000-4000-8000-0000000000b2";
+export const RULE_CAMERA_OFFLINE_ID = "b0000000-0000-4000-8000-0000000000b3";
+export const RULE_QUIET_ID = "b0000000-0000-4000-8000-0000000000b4";
+export const WORKFLOW_TRUCK_ID = "e0000000-0000-4000-8000-0000000000e1";
+export const ALERT_MISSED_ID = "f0000000-0000-4000-8000-0000000000f1";
+export const ALERT_AFTER_HOURS_ID = "f0000000-0000-4000-8000-0000000000f2";
+export const ALERT_TRUCK_TIMEOUT_ID = "f0000000-0000-4000-8000-0000000000f3";
+export const ALERT_OFFLINE_ID = "f0000000-0000-4000-8000-0000000000f4";
+const RUN_MISSED_ID = "10000000-0000-4000-8000-000000000101";
+const RUN_TRUCK_ACTIVE_ID = "10000000-0000-4000-8000-000000000102";
+const RUN_TRUCK_FAILED_ID = "10000000-0000-4000-8000-000000000103";
+const RUN_AFTER_HOURS_ID = "10000000-0000-4000-8000-000000000104";
+const RUN_OFFLINE_ID = "10000000-0000-4000-8000-000000000105";
+
+const RULES_CREATED = isoAgo(12 * DAY_MS);
+
+// --- rules -------------------------------------------------------------------
+
+export function demoRules(scene: DemoScene): Rule[] {
+  if (!cameraAdded(scene)) return [];
+  const base = {
+    camera_id: CAMERA_ID,
+    created_by: USER_ID,
+    created_at: RULES_CREATED,
+    updated_at: RULES_CREATED,
+  };
+  const rules: Rule[] = [];
+  // The operator's counting-line rule exists once the line is drawn + saved.
+  if (lineSaved(scene)) {
+    rules.push({
+      ...base,
+      id: RULE_DOCK_ENTRY_ID,
+      name: "Dock entry count",
+      rule_type: "line_crossing",
+      enabled: true,
+      config: { line_id: LINE_ID },
+      severity: "info",
+      cooldown_seconds: 0,
+      created_at: isoAgo(35 * MIN_MS),
+      updated_at: isoAgo(35 * MIN_MS),
+    });
+  }
+  rules.push(
+    {
+      ...base,
+      id: RULE_AFTER_HOURS_ID,
+      name: "After-hours entry",
+      rule_type: "line_crossing",
+      enabled: true,
+      config: {
+        line_id: LINE_ID,
+        object_classes: ["person"],
+        schedule: {
+          days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+          start_time: "22:00",
+          end_time: "05:30",
+          timezone: "America/Los_Angeles",
+        },
+      },
+      severity: "critical",
+      cooldown_seconds: 300,
+    },
+    {
+      ...base,
+      id: RULE_CAMERA_OFFLINE_ID,
+      name: "Camera offline",
+      rule_type: "camera_offline",
+      enabled: true,
+      config: { offline_for_seconds: 120 },
+      severity: "critical",
+      cooldown_seconds: 600,
+    },
+    {
+      ...base,
+      id: RULE_QUIET_ID,
+      name: "No activity for 30 min",
+      rule_type: "no_detections_for",
+      enabled: false,
+      config: { quiet_for_seconds: 1800 },
+      severity: "warning",
+      cooldown_seconds: 1800,
+      updated_at: isoAgo(3 * DAY_MS),
+    },
+  );
+  return rules;
+}
+
+// --- workflows (M5 sequences) ------------------------------------------------
+
+export function demoWorkflows(scene: DemoScene): Workflow[] {
+  if (!cameraAdded(scene)) return [];
+  return [
+    {
+      id: WORKFLOW_TRUCK_ID,
+      camera_id: CAMERA_ID,
+      name: "Truck arrival → dock entry",
+      description:
+        "A truck crossing the dock line should be followed by a person entering the bay within 10 minutes; alert when nobody shows up.",
+      workflow_type: "sequence",
+      enabled: true,
+      config: {
+        start: {
+          event_type: "processor.line_crossing_object",
+          conditions: { line_id: LINE_ID, object_classes: ["truck"] },
+        },
+        then: {
+          event_type: "processor.line_crossing_object",
+          conditions: { line_id: LINE_ID, object_classes: ["person"] },
+          within_seconds: 600,
+        },
+        on_timeout: { alert: true },
+      },
+      severity: "warning",
+      cooldown_seconds: 600,
+      created_by: USER_ID,
+      created_at: isoAgo(9 * DAY_MS),
+      updated_at: isoAgo(9 * DAY_MS),
+    },
+  ];
+}
+
+// --- alerts ------------------------------------------------------------------
+
+export function demoAlerts(scene: DemoScene): Alert[] {
+  if (!cameraAdded(scene)) return [];
+  const list: Alert[] = [];
+  // The narrative's beat: open while the finding is open, resolved once fixed.
+  if (findingOpen(scene) || fixed(scene)) {
+    list.push({
+      id: ALERT_MISSED_ID,
+      camera_id: CAMERA_ID,
+      rule_id: RULE_DOCK_ENTRY_ID,
+      observation_id: null,
+      workflow_run_id: RUN_MISSED_ID,
+      severity: "warning",
+      status: fixed(scene) ? "resolved" : "open",
+      title: "Crossing missed on Dock Door — Bay 3",
+      message:
+        "A person crossed the dock line but detection confidence fell below the threshold in low light, so the crossing was not counted.",
+      payload: {
+        line_id: LINE_ID,
+        confidence: 0.31,
+        threshold: 0.45,
+        model: MODEL_BASE,
+      },
+      created_at: isoAgo(150_000),
+      read_at: fixed(scene) ? isoAgo(60_000) : null,
+      resolved_at: fixed(scene) ? isoAgo(20_000) : null,
+    });
+  }
+  // Stable history, newest first.
+  list.push(
+    {
+      id: ALERT_TRUCK_TIMEOUT_ID,
+      camera_id: CAMERA_ID,
+      rule_id: null,
+      observation_id: null,
+      workflow_run_id: RUN_TRUCK_FAILED_ID,
+      severity: "warning",
+      status: "resolved",
+      title: "Truck arrived, no dock entry within 10 min",
+      message:
+        "A truck crossed the dock line at 09:12 but nobody entered Bay 3 before the 10-minute window closed.",
+      payload: { workflow_id: WORKFLOW_TRUCK_ID, within_seconds: 600 },
+      created_at: isoAgo(5 * HOUR_MS + 8 * MIN_MS),
+      read_at: isoAgo(5 * HOUR_MS),
+      resolved_at: isoAgo(4 * HOUR_MS + 40 * MIN_MS),
+    },
+    {
+      id: ALERT_AFTER_HOURS_ID,
+      camera_id: CAMERA_ID,
+      rule_id: RULE_AFTER_HOURS_ID,
+      observation_id: null,
+      workflow_run_id: RUN_AFTER_HOURS_ID,
+      severity: "critical",
+      status: "resolved",
+      title: "After-hours entry at Dock Door — Bay 3",
+      message: "A person crossed the dock line at 23:41, outside operating hours.",
+      payload: { line_id: LINE_ID, class_label: "person", track_id: "t-2231" },
+      created_at: isoAgo(11 * HOUR_MS + 20 * MIN_MS),
+      read_at: isoAgo(11 * HOUR_MS + 5 * MIN_MS),
+      resolved_at: isoAgo(10 * HOUR_MS + 50 * MIN_MS),
+    },
+    {
+      id: ALERT_OFFLINE_ID,
+      camera_id: CAMERA_ID,
+      rule_id: RULE_CAMERA_OFFLINE_ID,
+      observation_id: null,
+      workflow_run_id: RUN_OFFLINE_ID,
+      severity: "critical",
+      status: "resolved",
+      title: "Dock Door — Bay 3 went offline",
+      message: "No heartbeat from dock-pi-01 for 2 minutes; the stream ended unexpectedly.",
+      payload: { offline_for_seconds: 120, agent: "dock-pi-01" },
+      created_at: isoAgo(2 * DAY_MS + 3 * HOUR_MS),
+      read_at: isoAgo(2 * DAY_MS + 2 * HOUR_MS + 50 * MIN_MS),
+      resolved_at: isoAgo(2 * DAY_MS + 2 * HOUR_MS + 41 * MIN_MS),
+    },
+  );
+  return list;
+}
+
+// --- workflow runs (M2 history) ---------------------------------------------
+
+function alertRef(alerts: Alert[], id: string): WorkflowRun["alert"] {
+  const a = alerts.find((x) => x.id === id);
+  return a ? { id: a.id, status: a.status, severity: a.severity } : null;
+}
+
+export function demoWorkflowRuns(scene: DemoScene): WorkflowRun[] {
+  if (!cameraAdded(scene)) return [];
+  const alerts = demoAlerts(scene);
+  const runs: WorkflowRun[] = [];
+  const base = {
+    camera_id: CAMERA_ID,
+    trigger_observation_id: null,
+    evidence: {} as Record<string, unknown>,
+    payload: {} as Record<string, unknown>,
+    deadline_at: null,
+  };
+
+  if (findingOpen(scene) || fixed(scene)) {
+    const at = isoAgo(150_000);
+    runs.push({
+      ...base,
+      id: RUN_MISSED_ID,
+      rule_id: RULE_DOCK_ENTRY_ID,
+      workflow_id: null,
+      workflow_type: "simple",
+      status: fixed(scene) ? "completed" : "action_required",
+      title: "Dock entry count",
+      summary: "Low-confidence crossing on Dock Door — counted as missed.",
+      trigger_type: "processor.line_crossing",
+      action_result: "alert_created",
+      evidence: { line_id: LINE_ID, confidence: 0.31, threshold: 0.45 },
+      alert: alertRef(alerts, ALERT_MISSED_ID),
+      started_at: at,
+      ended_at: at,
+      created_at: at,
+      updated_at: fixed(scene) ? isoAgo(20_000) : at,
+    });
+  }
+
+  if (counting(scene)) {
+    // The counting rule fires on every crossing; the first alert is created,
+    // the rest are recorded but suppressed by the cooldown — still runs.
+    const crossings = [3, 7, 12, 19, 26].map((minutesAgo, i) => {
+      const at = isoAgo(minutesAgo * MIN_MS);
+      return {
+        ...base,
+        id: `10000000-0000-4000-8000-0000000002${String(i).padStart(2, "0")}`,
+        rule_id: RULE_DOCK_ENTRY_ID,
+        workflow_id: null,
+        workflow_type: "simple",
+        status: "completed",
+        title: "Dock entry count",
+        summary: `Person crossed ${LINE_LABEL} (in).`,
+        trigger_type: "processor.line_crossing",
+        action_result: i === 4 ? "alert_created" : "alert_suppressed_cooldown",
+        evidence: { line_id: LINE_ID, direction: "in", class_label: "person" },
+        alert: null,
+        started_at: at,
+        ended_at: at,
+        created_at: at,
+        updated_at: at,
+      } satisfies WorkflowRun;
+    });
+    runs.push(...crossings);
+
+    // A sequence in flight: truck arrived 4 min ago, waiting for the entry.
+    const started = isoAgo(4 * MIN_MS);
+    runs.push({
+      ...base,
+      id: RUN_TRUCK_ACTIVE_ID,
+      rule_id: null,
+      workflow_id: WORKFLOW_TRUCK_ID,
+      workflow_type: "sequence",
+      status: "active",
+      title: "Truck arrival → dock entry",
+      summary: "Truck crossed the dock line; waiting for a person to enter Bay 3.",
+      trigger_type: "processor.line_crossing_object",
+      action_result: null,
+      evidence: { start: { class_label: "truck", track_id: "t-3107" } },
+      alert: null,
+      deadline_at: isoAgo(-6 * MIN_MS),
+      started_at: started,
+      ended_at: null,
+      created_at: started,
+      updated_at: started,
+    });
+  }
+
+  const truckFailedAt = isoAgo(5 * HOUR_MS + 18 * MIN_MS);
+  const afterHoursAt = isoAgo(11 * HOUR_MS + 20 * MIN_MS);
+  const offlineAt = isoAgo(2 * DAY_MS + 3 * HOUR_MS);
+  runs.push(
+    {
+      ...base,
+      id: RUN_TRUCK_FAILED_ID,
+      rule_id: null,
+      workflow_id: WORKFLOW_TRUCK_ID,
+      workflow_type: "sequence",
+      status: "failed",
+      title: "Truck arrival → dock entry",
+      summary: "No dock entry within 10 minutes of the truck's arrival.",
+      trigger_type: "processor.line_crossing_object",
+      action_result: "alert_created",
+      evidence: { start: { class_label: "truck", track_id: "t-2980" }, within_seconds: 600 },
+      alert: alertRef(alerts, ALERT_TRUCK_TIMEOUT_ID),
+      started_at: truckFailedAt,
+      ended_at: isoAgo(5 * HOUR_MS + 8 * MIN_MS),
+      created_at: truckFailedAt,
+      updated_at: isoAgo(5 * HOUR_MS + 8 * MIN_MS),
+    },
+    {
+      ...base,
+      id: RUN_AFTER_HOURS_ID,
+      rule_id: RULE_AFTER_HOURS_ID,
+      workflow_id: null,
+      workflow_type: "simple",
+      status: "completed",
+      title: "After-hours entry",
+      summary: "Person crossed the dock line outside operating hours.",
+      trigger_type: "processor.line_crossing",
+      action_result: "alert_created",
+      evidence: { line_id: LINE_ID, class_label: "person", track_id: "t-2231" },
+      alert: alertRef(alerts, ALERT_AFTER_HOURS_ID),
+      started_at: afterHoursAt,
+      ended_at: afterHoursAt,
+      created_at: afterHoursAt,
+      updated_at: afterHoursAt,
+    },
+    {
+      ...base,
+      id: RUN_OFFLINE_ID,
+      rule_id: RULE_CAMERA_OFFLINE_ID,
+      workflow_id: null,
+      workflow_type: "timer",
+      status: "completed",
+      title: "Camera offline",
+      summary: "No heartbeat from dock-pi-01 for 2 minutes.",
+      trigger_type: "timer.camera_offline",
+      action_result: "alert_created",
+      evidence: { offline_for_seconds: 120 },
+      alert: alertRef(alerts, ALERT_OFFLINE_ID),
+      started_at: offlineAt,
+      ended_at: offlineAt,
+      created_at: offlineAt,
+      updated_at: offlineAt,
+    },
+  );
+  return runs;
+}
+
+// --- usage summary (Module 7) ------------------------------------------------
+
+function utcMonthBounds(now = new Date()): { start: string; end: string } {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+/** Stream minutes shown on Home's Plan & Usage meter (mirrors the value the
+ *  Home tile hard-codes for demo). */
+export const DEMO_STREAM_MINUTES = 12_480;
+
+export function demoUsageSummary(
+  scene: DemoScene,
+  counts: { rules: number; workflows: number; alerts: number; workflowRuns: number },
+): UsageSummary {
+  const period = utcMonthBounds();
+  const cameras = cameraAdded(scene) ? 1 : 0;
+  return {
+    plan: { key: "pro", label: "Pro", status: "active" },
+    period,
+    limits: {
+      max_cameras: demoLimits.max_cameras,
+      max_concurrent_sessions: demoLimits.max_concurrent_sessions,
+      monthly_minutes_quota: demoLimits.monthly_minutes_quota,
+      allowed_stream_types: demoLimits.allowed_stream_types,
+    },
+    usage: {
+      cameras,
+      active_streams: cameras,
+      stream_minutes: cameraAdded(scene) ? DEMO_STREAM_MINUTES : 0,
+      workflow_runs: counts.workflowRuns,
+      alerts: counts.alerts,
+      rules: counts.rules,
+      workflows: counts.workflows,
+    },
+    states: { cameras: "ok", active_streams: "ok", stream_minutes: "ok" },
+    billing: {
+      provider: "stripe",
+      configured: true,
+      status: "active",
+      subscription_status: "active",
+      current_period_start: period.start,
+      current_period_end: period.end,
+      cancel_at_period_end: false,
+      // No Stripe portal to open from a demo — hides the Manage Billing button
+      // rather than shipping one that goes nowhere.
+      management_available: false,
+    },
+  };
+}
+
+// --- audit logs (Module 7 M3) ------------------------------------------------
+
+export function demoAuditLogs(scene: DemoScene): AuditLogItem[] {
+  const user = { type: "user", user_id: USER_ID };
+  const system = { type: "system", user_id: null };
+  const items: AuditLogItem[] = [];
+  let n = 0;
+  const item = (
+    msAgo: number,
+    actor: AuditLogItem["actor"],
+    event_type: string,
+    resource_type: string | null,
+    resource_id: string | null,
+    summary: string,
+    metadata: Record<string, unknown> = {},
+  ): AuditLogItem => ({
+    id: `20000000-0000-4000-8000-0000000002${String(n++).padStart(2, "0")}`,
+    created_at: isoAgo(msAgo),
+    actor,
+    event_type,
+    resource_type,
+    resource_id,
+    summary,
+    metadata,
+  });
+
+  if (lineSaved(scene)) {
+    items.push(
+      item(35 * MIN_MS, user, "rule.created", "rule", RULE_DOCK_ENTRY_ID,
+        "Created rule “Dock entry count” on Dock Door — Bay 3",
+        { rule_type: "line_crossing", line_id: LINE_ID }),
+    );
+  }
+  if (cameraAdded(scene)) {
+    items.push(
+      item(2 * DAY_MS + 2 * HOUR_MS + 41 * MIN_MS, user, "camera.claimed", "camera", CAMERA_ID,
+        "dock-pi-01 reclaimed Dock Door — Bay 3 after reconnecting",
+        { agent_id: AGENT_ID }),
+      item(3 * DAY_MS, user, "rule.updated", "rule", RULE_QUIET_ID,
+        "Disabled rule “No activity for 30 min”", { enabled: false }),
+      item(9 * DAY_MS, user, "workflow.created", "workflow", WORKFLOW_TRUCK_ID,
+        "Created workflow “Truck arrival → dock entry”", { workflow_type: "sequence" }),
+      item(12 * DAY_MS, user, "rule.created", "rule", RULE_AFTER_HOURS_ID,
+        "Created rule “After-hours entry” on Dock Door — Bay 3",
+        { rule_type: "line_crossing", severity: "critical" }),
+      item(12 * DAY_MS + 5 * MIN_MS, user, "rule.created", "rule", RULE_CAMERA_OFFLINE_ID,
+        "Created rule “Camera offline” on Dock Door — Bay 3",
+        { rule_type: "camera_offline" }),
+      item(13 * DAY_MS, user, "camera.claimed", "camera", CAMERA_ID,
+        "dock-pi-01 claimed Dock Door — Bay 3", { agent_id: AGENT_ID }),
+      item(13 * DAY_MS + 4 * MIN_MS, user, "camera.created", "camera", CAMERA_ID,
+        "Created camera Dock Door — Bay 3 (webcam, 1280×720 @ 30 fps)",
+        { source_type: "webcam" }),
+    );
+  }
+  items.push(
+    item(13 * DAY_MS + 9 * MIN_MS, user, "api_token.created", "api_token",
+      demoTokens.tokens[0].id, "Created API token “dock-pi-01” (agent scope)",
+      { scopes: ["agent"] }),
+    item(20 * DAY_MS, system, "stream_session.limit_rejected", "stream_session", null,
+      "Stream start rejected: requested 4K exceeds the plan's 1920×1080 cap",
+      { requested: { width: 3840, height: 2160 }, limit: { width: 1920, height: 1080 } }),
+    item(31 * DAY_MS, { type: "stripe", user_id: null }, "billing.subscription_synced",
+      "subscription", null, "Subscription synced from Stripe: Pro (active)",
+      { plan: "pro", status: "active" }),
+    item(31 * DAY_MS + 2 * MIN_MS, user, "billing.plan_changed", "account", ACCOUNT_ID,
+      "Plan changed from Starter to Pro", { from: "starter", to: "pro" }),
+    item(31 * DAY_MS + 3 * MIN_MS, system, "billing.limits_updated", "account", ACCOUNT_ID,
+      "Limits updated for the Pro plan: 25 cameras, 10 concurrent streams",
+      { max_cameras: 25, max_concurrent_sessions: 10 }),
+  );
+  return items;
+}
+
+// --- agent heartbeats --------------------------------------------------------
+
+/** The last ~10 minutes of dock-pi-01 heartbeats, newest first (one every 50s). */
+export function demoHeartbeats(scene: DemoScene, limit = 12): HeartbeatRecord[] {
+  const streaming = cameraAdded(scene);
+  return Array.from({ length: limit }, (_, i) => {
+    const at = isoAgo(25_000 + i * 50_000);
+    return {
+      id: `30000000-0000-4000-8000-0000000003${String(i).padStart(2, "0")}`,
+      agent_id: AGENT_ID,
+      camera_id: streaming ? CAMERA_ID : null,
+      session_id: streaming ? SESSION_ID : null,
+      status: streaming ? "streaming" : "online",
+      fps: streaming ? 30 : null,
+      bitrate_kbps: streaming ? 2960 + ((i * 37) % 90) : null,
+      width: streaming ? 1280 : null,
+      height: streaming ? 720 : null,
+      codec: streaming ? "h264" : null,
+      last_error: null,
+      agent_version: "0.1.0",
+      reported_at: at,
+      created_at: at,
+    };
+  });
+}
+
+// --- Upstream Collector (external CV sources) -------------------------------
+
+const COLLECTOR_SOURCE_ID = "40000000-0000-4000-8000-000000000401";
+const COLLECTOR_SOURCE = "yard-cv";
+const COLLECTOR_CAMERA_KEY = "yard-gate-2";
+
+export function demoReliabilitySources(): ReliabilitySource[] {
+  return [
+    {
+      id: COLLECTOR_SOURCE_ID,
+      source: COLLECTOR_SOURCE,
+      external_camera_key: COLLECTOR_CAMERA_KEY,
+      display_name: "Yard gate 2 (existing CV)",
+      source_kind: "external_camera",
+      first_seen_at: isoAgo(6 * DAY_MS),
+      last_seen_at: isoAgo(40_000),
+      last_observation_at: isoAgo(40_000),
+      last_event_at: isoAgo(4 * MIN_MS),
+      last_detection_summary_at: isoAgo(40_000),
+      last_collector_heartbeat_at: isoAgo(30_000),
+      last_config_changed_at: isoAgo(2 * DAY_MS),
+      last_model_name: "yolov8n",
+      last_model_version: "8.2.0",
+      observation_count_total: 48_211,
+      event_count_total: 1_902,
+      detection_summary_count_total: 46_309,
+      collector_heartbeat_count_total: 17_280,
+      config_changed_count_total: 3,
+      open_issue_count: 0,
+      status_hint: "active",
+      health_status: "healthy",
+      health_reason: null,
+      health_message: "Observations arriving on schedule.",
+      liveness_enabled: true,
+      expected_interval_seconds: 60,
+      liveness_grace_seconds: 120,
+      last_liveness_checked_at: isoAgo(30_000),
+      last_health_status_changed_at: isoAgo(2 * DAY_MS + 2 * HOUR_MS),
+      liveness_silence_started_at: null,
+      last_liveness_issue_id: null,
+    },
+  ];
+}
+
+export function demoCollectorStatus(): CollectorStatus {
+  const sources = demoReliabilitySources();
+  return {
+    last_received_at: isoAgo(40_000),
+    recent_batch_count: 58,
+    recent_observation_count: 1_146,
+    active_source_count: 1,
+    open_issue_count: 0,
+    latest_collector_heartbeat: {
+      observed_at: isoAgo(30_000),
+      source: COLLECTOR_SOURCE,
+      version: "0.3.2",
+      running: true,
+      cloud_reachable: true,
+      spooled_batches: 0,
+      spooled_observations: 0,
+      uploaded_batches: 58,
+      uploaded_observations: 1_146,
+      dropped_batches: 0,
+      dropped_observations: 0,
+      last_upload_at: isoAgo(40_000),
+      last_error_code: null,
+    },
+    sources: sources.map((s) => ({
+      source: s.source,
+      external_camera_key: s.external_camera_key,
+      last_seen_at: s.last_seen_at,
+      recent_observations: 1_146,
+      recent_events: 41,
+      recent_detection_summaries: 1_105,
+      open_issues: 0,
+    })),
+    recent_batches: Array.from({ length: 6 }, (_, i) => ({
+      id: `50000000-0000-4000-8000-0000000005${String(i).padStart(2, "0")}`,
+      source: COLLECTOR_SOURCE,
+      external_camera_key: COLLECTOR_CAMERA_KEY,
+      observation_count: 18 + ((i * 7) % 5),
+      status: "accepted",
+      received_at: isoAgo(40_000 + i * 60_000),
+    })),
+    source_health_counts: {
+      healthy: 1,
+      delayed: 0,
+      silent: 0,
+      collector_offline: 0,
+      unknown: 0,
+      disabled: 0,
+    },
+  };
+}

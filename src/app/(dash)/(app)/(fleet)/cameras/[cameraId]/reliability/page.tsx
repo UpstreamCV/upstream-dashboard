@@ -12,7 +12,7 @@ import {
   getReliabilitySummary,
 } from "@/lib/api/reliability";
 import type { ReliabilityFinding } from "@/lib/api/types";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { isDemoMode } from "@/lib/demo/demo-mode.server";
 import { getDemoScene } from "@/lib/demo/scene-cookie";
 import { SceneSignalsCard } from "@/lib/demo/scene-signals-card";
 import { SuggestedFixesCard } from "@/lib/demo/suggested-fixes-card";
@@ -39,7 +39,7 @@ export default async function CameraReliabilityPage({
 }) {
   const { cameraId } = await params;
   const { activeAccountId } = await getActiveAccount();
-  const demoScene = isDemoMode() ? await getDemoScene() : null;
+  const demoScene = (await isDemoMode()) ? await getDemoScene() : null;
 
   const [
     summary,

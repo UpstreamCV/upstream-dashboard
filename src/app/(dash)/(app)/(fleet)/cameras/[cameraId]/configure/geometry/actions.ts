@@ -20,7 +20,7 @@ import {
   type GeometryValidationIssue,
   validateGeometryConfig,
 } from "@/lib/perception/geometry-schema";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { isDemoMode } from "@/lib/demo/demo-mode.server";
 import { setDemoSceneAction } from "@/lib/demo/actions";
 
 export type SaveGeometryActionResult =
@@ -59,7 +59,7 @@ export async function saveGeometryAction(
 
   // Demo mode: don't call upstream — advance the narrative to "line-saved" and
   // return the saved record so the toast + sidebar revision update fire as usual.
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     await setDemoSceneAction("line-saved");
     revalidatePath(`/cameras/${cameraId}/configure/geometry`);
     return {
