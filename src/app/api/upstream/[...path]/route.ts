@@ -7,7 +7,7 @@ import {
 import { listMemberships } from "@/lib/account/memberships";
 import { reportError } from "@/lib/error";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { DEMO_MODE_COOKIE, demoModeFromCookie } from "@/lib/demo/demo-mode";
 import { resolveDemoResponse } from "@/lib/demo/router";
 import { coerceScene, DEMO_SCENE_COOKIE } from "@/lib/demo/scene";
 
@@ -41,13 +41,23 @@ async function resolveAccountId(): Promise<string | null> {
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
 
-  // Demo mode: serve fixtures, no auth, no upstream. (src/lib/demo)
-  if (isDemoMode()) {
+  // Demo mode (build flag OR the `upstream_demo` cookie): serve fixtures, no
+  // auth, no upstream. Writes are applied to the in-memory demo store so the
+  // next poll reflects them. (src/lib/demo)
+  if (demoModeFromCookie(req.cookies.get(DEMO_MODE_COOKIE)?.value)) {
     const url = new URL(req.url);
     const scene = coerceScene(req.cookies.get(DEMO_SCENE_COOKIE)?.value);
     const query = Object.fromEntries(url.searchParams.entries());
+    const body =
+      req.method === "GET" || req.method === "HEAD"
+        ? undefined
+        : await req.json().catch(() => undefined);
     return NextResponse.json(
-      resolveDemoResponse("/" + path.join("/"), query, scene) ?? {},
+      resolveDemoResponse("/" + path.join("/"), query, scene, {
+        method: req.method,
+        body,
+      }) ?? {},
+      { headers: { "Cache-Control": "no-store" } },
     );
   }
 

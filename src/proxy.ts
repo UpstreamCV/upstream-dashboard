@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { DEMO_MODE_COOKIE, demoModeFromCookie } from "@/lib/demo/demo-mode";
 
 // IMPORTANT: entries are matched as an exact path OR as a prefix-with-slash.
 // "/foo" opens every subpath under "/foo/…" too. That's intentional for nested
@@ -9,16 +9,20 @@ import { isDemoMode } from "@/lib/demo/demo-mode";
 // but it means adding a new entry must be done with full knowledge of every
 // route below it — anything nested becomes public automatically. Don't add a
 // short prefix here unless you mean every subpath.
-const PUBLIC_PATHS = ["/login", "/signup"];
+// "/demo" covers /demo (arms the demo cookie) and /demo/exit (clears it).
+const PUBLIC_PATHS = ["/login", "/signup", "/demo"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 export async function proxy(request: NextRequest) {
-  // Demo mode: no Supabase, no auth gating — let every route through so the
-  // recorded demo runs with no backend. (src/lib/demo)
-  if (isDemoMode()) return NextResponse.next({ request });
+  // Demo mode (build flag OR the `upstream_demo` cookie set by /demo): no
+  // Supabase, no auth gating — let every route through so the demo runs with
+  // no backend. (src/lib/demo)
+  if (demoModeFromCookie(request.cookies.get(DEMO_MODE_COOKIE)?.value)) {
+    return NextResponse.next({ request });
+  }
 
   let response = NextResponse.next({ request });
 

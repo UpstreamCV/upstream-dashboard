@@ -10,7 +10,7 @@ import {
   connectWhep,
 } from "@/lib/webrtc/whep-client";
 import { dispatchPlayerState } from "@/components/stream/player-state-event";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { useDemoMode } from "@/lib/demo/demo-mode-context";
 import { DemoVideo } from "@/lib/demo/demo-video";
 
 // Light-theme port of src/components/stream/live-stream-player.tsx. The
@@ -46,7 +46,8 @@ export function LiveStreamPlayerNext({
   demoClip?: "clean" | "weak" | "strong";
 }) {
   // Demo mode: skip WHEP entirely — loop the local clip with the overlay on top.
-  if (isDemoMode()) {
+  const demo = useDemoMode();
+  if (demo) {
     return (
       <DemoVideo
         approved={props.approved}

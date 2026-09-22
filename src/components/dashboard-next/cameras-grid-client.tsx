@@ -18,7 +18,7 @@ import {
   type CameraBucket,
 } from "./dn-status";
 import { useUpstreamList } from "@/lib/api/use-list";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { useDemoMode } from "@/lib/demo/demo-mode-context";
 import { AddCameraPanel } from "@/lib/demo/add-camera-panel";
 import type {
   Agent,
@@ -60,7 +60,7 @@ export function CamerasGridClient({
   initialAgents: Agent[];
   initialAlerts: Alert[];
 }) {
-  const demo = isDemoMode();
+  const demo = useDemoMode();
   const [showAdd, setShowAdd] = useState(false);
 
   const [query, setQuery] = useState("");

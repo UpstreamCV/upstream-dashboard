@@ -39,7 +39,7 @@ import {
   type PlayerStateKind,
 } from "@/components/stream/player-state-event";
 import { LiveStreamPlayerNext } from "./live-stream-player-next";
-import { isDemoMode } from "@/lib/demo/demo-mode";
+import { useDemoMode } from "@/lib/demo/demo-mode-context";
 import { StatusDot, type DotStatus } from "./status-dot";
 import { usePageVisible } from "./use-page-visible";
 import {
@@ -176,7 +176,7 @@ export function LivePerceptionOverlayNext({
   const liveDetectionsEnabled = session.status === "on";
   const isExpired = session.status === "expired";
   // Demo mode drives detections from the scene (no manual session / WHEP signal).
-  const demo = isDemoMode();
+  const demo = useDemoMode();
 
   const pageVisible = usePageVisible();
 
