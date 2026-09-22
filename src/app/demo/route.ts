@@ -24,11 +24,16 @@ export async function GET(req: NextRequest) {
     ? (requested as DemoScene)
     : DEMO_ENTRY_SCENE;
 
-  const url = req.nextUrl.clone();
-  url.pathname = "/";
-  url.search = "";
-
-  const res = NextResponse.redirect(url);
+  // A RELATIVE Location, resolved by the browser against the address it
+  // actually asked for. NextResponse.redirect() needs an absolute URL, and on
+  // Netlify req.nextUrl carries the internal deploy host, so the visitor gets
+  // bounced from dashboard.upstreamcv.com to <deploy>--upstream-dashboard.
+  // netlify.app — a different origin, where the cookie just set does not
+  // apply, landing them on /login instead of the demo.
+  const res = new NextResponse(null, {
+    status: 307,
+    headers: { Location: "/" },
+  });
   setDemoCookies(res.cookies, demoCookieOptionsFor(req), scene);
   res.headers.set("Cache-Control", "no-store");
   return res;
