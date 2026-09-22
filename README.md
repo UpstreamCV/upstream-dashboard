@@ -163,6 +163,14 @@ docs/
 | `npm run lint:fix` | ESLint with `--fix` |
 | `npx tsc --noEmit` | Type check |
 
+## Demo mode
+
+`https://dashboard.upstreamcv.com/demo` opens the dashboard on a fake account with fake data — no login, no api-server, no Supabase. It sets the `upstream_demo` cookie (plus the `demo_scene` narrative cursor) and redirects to Home; every request that carries the cookie is answered from `src/lib/demo/fixtures.ts`, and writes stick in memory for the session. Leave with the "Exit demo" badge, Sign out, or `/demo/exit`. `/demo?scene=<adding|connected|line-saved|counting|problem|fixing|fixed>` deep-links a beat of the story; press backtick in the app to reveal the scene stepper.
+
+The page is meant to be embedded: `next.config.ts` allows framing from the sites listed in `FRAME_ANCESTORS` (`frame-ancestors` CSP). The demo cookies are `SameSite=None; Secure`, so the embed must be served over https (Safari still blocks third-party cookies inside a frame — open the demo in a new tab there). Locally, `npm run build && npm run start` then visit `http://localhost:3000/demo` (Lax cookies on plain http).
+
+`npm run demo` still builds a whole-app demo with `NEXT_PUBLIC_DEMO_MODE=1` for recording; see `AGENTS.md` "Demo mode".
+
 ## Deploy to Netlify
 
 Netlify's Next.js Runtime auto-detects this project — middleware (`proxy.ts`) deploys as an Edge Function, the catch-all proxy (`/api/upstream/[...path]`) deploys as a serverless Function, and Server Components run on serverless. No plugin block is needed in `netlify.toml`; just the Node pin + build command (already committed).
