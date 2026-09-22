@@ -39,6 +39,7 @@ export type DemoCookieOptions = {
   sameSite: "none" | "lax";
   secure: boolean;
   maxAge: number;
+  partitioned?: boolean;
 };
 
 /**
@@ -73,6 +74,13 @@ export function inferSecure(
  * `next start`) `Secure` cookies would be dropped, so fall back to `Lax` —
  * fine for a same-window local check, not for a cross-site frame.
  *
+ * `SameSite=None` alone is not enough: browsers that block third-party
+ * cookies (Chrome's Tracking Protection, Safari, Firefox) drop it inside the
+ * frame, and the demo falls back to the login screen. `Partitioned` (CHIPS)
+ * is the opt-in that keeps it working — the cookie is scoped to the embedding
+ * site, which is exactly what a per-visitor demo wants. Verified: without it
+ * the framed demo lands on /login while the same URL works in a top-level tab.
+ *
  * `maxAge: 0` (clearing) must carry the SAME attributes, or Chrome refuses the
  * deletion inside the frame ("SameSite=Lax … came from a cross-site response").
  */
@@ -85,5 +93,7 @@ export function demoCookieOptions(
     sameSite: secure ? "none" : "lax",
     secure,
     maxAge,
+    // Partitioned requires Secure; on the plain-http fallback it is invalid.
+    partitioned: secure,
   };
 }
