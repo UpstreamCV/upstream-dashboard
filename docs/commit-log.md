@@ -4,6 +4,16 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-10-27 — chore: add all-rights-reserved LICENSE
+
+**Subject:** Adds `LICENSE` ahead of making the repo public: copyright
+Upstream Vision, Inc., all rights reserved. The source is visible for
+reference only; no rights to use, copy, modify, or distribute it are
+granted. Third-party components keep their own licenses.
+
+- `LICENSE` (new).
+- `docs/commit-log.md` — this entry.
+
 ## 2026-09-22 — `/demo`: runtime demo mode with a fake account + data, for embedding
 
 **Subject:** Make the backend-free demo reachable in the normal production build at `/demo` (cookie-driven, no env flag), fill in the account-level fixtures it was missing, make demo writes stick in memory, add a slim Demo badge with Exit, and allow the site to be framed by the personal/marketing site.
