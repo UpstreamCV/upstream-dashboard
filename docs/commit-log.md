@@ -4,6 +4,15 @@ Reverse-chronological summary of every meaningful commit. Newest first. See the 
 
 ---
 
+## 2026-10-27 — chore: stop Dependabot version updates
+
+**Subject:** The project is finished and published for reference, so nobody is
+left to review automated dependency-update PRs. Removes
+`.github/dependabot.yml`; the open Dependabot PRs are closed.
+
+- `.github/dependabot.yml` — deleted.
+- `docs/commit-log.md` — this entry.
+
 ## 2026-10-27 — chore: add all-rights-reserved LICENSE
 
 **Subject:** Adds `LICENSE` ahead of making the repo public: copyright
